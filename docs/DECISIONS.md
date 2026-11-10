@@ -7,3 +7,6 @@ Open decisions from PRD §13 are **not** decided here; they are asked of the mai
 |---|---|---|
 | 2026-11-10 | API functions are declared `external`; constants are plain `const int` with Arduino.h values. | `external` gives analyzable signatures with no fake bodies to maintain. Plain `int` (vs. distinct extension types per kind) is the simpler option and matches Arduino's own typing; stricter typing can come later without breaking user code. |
 | 2026-11-10 | Arduino spelling is kept (`INPUT_PULLUP`, `digitalWrite`); `constant_identifier_names` is ignored in `arduino_core.dart` only. | Code reads the same in Dart, tutorials, and generated C++. Scoping the ignore to one file keeps the lint active everywhere else. |
+| 2026-11-10 | Diagnostics print the PRD §9.6 header line, then the suggestion on a second line as `  = help: …`. | Keeps the machine-parsable `file:line:col: error[Exxx]: message` header unambiguous while still always showing a suggestion. |
+| 2026-11-10 | Diagnostic locations and `#line` directives use the source file's basename, not an absolute path. | Output must be byte-identical across machines (determinism, goldens). Matches the PRD's `#line 3 "blink.dart"` example. |
+| 2026-11-10 | Diagnostics are sorted by (line, column, code) before printing. | Deterministic output independent of which validator rule ran first. |
