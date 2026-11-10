@@ -4,9 +4,11 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/compiler.dart';
 
+import 'test_paths.dart';
+
 /// PRD §9.3: same input → byte-identical output.
 void main() {
-  final blink = p.join('test', 'golden', 'blink', 'input.dart');
+  final blink = fromPackage('test', 'golden', 'blink', 'input.dart');
 
   Future<String> compile(String path) async => switch (await Compiler().compile(path)) {
         CompileSuccess(:final cpp) => cpp,
@@ -19,7 +21,7 @@ void main() {
 
   test('output does not depend on where the file lives on disk', () async {
     // A copy inside the same package (so package:unodar still resolves) but at a different absolute path.
-    final dir = Directory(p.join('test', '.determinism_tmp', 'nested'))..createSync(recursive: true);
+    final dir = Directory(fromPackage('test', '.determinism_tmp', 'nested'))..createSync(recursive: true);
     addTearDown(() => dir.parent.deleteSync(recursive: true));
     final copy = File(blink).copySync(p.join(dir.path, 'input.dart'));
     expect(await compile(copy.path), await compile(blink));

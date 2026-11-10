@@ -15,10 +15,12 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/compiler.dart';
 
+import 'test_paths.dart';
+
 final bool updateGoldens = Platform.environment['UPDATE_GOLDENS'] == '1';
 
 void main() {
-  final root = Directory(p.join('test', 'golden'));
+  final root = Directory(fromPackage('test', 'golden'));
   final cases = root.listSync().whereType<Directory>().where((d) => !p.basename(d.path).startsWith('.')).toList()
     ..sort((a, b) => a.path.compareTo(b.path));
   final compiler = Compiler();

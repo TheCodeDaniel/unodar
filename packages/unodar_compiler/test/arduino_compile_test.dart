@@ -13,6 +13,8 @@ import 'package:test/test.dart';
 import 'package:unodar_compiler/src/compiler.dart';
 import 'package:unodar_compiler/src/emitter/emitter.dart';
 
+import 'test_paths.dart';
+
 const installHelp = '''
 arduino-cli and the arduino:avr core are required for this check. Install with:
   brew install arduino-cli            # macOS; other platforms: https://arduino.github.io/arduino-cli/latest/installation/
@@ -39,7 +41,7 @@ void main() {
   test('generated blink sketch compiles for arduino:avr:uno', () async {
     if (missing != null) fail('$missing (UNODAR_REQUIRE_ARDUINO=1).\n$installHelp');
 
-    final result = await Compiler().compile(p.join('test', 'golden', 'blink', 'input.dart'));
+    final result = await Compiler().compile(fromPackage('test', 'golden', 'blink', 'input.dart'));
     if (result is! CompileSuccess) fail('blink did not compile: $result');
 
     final sketch = Directory.systemTemp.createTempSync('unodar_arduino_').path;

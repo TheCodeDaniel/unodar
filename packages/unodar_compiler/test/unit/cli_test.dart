@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/cli/cli.dart';
 
+import '../test_paths.dart';
+
 /// Runs the CLI in-process with captured output.
 Future<({int exitCode, String out, String err})> run(List<String> args) async {
   final out = StringBuffer();
@@ -18,7 +20,7 @@ void main() {
   setUp(() => temp = Directory.systemTemp.createTempSync('unodar_cli_test_'));
   tearDown(() => temp.deleteSync(recursive: true));
 
-  final blink = p.join('test', 'golden', 'blink', 'input.dart');
+  final blink = fromPackage('test', 'golden', 'blink', 'input.dart');
 
   test('build writes <outdir>/<name>/<name>.ino, prints its path, exits 0', () async {
     final r = await run(['build', blink, '-o', temp.path]);
@@ -26,12 +28,12 @@ void main() {
     expect(r.exitCode, 0, reason: r.err);
     expect(r.out.trim(), ino.path);
     expect(r.err, isEmpty);
-    expect(ino.readAsStringSync(), File(p.join('test', 'golden', 'blink', 'expected.ino')).readAsStringSync());
+    expect(ino.readAsStringSync(), File(fromPackage('test', 'golden', 'blink', 'expected.ino')).readAsStringSync());
   });
 
   test('diagnostics go to stderr, nothing is written, exit 1', () async {
     final r =
-        await run(['build', p.join('test', 'golden', 'e004_non_literal_argument', 'input.dart'), '-o', temp.path]);
+        await run(['build', fromPackage('test', 'golden', 'e004_non_literal_argument', 'input.dart'), '-o', temp.path]);
     expect(r.exitCode, 1);
     expect(r.out, isEmpty);
     expect(r.err, contains('error[E004]'));
@@ -61,7 +63,11 @@ void main() {
   });
 
   test('bin/unodar.dart runs as a real process', () async {
-    final result = await Process.run(Platform.resolvedExecutable, ['run', 'bin/unodar.dart', '--help']);
+    final result = await Process.run(
+      Platform.resolvedExecutable,
+      ['run', fromPackage('bin', 'unodar.dart'), '--help'],
+      workingDirectory: packageRoot,
+    );
     expect(result.exitCode, 0, reason: '${result.stderr}');
     expect(result.stdout as String, contains('Usage: unodar <command>'));
   }, timeout: const Timeout(Duration(minutes: 2)));

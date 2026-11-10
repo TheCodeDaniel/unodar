@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
@@ -8,7 +10,7 @@ import 'package:yaml/yaml.dart';
 /// `packages/unodar` is what end users import. If it ever pulled in `analyzer`, every user project would carry the
 /// compiler's dependency tree; if it pulled in Flutter, it would violate NG2 outright.
 void main() {
-  final pubspec = loadYaml(File('pubspec.yaml').readAsStringSync()) as YamlMap;
+  final pubspec = loadYaml(File(p.join(packageRoot, 'pubspec.yaml')).readAsStringSync()) as YamlMap;
   final dependencies = (pubspec['dependencies'] as YamlMap?)?.keys.cast<String>().toSet() ?? <String>{};
 
   test('has no runtime dependencies at all', () {
@@ -24,3 +26,6 @@ void main() {
     expect(pubspec['flutter'], isNull, reason: 'a `flutter:` section would make this a Flutter package');
   });
 }
+
+/// Absolute root of this package, so the test passes from any working directory.
+final String packageRoot = p.dirname(p.fromUri(Isolate.resolvePackageUriSync(Uri.parse('package:unodar/'))!));
