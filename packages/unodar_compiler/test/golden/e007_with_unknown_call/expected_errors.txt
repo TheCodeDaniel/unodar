@@ -1,0 +1,4 @@
+input.dart:4:15: error[E007]: Dart analysis error: The argument type 'String' can't be assigned to the parameter type 'int'.
+  = help: Fix the Dart error first; `dart analyze` on this file shows the same problem.
+input.dart:8:3: error[E007]: Dart analysis error: Undefined name 'tone'.
+  = help: Fix the Dart error first; `dart analyze` on this file shows the same problem.

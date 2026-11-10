@@ -1,0 +1,4 @@
+input.dart:3:6: error[E006]: invalid signature for 'setup': it takes parameters.
+  = help: Declare it exactly as `void setup() { ... }`: return type void, no parameters, a block body.
+input.dart:7:1: error[E006]: invalid signature for 'loop': it has no return type.
+  = help: Declare it exactly as `void loop() { ... }`: return type void, no parameters, a block body.

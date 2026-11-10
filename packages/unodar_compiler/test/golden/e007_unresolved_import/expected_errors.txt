@@ -1,0 +1,2 @@
+input.dart:2:8: error[E007]: Dart analysis error: Target of URI doesn't exist: 'package:does_not_exist/thing.dart'.
+  = help: Fix the Dart error first; `dart analyze` on this file shows the same problem.

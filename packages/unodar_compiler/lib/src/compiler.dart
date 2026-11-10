@@ -3,6 +3,7 @@ import 'diagnostics/diagnostics.dart';
 import 'emitter/emitter.dart';
 import 'frontend/frontend.dart';
 import 'lowering/lowering.dart';
+import 'validator/rules.dart';
 import 'validator/validator.dart';
 
 sealed class CompileResult {
@@ -44,16 +45,27 @@ final class Compiler {
 
   Future<CompileResult> compile(String path) async {
     final ResolvedSource source;
+    final List<AnalysisError> analysisErrors;
     switch (await frontend.resolve(path)) {
-      case FrontendSuccess(source: final resolved):
+      case FrontendSuccess(source: final resolved, analysisErrors: final errors):
         source = resolved;
-      case FrontendFailure(:final diagnostics):
-        return CompileFailure(diagnostics);
+        analysisErrors = errors;
       case FrontendInputError(:final message):
         return CompileInputError(message);
     }
+
+    // Analyzer errors normally stop compilation (E007): validating a broken AST yields misleading diagnostics.
+    // The one exception is a call to an undefined function written as a plain statement in setup/loop, e.g.
+    // `tone(8, 440);`. The analyzer calls that an undefined name, but the user's real problem is "not part of the
+    // unodar API", which the validator reports as E003 with a better suggestion.
+    final unresolvedCalls = unresolvedEntryPointCallOffsets(source.unit);
+    final fatal = analysisErrors.where((e) => !unresolvedCalls.contains(e.offset));
+    if (fatal.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
+
     final diagnostics = Validator(api: api).validate(source);
     if (diagnostics.isNotEmpty) return CompileFailure(diagnostics);
+    // Defensive: never let a deferred analyzer error through just because no rule explained it.
+    if (analysisErrors.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
     final program = Lowering(api).lower(source);
     return CompileSuccess(sourceName: source.displayName, cpp: CppEmitter(target).emit(program));
   }

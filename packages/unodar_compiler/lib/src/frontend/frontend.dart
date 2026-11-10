@@ -32,18 +32,21 @@ sealed class FrontendResult {
   const FrontendResult();
 }
 
+/// The file was analyzed. [analysisErrors] are the analyzer's errors as E007 diagnostics, keyed by offset so the
+/// compiler can decide which of them a more specific validator diagnostic explains (see `Compiler`).
 final class FrontendSuccess extends FrontendResult {
-  const FrontendSuccess(this.source);
+  const FrontendSuccess(this.source, this.analysisErrors);
 
   final ResolvedSource source;
+  final List<AnalysisError> analysisErrors;
 }
 
-/// The file resolved but has Dart errors (E007). Validation is skipped: an AST with type or syntax errors would
-/// produce misleading follow-on diagnostics.
-final class FrontendFailure extends FrontendResult {
-  const FrontendFailure(this.diagnostics);
+/// One analyzer error: its source [offset] and the E007 [diagnostic] that reports it.
+final class AnalysisError {
+  const AnalysisError(this.offset, this.diagnostic);
 
-  final List<Diagnostic> diagnostics;
+  final int offset;
+  final Diagnostic diagnostic;
 }
 
 /// The input could not be read at all (missing file, not a Dart file). This is a tooling/usage problem, not a
@@ -72,12 +75,11 @@ final class Frontend {
       if (result is! ResolvedUnitResult) return FrontendInputError('could not analyze $path (${result.runtimeType})');
 
       final source = ResolvedSource(displayName: p.basename(absolute), unit: result.unit);
-      final errors = [
+      return FrontendSuccess(source, [
         for (final d in result.diagnostics)
           if (d.severity == analyzer.Severity.error)
-            Diagnostics.analysisError(d.message.trim(), source.locationOf(d.offset)),
-      ];
-      return errors.isEmpty ? FrontendSuccess(source) : FrontendFailure(sortDiagnostics(errors));
+            AnalysisError(d.offset, Diagnostics.analysisError(d.message.trim(), source.locationOf(d.offset))),
+      ]);
     } finally {
       await collection.dispose();
     }

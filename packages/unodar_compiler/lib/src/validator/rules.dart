@@ -52,6 +52,15 @@ Iterable<MethodInvocation> entryPointCalls(CompilationUnit unit) sync* {
   }
 }
 
+/// Offsets of the names of unresolved, target-less calls written as statements in setup/loop (`tone(8, 440);`).
+///
+/// [ApiCallRule] reports each of these as E003, so the compiler lets the analyzer's error at the same offset through
+/// to validation instead of stopping with E007.
+Set<int> unresolvedEntryPointCallOffsets(CompilationUnit unit) => {
+      for (final call in entryPointCalls(unit))
+        if (call.target == null && call.methodName.element == null) call.methodName.offset,
+    };
+
 /// Only `import 'package:unodar/unodar.dart';` (unprefixed) is allowed. `library;` is harmless and allowed.
 /// Unresolvable imports never reach this rule: they are analyzer errors (E007).
 final class DirectiveRule implements ValidationRule {

@@ -1,0 +1,2 @@
+input.dart:3:6: error[E008]: 'main()' is reserved for the widget API (runDevice), which arrives in a later phase.
+  = help: Remove main() and put your code in `void setup()` and `void loop()` instead.

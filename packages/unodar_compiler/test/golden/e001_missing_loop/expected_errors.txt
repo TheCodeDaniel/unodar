@@ -1,0 +1,2 @@
+input.dart:1:1: error[E001]: missing required function 'loop()'. Every unodar sketch needs both setup() and loop().
+  = help: Add `void loop() { }` at the top level of this file.
