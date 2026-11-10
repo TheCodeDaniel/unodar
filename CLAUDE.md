@@ -9,6 +9,8 @@ Read `docs/PRD.md` (scope, source of truth) and `docs/PLAN.md` (current phase pl
 - **Ambiguity:** pick the simpler option and log it in `docs/DECISIONS.md`. For PRD §13 open decisions, stop and ask.
 - **Toolchain missing?** Fail loudly with install instructions. Never skip verification silently.
 - `packages/unodar` must never depend on `analyzer` or Flutter.
+- **Size budgets** (`packages/unodar_compiler/test/size_budgets.dart`) change only in a dedicated commit that explains
+  why the output grew and shows the new measurement. Never bump a budget to get a red test green.
 
 ## Style
 - Line length is **120** everywhere (set once in the root `analysis_options.yaml`, inherited by all packages).
