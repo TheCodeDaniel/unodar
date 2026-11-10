@@ -9,6 +9,7 @@ environment:
 workspace:
   - packages/unodar
   - packages/unodar_compiler
+  - examples/blink
 
 dev_dependencies:
   lints: ^6.0.0
