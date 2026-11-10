@@ -19,7 +19,8 @@ final bool updateGoldens = Platform.environment['UPDATE_GOLDENS'] == '1';
 
 void main() {
   final root = Directory(p.join('test', 'golden'));
-  final cases = root.listSync().whereType<Directory>().toList()..sort((a, b) => a.path.compareTo(b.path));
+  final cases = root.listSync().whereType<Directory>().where((d) => !p.basename(d.path).startsWith('.')).toList()
+    ..sort((a, b) => a.path.compareTo(b.path));
   final compiler = Compiler();
 
   test('golden directory is not empty', () => expect(cases, isNotEmpty));

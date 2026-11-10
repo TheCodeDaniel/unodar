@@ -1,0 +1,4 @@
+tags:
+  arduino:
+    # Runs the real arduino-cli; can be slow on first use while the core indexes.
+    timeout: 5x

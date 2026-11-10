@@ -4,3 +4,4 @@ pubspec_overrides.yaml
 .DS_Store
 # Compiler output from the CLI and tests.
 out/
+.determinism_tmp/
