@@ -1,0 +1,14 @@
+# Workspace root. Not a publishable package; it only ties the members together so that a single
+# `dart pub get` resolves one shared package_config.json for every package and example.
+name: unodar_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+workspace:
+  - packages/unodar
+  - packages/unodar_compiler
+
+dev_dependencies:
+  lints: ^6.0.0

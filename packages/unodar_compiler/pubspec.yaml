@@ -1,0 +1,19 @@
+name: unodar_compiler
+description: The unodar compiler and CLI. Reads a strict subset of Dart and emits heap-free Arduino C++.
+version: 0.1.0-dev
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+executables:
+  unodar: unodar
+dependencies:
+  analyzer: ^14.7.0
+  args: ^2.7.0
+  path: ^1.9.1
+  unodar:
+    path: ../unodar
+dev_dependencies:
+  test: ^1.33.0
