@@ -28,7 +28,8 @@ tool/check_arduino.sh                                                     # ardu
 tool/extract_arduino_names.sh                                             # regenerate input for the E014 deny-list
 ```
 Tests tagged `arduino` (compile checks, size budgets, fidelity harnesses, reserved names) skip with install
-instructions when arduino-cli is missing. **CI must set `UNODAR_REQUIRE_ARDUINO=1`** so they fail instead.
+instructions when arduino-cli is missing. **CI must set `UNODAR_REQUIRE_ARDUINO=1`** so they fail instead;
+`.github/workflows/ci.yml` does, and also fails on any skipped test (`tool/ci_no_skips.sh`).
 
 ## Pipeline map (`packages/unodar_compiler/lib/src/`)
 `frontend/` (analyzer, resolved AST) → `validator/` (subset rules + lowering to IR) → `ir/` → `emitter/`

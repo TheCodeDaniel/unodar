@@ -1,0 +1,88 @@
+# Analyze, format-check and test every package, with the real Arduino toolchain.
+#
+# UNODAR_REQUIRE_ARDUINO=1 turns every `arduino`-tagged test (arduino-cli compiles, size budgets, fidelity
+# harnesses, reserved names) from "skip with install instructions" into a failure when the toolchain is missing.
+# As a second guard, the test step fails if the run reports any skipped test at all.
+#
+# Versions are pinned: size budgets and the generated E014 deny-list depend on the exact arduino:avr core (and its
+# avr-gcc), and formatting depends on the Dart SDK. Bump them deliberately, together with any budget change.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DART_SDK_VERSION: 3.13.2
+  ARDUINO_CLI_VERSION: 1.5.1
+  ARDUINO_AVR_CORE: arduino:avr@1.8.8
+  UNODAR_REQUIRE_ARDUINO: '1'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ env.DART_SDK_VERSION }}
+
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ env.DART_SDK_VERSION }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-${{ env.DART_SDK_VERSION }}-
+
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: ${{ env.ARDUINO_CLI_VERSION }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ~/.arduino15 holds the package index, the arduino:avr core and its avr-gcc toolchain.
+      - name: Cache Arduino cores
+        id: arduino-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.arduino15
+          key: arduino15-${{ runner.os }}-cli${{ env.ARDUINO_CLI_VERSION }}-${{ env.ARDUINO_AVR_CORE }}
+
+      - name: Install the arduino:avr core
+        if: steps.arduino-cache.outputs.cache-hit != 'true'
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install "$ARDUINO_AVR_CORE"
+
+      - name: Check the toolchain
+        run: |
+          arduino-cli version
+          arduino-cli core list
+          arduino-cli core list | grep -E "^arduino:avr +${ARDUINO_AVR_CORE#arduino:avr@} " \
+            || { echo "::error::$ARDUINO_AVR_CORE is not installed"; exit 1; }
+
+      - run: dart pub get
+
+      - run: dart analyze
+
+      - run: dart format --set-exit-if-changed .
+
+      - name: Test packages/unodar
+        working-directory: packages/unodar
+        run: |
+          dart test --file-reporter "json:$RUNNER_TEMP/unodar.json"
+          ../../tool/ci_no_skips.sh "$RUNNER_TEMP/unodar.json"
+
+      - name: Test packages/unodar_compiler
+        working-directory: packages/unodar_compiler
+        run: |
+          dart test --file-reporter "json:$RUNNER_TEMP/unodar_compiler.json"
+          ../../tool/ci_no_skips.sh "$RUNNER_TEMP/unodar_compiler.json"
