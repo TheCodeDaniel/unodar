@@ -2,7 +2,7 @@
 
 **Version:** 0.1 (pre-implementation)  
 **Owner:** Daniel Ainoko  
-**Status:** Active. Phase 1 (0.1.0) and Phase 2 (language core) are complete; Phase 3 is next (not started).  
+**Status:** Active. Phase 1 (tagged v0.1.0) and Phase 2 (language core, tagged v0.2.0) are done; Phase 3 is next (not started).  
 **Audience:** The maintainer and Claude Code (as the implementing engineer). Read this fully before writing code.
 
 ---
@@ -142,12 +142,12 @@ Each phase has an exit gate. Do not start a phase until the previous gate passes
 |---|---|---|---|
 | 0 | Setup | Repo, license, tooling, `CLAUDE.md`, Wokwi project | — |
 | **1** | **Walking skeleton** | **Dart `setup()`/`loop()` → blink `.ino`; analyzer frontend; diagnostics; golden harness; `#line`; CLI `build`** | **0.1** |
-| 2 | Language core | ints, bools, doubles, consts, top-level vars, arithmetic/logic, `if`/`while`/`for`, functions, sized ints (`Uint8`...), rejection diagnostics | — |
+| 2 | Language core (**done**, tagged v0.2.0) | ints, bools, doubles, consts, top-level vars, arithmetic/logic, `if`/`while`/`for`, functions, sized ints (`Uint8`...), rejection diagnostics | — |
 | 3 | Hardware + interop foundation | `Serial`, analog I/O, flash strings, `@CppClass`/`@CppHeader`, `cpp()` escape hatch, `Servo` + `Wire` bindings | 0.2 |
 | 4 | Static widget tree | `runDevice`, `Device`, `Led`, `Button` (debounced), `Every`; non-capturing closures → generated functions | 0.3 |
 | 5 | Signals | `Signal<T>` (value + dirty flag), binding to widgets, no heap | — |
 | 6 | Classes + library wrappers | Simple classes → structs; first-party wrappers for top ~10 libs (SPI, LiquidCrystal, DHT, SSD1306, NeoPixel...) | 0.4 |
-| 7 | CLI and DX | `flash`, `run`, `doctor`, friendly errors, 10-minute quickstart | 0.5 (**public announce**) |
+| 7 | CLI and DX | `flash`, `run`, `doctor`, `setup` (toolchain bootstrap, §8.1), friendly errors, 10-minute quickstart | 0.5 (**public announce**) |
 | 8 | Display widgets | `Oled` + `Column`/`Row`/`Text`/`Padding`, layout resolved at compile time | 0.6 |
 | 9 | ESP32 target | Board abstraction, WiFi/BLE, OTA, phone-to-board demo | 0.8 |
 | 10 | Hardening + docs | Frozen `SUBSET.md`, semver'd API, docs site, full CI, early-user fixes | **1.0** |
@@ -155,6 +155,18 @@ Each phase has an exit gate. Do not start a phase until the previous gate passes
 **Announce bar (after Phase 7):** one Dart file builds and flashes; a button toggles an LED on a real Uno; a 60-second demo exists; `SUBSET.md` is honest; labeled experimental.
 
 **1.0 definition:** stable subset spec, semver'd public API, Uno + ESP32 supported, ≥10 first-party library wrappers, docs site, green CI, and fixes driven by real early users. Do not tag 1.0 until real users have run 0.5+ for a while.
+
+### 8.1 Phase 7 requirement: toolchain bootstrap
+
+Design context for Phase 7; do not build it earlier.
+
+- `unodar setup` downloads a **managed** copy of `arduino-cli` and the cores the supported boards need (today
+  `arduino:avr`) into `~/.unodar`. It pins the versions unodar is tested against, is safe to re-run, and never
+  modifies a system-wide Arduino installation.
+- `unodar doctor` checks the managed toolchain (present, expected versions, cores installed) and also reports any
+  `arduino-cli` found on `PATH`. Every problem it finds comes with the exact command that fixes it.
+- `unodar build` and `unodar flash` use the managed copy in `~/.unodar` first and fall back to `arduino-cli` on
+  `PATH`. If neither is usable, they fail loudly and tell the user to run `unodar setup`.
 
 ---
 

@@ -1,4 +1,6 @@
-# Phase 2 plan — language core (complete)
+# Phase 2 plan — language core (done, tagged v0.2.0)
+
+**Status: done.** Every exit-gate item below passed; the release is tagged `v0.2.0`. Phase 3 has not started.
 
 Spec: PRD §8 row 2, the maintainer's Phase 2 brief, `docs/SUBSET.md`. Phase 1 (0.1.0) is complete.
 Exit gate: every new golden passes and compiles for `arduino:avr:uno`; the semantic-fidelity decisions are logged
