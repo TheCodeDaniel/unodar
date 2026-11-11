@@ -4,8 +4,9 @@
 /// it and translates each call into the equivalent Arduino C++. The declarations exist so that autocomplete,
 /// documentation, and `dart analyze` work as usual.
 ///
-/// Phase 1 supports exactly: [pinMode], [digitalWrite], [delay], and the constants [HIGH], [LOW], [INPUT],
-/// [OUTPUT], [INPUT_PULLUP], used inside top-level `void setup()` and `void loop()` functions.
+/// Arduino core: [pinMode], [digitalWrite], [delay], and the constants [HIGH], [LOW], [INPUT], [OUTPUT],
+/// [INPUT_PULLUP]. Sized integers: [Uint8], [Uint16], [Int16]. See docs/SUBSET.md for the supported Dart subset.
 library;
 
 export 'src/arduino_core.dart';
+export 'src/sized_ints.dart';
