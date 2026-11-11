@@ -2,7 +2,7 @@
 
 **Version:** 0.1 (pre-implementation)  
 **Owner:** Daniel Ainoko  
-**Status:** Active. Phase 1 is complete (0.1.0); Phase 2 (language core) is the current build target.  
+**Status:** Active. Phase 1 (0.1.0) and Phase 2 (language core) are complete; Phase 3 is next (not started).  
 **Audience:** The maintainer and Claude Code (as the implementing engineer). Read this fully before writing code.
 
 ---

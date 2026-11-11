@@ -22,8 +22,11 @@ dart pub get
 dart analyze && dart format --set-exit-if-changed . && dart test packages/unodar packages/unodar_compiler
 UPDATE_GOLDENS=1 dart test packages/unodar_compiler/test/golden_test.dart   # deliberately rewrite goldens
 dart run packages/unodar_compiler/bin/unodar.dart build examples/blink/main.dart -o out
-tool/check_arduino.sh                                                     # arduino-cli compile of blink
+tool/check_arduino.sh                                                     # arduino-cli compile of the examples
+tool/extract_arduino_names.sh                                             # regenerate input for the E014 deny-list
 ```
+Tests tagged `arduino` (compile checks, size budgets, fidelity harnesses, reserved names) skip with install
+instructions when arduino-cli is missing. **CI must set `UNODAR_REQUIRE_ARDUINO=1`** so they fail instead.
 
 ## Pipeline map (`packages/unodar_compiler/lib/src/`)
 `frontend/` (analyzer, resolved AST) → `validator/` (subset rules + lowering to IR) → `ir/` → `emitter/`

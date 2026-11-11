@@ -7,7 +7,10 @@ emits plain, readable, heap-free Arduino C++, which the standard `arduino-cli` t
 It is its own framework: written in Dart, with **no** dependency on the Flutter SDK.
 
 ## Status
-Phase 1 (walking skeleton): `setup()`/`loop()` with `pinMode`, `digitalWrite`, `delay`. See
+Phase 2 (language core): `int`/`double`/`bool` and sized `Uint8`/`Uint16`/`Int16`, top-level and local variables,
+arithmetic/comparison/logical expressions with Dart semantics, `if`/`while`/`for`, and your own functions, calling
+`pinMode`, `digitalWrite`, `delay`. Examples: [`examples/blink`](examples/blink), [`examples/pulse`](examples/pulse).
+See
 [`docs/SUBSET.md`](docs/SUBSET.md) for exactly what is accepted and [`docs/DIAGNOSTICS.md`](docs/DIAGNOSTICS.md)
 for every error code. The roadmap is in [`docs/PRD.md`](docs/PRD.md).
 

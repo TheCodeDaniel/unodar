@@ -1,10 +1,10 @@
-# Phase 2 plan — language core
+# Phase 2 plan — language core (complete)
 
 Spec: PRD §8 row 2, the maintainer's Phase 2 brief, `docs/SUBSET.md`. Phase 1 (0.1.0) is complete.
 Exit gate: every new golden passes and compiles for `arduino:avr:uno`; the semantic-fidelity decisions are logged
 (`DECISIONS.md`) and tested; `SUBSET.md`/`DIAGNOSTICS.md` are accurate; `examples/pulse` builds.
 
-## Steps (one or more small commits each, golden test first)
+## Steps (one or more small commits each, golden test first) — all done
 
 | # | Step | Test written first |
 |---|---|---|

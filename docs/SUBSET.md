@@ -105,7 +105,9 @@ Allowed inside any function body:
 | Nested block | `{ … }` |
 
 Rejected (E002): `do`/`while`, `switch`, `for`-`in`, labeled statements and labeled `break`/`continue`, `try`,
-`throw`, `assert`, `yield`, empty statements (`;`), pattern declarations. Local functions are E012.
+`throw`, `assert`, `yield`, empty statements (`;`), pattern declarations, `late` locals, a `for` that declares more
+than one variable, and expression statements that are not a call or an assignment (`x + 1;`). Local functions are
+E012. A rejected statement is reported as a whole; the code inside it is checked once it has been rewritten.
 
 ## Expressions
 
@@ -166,9 +168,11 @@ C++ or the Arduino core (E014):
 
 - C++ keywords, including the alternative operator names that are valid Dart identifiers (`and`, `or`, `not`, …).
 - Every unodar API name (`pinMode`, `delay`, `HIGH`, …), taken from the compiler's API registry.
-- A deny-list of Arduino core and avr-libc functions and macros (`min`, `max`, `abs`, `round`, `sq`, `map`,
-  `constrain`, `bit`, `word`, `byte`, `millis`, `init`, `sin`, `sqrt`, …). The full list lives in the target
-  (`UnoTarget.reservedNames`).
+- Every lower- or mixed-case name that `#include <Arduino.h>` defines on the Uno: macros (`min`, `max`, `abs`,
+  `round`, `sq`, `constrain`, `bit`, …), typedefs (`byte`, `word`, `u8`, …), functions (`init`, `map`, `millis`,
+  `square`, `sqrt`, …), classes, and objects (`Serial`). The list (`UnoTarget.reservedNames`, ~600 names) is
+  generated from the real headers by `tool/extract_arduino_names.sh`, and a test re-checks it against the
+  installed core.
 - ALL-CAPS names (no lower-case letter): the AVR headers define hundreds of macros such as `PORTB`. Dart style
   already prefers `ledPin` over `LED_PIN`.
 - Names ending in `_t`, containing `__` or `$`, starting with `_` and an upper-case letter, or starting with
