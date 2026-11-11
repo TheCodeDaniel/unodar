@@ -1,27 +1,26 @@
-# Phase 1 plan — walking skeleton (target 0.1)
+# Phase 2 plan — language core
 
-Spec: PRD §9. Exit gate: all seven acceptance criteria in PRD §9.9.
+Spec: PRD §8 row 2, the maintainer's Phase 2 brief, `docs/SUBSET.md`. Phase 1 (0.1.0) is complete.
+Exit gate: every new golden passes and compiles for `arduino:avr:uno`; the semantic-fidelity decisions are logged
+(`DECISIONS.md`) and tested; `SUBSET.md`/`DIAGNOSTICS.md` are accurate; `examples/pulse` builds.
 
-## Steps (one commit each, test first)
+## Steps (one or more small commits each, golden test first)
 
 | # | Step | Test written first |
 |---|---|---|
-| 1 | Scaffold pub workspace, configs, docs skeleton | `dart analyze` / `dart format` clean |
-| 2 | `packages/unodar` Arduino core declarations | pubspec has no `analyzer`/`flutter` dependency |
-| 3 | Central diagnostics registry (E001–E008) + formatter | unit: `file:line:col: error[E00x]: …` format |
-| 4 | Golden harness + hand-written blink golden (red) | `golden_test.dart` over `test/golden/*/` |
-| 5 | IR, `Target`/`UnoTarget`, C++ emitter with `#line` | unit: hand-built IR → exact blink C++ |
-| 6 | Analyzer frontend; analysis errors → E007 | golden `e007_type_error` |
-| 7 | Data-driven API registry, composable validator, lowering | blink golden green |
-| 8 | Negative goldens E001–E006, E008 | one golden per required case |
-| 9 | CLI `build` (+ `--help`, exit codes 0/1/2), `examples/blink` | process tests |
-| 10 | Determinism | compile twice → byte-identical |
-| 11 | `arduino-cli compile --fqbn arduino:avr:uno` check | loud skip-with-reason if toolchain missing |
-| 12 | `SUBSET.md`, `DIAGNOSTICS.md`, Wokwi instructions | — |
+| 1 | Docs: SUBSET, DIAGNOSTICS (E009–E015), DECISIONS, this plan | `docs_test` stays green |
+| 2 | `packages/unodar`: `Uint8`, `Uint16`, `Int16` extension types | Dart unit tests of the wrapping semantics |
+| 3 | IR + emitter: typed expressions/statements, globals, params/returns, precedence-aware printing, 16-bit widening, `unodar_mod`, prototypes | `emitter_test` on hand-built IR; blink output byte-identical |
+| 4 | Diagnostics registry E009–E015, Phase 2 wording for E002–E005 | Phase 1 goldens updated deliberately |
+| 5 | Validator relaxation, one construct per commit: top-level vars → expressions/operators + constant evaluator → locals/assignments → `if` → `while` → `for`/`break`/`continue` → user functions/`return` → evaluation order → API arguments | A positive golden and a negative golden per construct |
+| 6 | Fidelity harness: `const` vectors, Dart values from the analyzer, `static_assert` under avr-gcc | `fidelity_test` (tagged `arduino`) |
+| 7 | arduino-cli compile of **every** positive golden; missing budget = failure | `arduino_compile_test` |
+| 8 | Size budgets for the new goldens (dedicated commit with measurements) | `size_budgets.dart` |
+| 9 | `examples/pulse` + `tool/check_arduino.sh` builds both examples | CLI build + arduino-cli compile |
+| 10 | Final docs pass; `dart analyze && dart format --set-exit-if-changed . && dart test` | — |
 
-## Extension hooks honoured (PRD §9.10)
-- IR is the only input to the emitter; the emitter never sees the AST.
-- Board decisions sit behind `Target` (one impl: `UnoTarget`).
-- All codes/messages live in one registry.
-- Dart → C++ call mapping is a data table (`ApiRegistry`).
-- Validator is a list of independent rules; Phase 2 relaxes them one at a time.
+## Extension hooks kept
+- The IR stays the seam: the emitter never sees the AST.
+- Board facts (native `int` width, reserved names, C++ type names) live on `Target`.
+- Every new code is in the single registry; the API table now carries C++ parameter types and named parameters.
+- Each validator rule owns one construct, so Phase 3+ relaxes them individually.

@@ -2,7 +2,7 @@
 
 **Version:** 0.1 (pre-implementation)  
 **Owner:** Daniel Ainoko  
-**Status:** Active. Phase 1 is the current build target.  
+**Status:** Active. Phase 1 is complete (0.1.0); Phase 2 (language core) is the current build target.  
 **Audience:** The maintainer and Claude Code (as the implementing engineer). Read this fully before writing code.
 
 ---
@@ -323,7 +323,7 @@ Key long-term decisions (already made — do not relitigate without asking):
 - Closures compile to plain generated functions; they may only reference top-level state (no captured locals).
 - Signals are C++ templates (value + dirty flag); the generated `loop()` polls inputs, ticks timers, flushes dirty signals.
 - Interop is compile-time (`@CppClass` etc.), not runtime FFI.
-- Dart `int` default mapping is **undecided** (see §13).
+- Dart `int` maps to `int32_t` on every target (decided in Phase 2; see §13 and `docs/DECISIONS.md`).
 
 ---
 
@@ -352,7 +352,7 @@ Key long-term decisions (already made — do not relitigate without asking):
 
 ## 13. Open decisions (STOP AND ASK before deciding)
 
-1. Dart `int` mapping: `int32_t` everywhere vs `int16_t` on AVR (decide in Phase 2).
+1. ~~Dart `int` mapping~~ **Decided (Phase 2):** `int` → `int32_t` everywhere, `double` → `float`, plus sized `Uint8`/`Uint16`/`Int16`. See `docs/DECISIONS.md`.
 2. Output as single `.ino` vs `.cpp` + `.h` (Phase 1 uses single `.ino`; revisit at Phase 4).
 3. Computed/derived signals: restricted expressions vs general closures (Phase 5).
 4. Fixed-size list design (e.g. `FixedList<int, 8>`) (not before Phase 6).
