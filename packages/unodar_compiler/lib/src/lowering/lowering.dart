@@ -38,15 +38,15 @@ final class Lowering {
       name: function.name.lexeme,
       line: _line(source, function.firstTokenAfterCommentAndMetadata.offset),
       body: [for (final statement in body.block.statements) _statement(statement, source)],
+      isEntryPoint: true,
     );
   }
 
   IrStatement _statement(Statement statement, ResolvedSource source) {
     if (statement case ExpressionStatement(expression: final MethodInvocation call)) {
       final function = api.resolveCall(call) ?? (throw LoweringError('unresolved call ${call.toSource()}'));
-      return IrCall(
-        function.cppName,
-        [for (final argument in call.argumentList.arguments) _argument(argument)],
+      return IrExpressionStatement(
+        IrCall(function.cppName, [for (final argument in call.argumentList.arguments) _argument(argument)]),
         line: _line(source, statement.offset),
       );
     }

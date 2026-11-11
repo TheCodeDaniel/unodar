@@ -1,15 +1,40 @@
 import '../ir/ir.dart';
 import 'target.dart';
 
-/// Turns IR into Arduino C++ text.
+/// Thrown when the emitter is handed IR that lowering should never produce (e.g. `~/` on doubles). Always a compiler
+/// bug, never a user error: the validator rejects such Dart before lowering.
+final class InvalidIrError extends Error {
+  InvalidIrError(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'internal compiler error: invalid IR: $message';
+}
+
+/// Turns IR into Arduino C++ text that behaves like the Dart it came from.
 ///
-/// Output rules (PRD §9.3): deterministic, two-space indentation, a `#line` directive before every function and
-/// statement so C++ compiler errors point at the Dart source, a blank line between functions, and a trailing
-/// newline. The emitter makes no decisions about *what* is valid; that is the validator's job.
+/// Layout (docs/SUBSET.md "Translation and layout"): header comment, includes, helpers the program uses, a
+/// prototype per non-entry-point function, globals, functions. A `#line` directive precedes every global, function,
+/// and statement; nothing that has no Dart source (helpers, prototypes) comes after the first `#line`. Two-space
+/// indentation, a blank line between sections and functions, a trailing newline. Deterministic.
+///
+/// Semantic duties, so that the C++ means what the Dart means (docs/DECISIONS.md):
+/// * **Parentheses** come from C++ precedence and associativity applied to the IR tree, never from the source.
+/// * **32-bit `int`**: on a 16-bit-`int` target, an integer operation whose operands would both be promoted only to
+///   `int` gets one operand widened (`60L * 1000`, `int32_t(x)`); a comparison mixing C++ `int` and
+///   `unsigned int` (a `Uint16`) likewise, because C++ would compare them as unsigned.
+/// * **Dart `%`** becomes `unodar_mod(a, b)`; **Dart `/`** converts integer operands to `float`; **`~/`** is C++ `/`.
 final class CppEmitter {
   const CppEmitter(this.target);
 
   final Target target;
+
+  /// The `%` helper. `constexpr` so that it also works in constant initializers.
+  static const modHelper = [
+    "// Dart's % never returns a negative result; C++'s % keeps the sign of the left operand.",
+    'constexpr int32_t unodar_mod(int32_t a, int32_t b) { return a % b < 0 ? a % b + (b < 0 ? -b : b) : a % b; }',
+  ];
 
   String emit(IrProgram program) {
     final out = StringBuffer()
@@ -17,31 +42,352 @@ final class CppEmitter {
     for (final header in target.includes) {
       out.writeln('#include <$header>');
     }
+    if (_usesModulo(program)) {
+      out.writeln();
+      modHelper.forEach(out.writeln);
+    }
+    final prototypes = [
+      for (final function in program.functions)
+        if (!function.isEntryPoint) '${_signature(function)};',
+    ];
+    if (prototypes.isNotEmpty) {
+      out.writeln();
+      prototypes.forEach(out.writeln);
+    }
+
     final file = _cppString(program.sourceName);
+    if (program.globals.isNotEmpty) out.writeln();
+    for (final global in program.globals) {
+      out
+        ..writeln('#line ${global.line} $file')
+        ..writeln('${_declaration(global.storage, global.type, global.name)} = ${_expr(global.initializer)};');
+    }
     for (final function in program.functions) {
       out
         ..writeln()
         ..writeln('#line ${function.line} $file')
-        ..writeln('void ${function.name}() {');
-      for (final statement in function.body) {
-        out
-          ..writeln('#line ${statement.line} $file')
-          ..writeln('  ${_statement(statement)}');
-      }
+        ..writeln('${_signature(function)} {');
+      _block(out, function.body, 1, file);
       out.writeln('}');
     }
     return out.toString();
   }
 
-  String _statement(IrStatement statement) => switch (statement) {
-        IrCall(:final function, :final arguments) => '$function(${arguments.map(_expression).join(', ')});',
+  String _signature(IrFunction function) {
+    final parameters = function.parameters.map((p) => '${target.cppType(p.type)} ${p.name}').join(', ');
+    return '${target.cppType(function.returnType)} ${function.name}($parameters)';
+  }
+
+  String _declaration(IrStorage storage, IrType type, String name) {
+    final qualifier = switch (storage) {
+      IrStorage.constant => 'constexpr ',
+      IrStorage.final_ => 'const ',
+      IrStorage.mutable => '',
+    };
+    return '$qualifier${target.cppType(type)} $name';
+  }
+
+  // -------------------------------------------------------------------------------------------------------------
+  // Statements
+
+  void _block(StringBuffer out, List<IrStatement> body, int depth, String file) {
+    for (final statement in body) {
+      _statement(out, statement, depth, file);
+    }
+  }
+
+  void _statement(StringBuffer out, IrStatement statement, int depth, String file) {
+    final indent = '  ' * depth;
+    out.writeln('#line ${statement.line} $file');
+    switch (statement) {
+      case IrIf():
+        _if(out, statement, depth, file);
+      case IrWhile(:final condition, :final body):
+        out.writeln('${indent}while (${_expr(condition)}) {');
+        _block(out, body, depth + 1, file);
+        out.writeln('$indent}');
+      case IrFor(:final initializer, :final condition, :final updates, :final body):
+        final init = initializer == null ? '' : _simple(initializer);
+        final test = condition == null ? '' : ' ${_expr(condition)}';
+        final step = updates.isEmpty ? '' : ' ${updates.map(_simple).join(', ')}';
+        out.writeln('${indent}for ($init;$test;$step) {');
+        _block(out, body, depth + 1, file);
+        out.writeln('$indent}');
+      case IrBlock(:final body):
+        out.writeln('$indent{');
+        _block(out, body, depth + 1, file);
+        out.writeln('$indent}');
+      case IrExpressionStatement() ||
+            IrLocal() ||
+            IrAssign() ||
+            IrIncrement() ||
+            IrReturn() ||
+            IrBreak() ||
+            IrContinue():
+        out.writeln('$indent${_simple(statement)};');
+    }
+  }
+
+  /// `if`/`else if`/`else`. The `else` branches carry no `#line` of their own (a directive cannot sit between `}`
+  /// and `else` readably); every statement inside them still does.
+  void _if(StringBuffer out, IrIf statement, int depth, String file) {
+    final indent = '  ' * depth;
+    var current = statement;
+    out.writeln('${indent}if (${_expr(current.condition)}) {');
+    while (true) {
+      _block(out, current.then, depth + 1, file);
+      final otherwise = current.otherwise;
+      if (otherwise == null) break;
+      if (otherwise case [final IrIf elseIf]) {
+        current = elseIf;
+        out.writeln('$indent} else if (${_expr(current.condition)}) {');
+        continue;
+      }
+      out.writeln('$indent} else {');
+      _block(out, otherwise, depth + 1, file);
+      break;
+    }
+    out.writeln('$indent}');
+  }
+
+  /// A statement that fits on one line, without its `;` (also used for `for` initializers and updates).
+  String _simple(IrStatement statement) => switch (statement) {
+        IrExpressionStatement(:final expression) => _expr(expression),
+        IrLocal(:final name, :final type, :final storage, :final initializer) =>
+          '${_declaration(storage, type, name)}${initializer == null ? '' : ' = ${_expr(initializer)}'}',
+        IrAssign(:final target, :final op, :final value) => '$target ${op.symbol} ${_expr(value)}',
+        IrIncrement(:final target, :final decrement) => '$target${decrement ? '--' : '++'}',
+        IrReturn(:final value) => value == null ? 'return' : 'return ${_expr(value)}',
+        IrBreak() => 'break',
+        IrContinue() => 'continue',
+        IrIf() || IrWhile() || IrFor() || IrBlock() => throw InvalidIrError('compound statement in a simple position'),
       };
 
-  String _expression(IrExpression expression) => switch (expression) {
-        IrIntLiteral(:final value) => '$value',
-        IrConstant(:final name) => name,
+  // -------------------------------------------------------------------------------------------------------------
+  // Expressions
+
+  // C++ precedence levels (higher binds tighter). Only the operators unodar emits.
+  static const _atomic = 16;
+  static const _unary = 15;
+  static const _multiplicative = 13;
+  static const _additive = 12;
+  static const _relational = 10;
+  static const _equality = 9;
+  static const _logicalAnd = 5;
+  static const _logicalOr = 4;
+  static const _conditional = 3;
+
+  /// [expression] as C++ text, as a complete expression.
+  String _expr(IrExpression expression) => _render(expression).text;
+
+  /// [expression] as C++ text, parenthesized if it binds looser than [minPrecedence].
+  String _operand(IrExpression expression, int minPrecedence) {
+    final rendered = _render(expression);
+    return rendered.precedence < minPrecedence ? '(${rendered.text})' : rendered.text;
+  }
+
+  _Rendered _render(IrExpression expression) => switch (expression) {
+        IrIntLiteral(:final value) => _Rendered('$value', value < 0 ? _unary : _atomic),
+        IrDoubleLiteral(:final value) => _Rendered(_doubleLiteral(value), _atomic),
+        IrBoolLiteral(:final value) => _Rendered('$value', _atomic),
+        IrConstant(:final name) || IrVariable(:final name) => _Rendered(name, _atomic),
+        IrCall(:final function, :final arguments) =>
+          _Rendered('$function(${arguments.map(_expr).join(', ')})', _atomic),
+        IrConvert(:final type, :final operand) => _Rendered('${target.cppType(type)}(${_expr(operand)})', _atomic),
+        IrConditional(:final condition, :final then, :final otherwise) => _Rendered(
+            '${_operand(condition, _logicalOr)} ? ${_expr(then)} : ${_operand(otherwise, _conditional)}',
+            _conditional,
+          ),
+        IrUnary() => _unaryExpression(expression),
+        IrBinary() => _binaryExpression(expression),
       };
+
+  _Rendered _unaryExpression(IrUnary expression) {
+    final IrUnary(:op, :operand) = expression;
+    switch (op) {
+      case IrUnaryOp.not:
+        return _Rendered('!${_operand(operand, _unary)}', _unary);
+      case IrUnaryOp.negate:
+        // `- -x` must never print as `--x` (decrement): parenthesize a nested negation or negative literal.
+        final nestedMinus = operand is IrUnary && operand.op == IrUnaryOp.negate ||
+            operand is IrIntLiteral && operand.value < 0 ||
+            operand is IrDoubleLiteral && operand.value.isNegative;
+        String text;
+        if (expression.type == IrType.int32 && operand is! IrIntLiteral && _isNarrow(operand)) {
+          final widened = _widened(operand); // e.g. -Int16(-32768) is 32768, which a 16-bit int cannot hold.
+          text = widened.startsWith('-') ? '($widened)' : widened;
+        } else {
+          text = nestedMinus ? '(${_expr(operand)})' : _operand(operand, _unary);
+        }
+        return _Rendered('-$text', _unary);
+    }
+  }
+
+  _Rendered _binaryExpression(IrBinary expression) {
+    final IrBinary(:op, :left, :right) = expression;
+    switch (op) {
+      case IrBinaryOp.modulo:
+        _requireIntegers(expression);
+        return _Rendered('unodar_mod(${_expr(left)}, ${_expr(right)})', _atomic);
+      case IrBinaryOp.divide:
+        // Dart `/` always produces a double; integer operands become float first, so C++ never truncates.
+        String asFloat(IrExpression e) =>
+            e.type == IrType.float32 ? _operand(e, _multiplicative) : '${target.cppType(IrType.float32)}(${_expr(e)})';
+        final rightText = right.type == IrType.float32 ? _operand(right, _multiplicative + 1) : asFloat(right);
+        return _Rendered('${asFloat(left)} / $rightText', _multiplicative);
+      case IrBinaryOp.truncatingDivide:
+        _requireIntegers(expression);
+        return _arithmetic(expression, '/', _multiplicative);
+      case IrBinaryOp.multiply:
+        return _arithmetic(expression, '*', _multiplicative);
+      case IrBinaryOp.add:
+        return _arithmetic(expression, '+', _additive);
+      case IrBinaryOp.subtract:
+        return _arithmetic(expression, '-', _additive);
+      case IrBinaryOp.less || IrBinaryOp.lessOrEqual || IrBinaryOp.greater || IrBinaryOp.greaterOrEqual:
+        return _comparison(expression, _relational);
+      case IrBinaryOp.equal || IrBinaryOp.notEqual:
+        return _comparison(expression, _equality);
+      case IrBinaryOp.and:
+        return _infix(left, '&&', right, _logicalAnd);
+      case IrBinaryOp.or:
+        return _infix(left, '||', right, _logicalOr);
+    }
+  }
+
+  /// `+ - * /` on numbers. On integers, guarantees the operation happens in at least 32 bits.
+  _Rendered _arithmetic(IrBinary expression, String symbol, int precedence) {
+    final IrBinary(:left, :right) = expression;
+    if (expression.type == IrType.int32 && _isNarrow(left) && _isNarrow(right)) {
+      return _widenOne(left, symbol, right, precedence);
+    }
+    return _infix(left, symbol, right, precedence);
+  }
+
+  /// Comparisons. If one side would be C++ `unsigned int` (a `Uint16` on a 16-bit target) and the other a signed
+  /// `int`, C++ compares them as unsigned (`Uint16(1) < -1` would be true); widening one side keeps Dart's answer.
+  _Rendered _comparison(IrBinary expression, int precedence) {
+    final IrBinary(:op, :left, :right) = expression;
+    final symbol = op.dartSymbol;
+    if (left.type.isInteger && right.type.isInteger) {
+      final l = _promotion(left);
+      final r = _promotion(right);
+      if (l != _Promotion.wide && r != _Promotion.wide && l != r) {
+        return _widenOne(left, symbol, right, precedence);
+      }
+    }
+    return _infix(left, symbol, right, precedence);
+  }
+
+  /// Left-associative infix: the right operand needs parentheses at equal precedence (`a - (b - c)`).
+  _Rendered _infix(IrExpression left, String symbol, IrExpression right, int precedence) =>
+      _Rendered('${_operand(left, precedence)} $symbol ${_operand(right, precedence + 1)}', precedence);
+
+  /// Like [_infix], but widens one operand to 32 bits: a literal if there is one (`60L * 1000`), else the left one.
+  _Rendered _widenOne(IrExpression left, String symbol, IrExpression right, int precedence) {
+    if (right is IrIntLiteral && left is! IrIntLiteral) {
+      return _Rendered('${_operand(left, precedence)} $symbol ${_widened(right)}', precedence);
+    }
+    return _Rendered('${_widened(left)} $symbol ${_operand(right, precedence + 1)}', precedence);
+  }
+
+  /// [expression] as a 32-bit C++ value: `60L` for a literal, `int32_t(x)` otherwise. Both bind atomically.
+  String _widened(IrExpression expression) => switch (expression) {
+        IrIntLiteral(:final value) => '$value${target.int32LiteralSuffix}',
+        IrUnary(op: IrUnaryOp.negate, operand: IrIntLiteral(:final value)) => '-$value${target.int32LiteralSuffix}',
+        _ => '${target.cppType(IrType.int32)}(${_expr(expression)})',
+      };
+
+  bool _isNarrow(IrExpression expression) => _promotion(expression) != _Promotion.wide;
+
+  /// What C++ integer promotion turns [expression] into on this target, as it will be emitted.
+  _Promotion _promotion(IrExpression expression) {
+    if (target.nativeIntBits >= 32) return _Promotion.wide;
+    final bits = target.nativeIntBits;
+    return switch (expression) {
+      // A decimal literal is `int` if it fits, otherwise `long`.
+      IrIntLiteral(:final value) =>
+        value >= -(1 << (bits - 1)) && value < (1 << (bits - 1)) ? _Promotion.signedInt : _Promotion.wide,
+      // Arduino macros such as HIGH/OUTPUT are small int literals.
+      IrConstant(type: IrType.int32) => _Promotion.signedInt,
+      IrConditional(:final then, :final otherwise) => _combine(_promotion(then), _promotion(otherwise)),
+      // A negated literal keeps the literal's type; any other narrow negation is widened by _unaryExpression.
+      IrUnary(op: IrUnaryOp.negate, :final IrIntLiteral operand) => _promotion(operand),
+      // Every other integer operation is emitted in 32 bits (or as int32_t-returning unodar_mod).
+      IrUnary() || IrBinary() => _Promotion.wide,
+      IrVariable(:final type) || IrCall(:final type) || IrConvert(:final type) || IrConstant(:final type) => switch (
+            type) {
+          IrType.uint8 || IrType.int16 => _Promotion.signedInt,
+          IrType.uint16 => _Promotion.unsignedInt,
+          _ => _Promotion.wide,
+        },
+      IrDoubleLiteral() || IrBoolLiteral() => _Promotion.wide,
+    };
+  }
+
+  /// The C++ common type of two promoted operands (as for `?:`).
+  static _Promotion _combine(_Promotion a, _Promotion b) {
+    if (a == _Promotion.wide || b == _Promotion.wide) return _Promotion.wide;
+    if (a == _Promotion.unsignedInt || b == _Promotion.unsignedInt) return _Promotion.unsignedInt;
+    return _Promotion.signedInt;
+  }
+
+  static void _requireIntegers(IrBinary expression) {
+    if (!expression.left.type.isInteger || !expression.right.type.isInteger) {
+      throw InvalidIrError('${expression.op.dartSymbol} needs integer operands');
+    }
+  }
+
+  static String _doubleLiteral(double value) {
+    if (!value.isFinite) throw InvalidIrError('non-finite double literal $value');
+    // Dart's shortest round-trip form always has a '.' or an exponent, so it is never read as an integer.
+    return '${value}f';
+  }
 
   /// Quotes [value] as a C++ string literal for `#line`.
   static String _cppString(String value) => '"${value.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+
+  static bool _usesModulo(IrProgram program) =>
+      program.globals.any((g) => _modInExpression(g.initializer)) ||
+      program.functions.any((f) => _modInStatements(f.body));
+
+  static bool _modInExpression(IrExpression? e) => switch (e) {
+        null => false,
+        IrBinary(op: IrBinaryOp.modulo) => true,
+        IrBinary(:final left, :final right) => _modInExpression(left) || _modInExpression(right),
+        IrUnary(:final operand) || IrConvert(:final operand) => _modInExpression(operand),
+        IrConditional(:final condition, :final then, :final otherwise) =>
+          _modInExpression(condition) || _modInExpression(then) || _modInExpression(otherwise),
+        IrCall(:final arguments) => arguments.any(_modInExpression),
+        IrIntLiteral() || IrDoubleLiteral() || IrBoolLiteral() || IrConstant() || IrVariable() => false,
+      };
+
+  static bool _modInStatements(List<IrStatement>? statements) => statements != null && statements.any(_modInStatement);
+
+  static bool _modInStatement(IrStatement? s) => switch (s) {
+        null => false,
+        IrExpressionStatement(:final expression) => _modInExpression(expression),
+        IrLocal(:final initializer) => _modInExpression(initializer),
+        IrAssign(:final value) => _modInExpression(value),
+        IrIf(:final condition, :final then, :final otherwise) =>
+          _modInExpression(condition) || _modInStatements(then) || _modInStatements(otherwise),
+        IrWhile(:final condition, :final body) => _modInExpression(condition) || _modInStatements(body),
+        IrFor(:final initializer, :final condition, :final updates, :final body) => _modInStatement(initializer) ||
+            _modInExpression(condition) ||
+            _modInStatements(updates) ||
+            _modInStatements(body),
+        IrReturn(:final value) => _modInExpression(value),
+        IrBlock(:final body) => _modInStatements(body),
+        IrIncrement() || IrBreak() || IrContinue() => false,
+      };
+}
+
+/// The C++ type an integer operand is promoted to: the target's `int`, its `unsigned int`, or 32 bits or more.
+enum _Promotion { signedInt, unsignedInt, wide }
+
+final class _Rendered {
+  const _Rendered(this.text, this.precedence);
+
+  final String text;
+  final int precedence;
 }

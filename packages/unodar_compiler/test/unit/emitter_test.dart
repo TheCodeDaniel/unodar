@@ -2,22 +2,56 @@ import 'package:test/test.dart';
 import 'package:unodar_compiler/src/emitter/emitter.dart';
 import 'package:unodar_compiler/src/ir/ir.dart';
 
+import '../ir_builders.dart';
+
+/// A 32-bit-`int` board (ESP32-like), to show that the 16-bit widening is a target decision.
+final class Int32Target implements Target {
+  const Int32Target();
+  static const _uno = UnoTarget();
+  @override
+  String get name => 'test 32-bit target';
+  @override
+  String get fqbn => 'test:test:test';
+  @override
+  List<String> get includes => const ['Arduino.h'];
+  @override
+  int get nativeIntBits => 32;
+  @override
+  String get int32LiteralSuffix => 'L';
+  @override
+  String cppType(IrType type) => _uno.cppType(type);
+}
+
+/// The emitted C++ for [expression], read back from a one-global program.
+String cpp(IrExpression expression, {Target target = const UnoTarget()}) {
+  final program = IrProgram(
+    sourceName: 'e.dart',
+    globals: [
+      IrGlobal(name: 'x', type: expression.type, storage: IrStorage.mutable, initializer: expression, line: 1),
+    ],
+    functions: const [],
+  );
+  final line = CppEmitter(target).emit(program).split('\n').firstWhere((l) => l.contains(' x = '));
+  return line.substring(line.indexOf(' x = ') + 5, line.length - 1);
+}
+
 void main() {
   // Hand-built IR for examples/blink: the emitter is tested without the analyzer, which is the point of the IR seam.
   final blink = IrProgram(
     sourceName: 'blink.dart',
     functions: [
-      IrFunction(name: 'setup', line: 3, body: [
-        IrCall('pinMode', [IrIntLiteral(13), IrConstant('OUTPUT')], line: 4)
+      IrFunction(name: 'setup', line: 3, isEntryPoint: true, body: [
+        call('pinMode', [i(13), c('OUTPUT')], line: 4),
       ]),
       IrFunction(
         name: 'loop',
         line: 7,
+        isEntryPoint: true,
         body: [
-          IrCall('digitalWrite', [IrIntLiteral(13), IrConstant('HIGH')], line: 8),
-          IrCall('delay', [IrIntLiteral(500)], line: 9),
-          IrCall('digitalWrite', [IrIntLiteral(13), IrConstant('LOW')], line: 10),
-          IrCall('delay', [IrIntLiteral(500)], line: 11),
+          call('digitalWrite', [i(13), c('HIGH')], line: 8),
+          call('delay', [i(500)], line: 9),
+          call('digitalWrite', [i(13), c('LOW')], line: 10),
+          call('delay', [i(500)], line: 11),
         ],
       ),
     ],
@@ -63,5 +97,251 @@ void loop() {
     const target = UnoTarget();
     expect(target.fqbn, 'arduino:avr:uno');
     expect(target.includes, ['Arduino.h']);
+    expect(target.nativeIntBits, 16);
+    expect(IrType.values.map(target.cppType), ['void', 'bool', 'int32_t', 'float', 'uint8_t', 'uint16_t', 'int16_t']);
+  });
+
+  group('literals and conversions', () {
+    test('ints are decimal, doubles get an f suffix and always a . or exponent', () {
+      expect(cpp(i(13)), '13');
+      expect(cpp(const IrDoubleLiteral(3.5)), '3.5f');
+      expect(cpp(const IrDoubleLiteral(1)), '1.0f');
+      expect(cpp(const IrDoubleLiteral(1e-7)), '1e-7f');
+      expect(cpp(const IrBoolLiteral(true)), 'true');
+    });
+    test('sized constructors are functional casts', () {
+      expect(cpp(const IrConvert(IrType.uint8, IrIntLiteral(300))), 'uint8_t(300)');
+      expect(cpp(IrConvert(IrType.int16, add(v('a'), i(1)))), 'int16_t(a + 1)');
+    });
+    test('non-finite doubles are invalid IR', () {
+      expect(() => cpp(const IrDoubleLiteral(double.infinity)), throwsA(isA<InvalidIrError>()));
+    });
+  });
+
+  group('precedence comes from the tree', () {
+    test('left-associative operators keep right-nested groups', () {
+      expect(cpp(sub(v('a'), sub(v('b'), v('c')))), 'a - (b - c)');
+      expect(cpp(sub(sub(v('a'), v('b')), v('c'))), 'a - b - c');
+      expect(cpp(tdiv(v('a'), tdiv(v('b'), v('c')))), 'a / (b / c)');
+    });
+    test('looser operands of tighter operators are parenthesized', () {
+      expect(cpp(mul(add(v('a'), v('b')), v('c'))), '(a + b) * c');
+      expect(cpp(add(v('a'), mul(v('b'), v('c')))), 'a + b * c');
+      expect(cpp(neg(add(v('a'), v('b')))), '-(a + b)');
+    });
+    test('a nested minus never becomes the decrement operator', () {
+      expect(cpp(neg(neg(v('a')))), '-(-a)');
+      expect(cpp(neg(i(-5))), '-(-5)');
+      expect(cpp(sub(v('a'), neg(v('b')))), 'a - -b');
+    });
+    test('logical operators', () {
+      expect(cpp(not(and(b('p'), b('q')))), '!(p && q)');
+      expect(cpp(or(b('p'), and(b('q'), b('r')))), 'p || q && r');
+      expect(cpp(and(or(b('p'), b('q')), b('r'))), '(p || q) && r');
+      expect(cpp(eq(lt(v('a'), v('b')), b('p'))), 'a < b == p');
+      expect(cpp(eq(b('p'), lt(v('a'), v('b')))), 'p == a < b');
+    });
+    test('conditionals', () {
+      expect(cpp(cond(b('p'), v('a'), cond(b('q'), v('b'), v('c')))), 'p ? a : q ? b : c');
+      expect(cpp(cond(condB(b('p'), b('q'), b('r')), v('a'), v('b'))), '(p ? q : r) ? a : b');
+      expect(cpp(add(cond(b('p'), v('a'), v('b')), v('c'))), '(p ? a : b) + c');
+      expect(cpp(cond(or(b('p'), b('q')), v('a'), v('b'))), 'p || q ? a : b');
+    });
+  });
+
+  group('division and modulo keep Dart semantics', () {
+    test('/ on ints converts to float first, so C++ never truncates', () {
+      expect(cpp(div(v('a'), v('b'))), 'float(a) / float(b)');
+      expect(cpp(div(i(7), i(2))), 'float(7) / float(2)');
+      expect(cpp(div(i(-7), i(2))), 'float(-7) / float(2)');
+      expect(cpp(div(add(v('a'), i(1)), v('b'))), 'float(a + 1) / float(b)');
+    });
+    test('/ with a double operand converts only the int side', () {
+      expect(cpp(div(d('t'), v('a'))), 't / float(a)');
+      expect(cpp(div(d('t'), mulD(d('u'), d('w')))), 't / (u * w)');
+    });
+    test('~/ is C++ integer division (both truncate toward zero)', () {
+      expect(cpp(tdiv(v('a'), v('b'))), 'a / b');
+      expect(cpp(tdiv(i(-7), i(2))), '-7L / 2');
+    });
+    test('% calls the helper, which is emitted once and only when used', () {
+      expect(cpp(mod(v('a'), v('b'))), 'unodar_mod(a, b)');
+      expect(cpp(mod(i(-7), i(2))), 'unodar_mod(-7, 2)');
+      expect(cpp(mul(mod(v('a'), v('b')), v('c'))), 'unodar_mod(a, b) * c');
+      final withMod = const CppEmitter(UnoTarget()).emit(
+        IrProgram(sourceName: 'e.dart', functions: [
+          IrFunction(name: 'loop', line: 1, isEntryPoint: true, body: [
+            IrReturn(mod(v('a'), i(2)), line: 2),
+            IrReturn(mod(v('a'), i(3)), line: 3),
+          ]),
+        ]),
+      );
+      expect('unodar_mod('.allMatches(withMod).length, 3, reason: 'one definition plus two uses');
+      expect(cpp(add(v('a'), v('b'))), isNot(contains('unodar_mod')));
+      expect(const CppEmitter(UnoTarget()).emit(blink), isNot(contains('unodar_mod')));
+    });
+    test('~/ and % on doubles are invalid IR (the validator rejects them)', () {
+      expect(() => cpp(IrBinary(IrBinaryOp.modulo, d('t'), i(2), IrType.float32)), throwsA(isA<InvalidIrError>()));
+      expect(
+          () => cpp(IrBinary(IrBinaryOp.truncatingDivide, d('t'), i(2), IrType.int32)), throwsA(isA<InvalidIrError>()));
+    });
+  });
+
+  group('int arithmetic is 32-bit on the 16-bit-int Uno', () {
+    test('two narrow literals: one gets the L suffix', () {
+      expect(cpp(mul(i(60), i(1000))), '60L * 1000');
+      expect(cpp(mul(mul(i(60), i(60)), i(1000))), '60L * 60 * 1000');
+      expect(cpp(add(i(1), i(2))), '1L + 2');
+    });
+    test('a 32-bit operand already makes C++ compute in 32 bits', () {
+      expect(cpp(mul(v('x'), i(1000))), 'x * 1000');
+      expect(cpp(mul(i(40000), i(2))), '40000 * 2', reason: '40000 does not fit an int, so it is already a long');
+    });
+    test('sized operands are widened', () {
+      expect(cpp(add(v('a', IrType.uint16), v('b', IrType.uint16))), 'int32_t(a) + b');
+      expect(cpp(mul(v('a', IrType.uint8), v('b', IrType.uint8))), 'int32_t(a) * b');
+      expect(cpp(mul(v('a', IrType.uint8), i(1000))), 'a * 1000L');
+      expect(cpp(neg(v('a', IrType.int16))), '-int32_t(a)');
+      expect(cpp(neg(v('a', IrType.uint16))), '-int32_t(a)');
+      expect(cpp(neg(i(5))), '-5');
+      expect(cpp(neg(neg(i(5)))), '-(-5L)');
+    });
+    test('a conditional of narrow values is narrow', () {
+      expect(cpp(mul(cond(b('p'), i(60), i(30)), i(1000))), '(p ? 60 : 30) * 1000L');
+      expect(cpp(mul(cond(b('p'), i(60), v('x')), i(1000))), '(p ? 60 : x) * 1000');
+    });
+    test('comparisons widen only when C++ would compare signed with unsigned', () {
+      expect(cpp(lt(v('a', IrType.uint16), i(-1))), 'a < -1L');
+      expect(cpp(lt(v('a', IrType.uint16), neg(i(1)))), 'int32_t(a) < -1');
+      expect(cpp(lt(v('a', IrType.uint8), i(300))), 'a < 300');
+      expect(cpp(eq(v('a', IrType.uint16), v('b', IrType.uint16))), 'a == b');
+      expect(cpp(eq(v('a', IrType.uint8), v('b', IrType.int16))), 'a == b');
+    });
+    test('constants such as HIGH are narrow ints', () {
+      expect(cpp(add(c('HIGH'), i(1))), 'HIGH + 1L');
+    });
+    test('nothing is widened on a 32-bit-int target', () {
+      const t = Int32Target();
+      expect(cpp(mul(i(60), i(1000)), target: t), '60 * 1000');
+      expect(cpp(add(v('a', IrType.uint16), v('b', IrType.uint16)), target: t), 'a + b');
+      expect(cpp(neg(v('a', IrType.int16)), target: t), '-a');
+    });
+  });
+
+  test('statements, globals, prototypes, and layout', () {
+    final program = IrProgram(
+      sourceName: 'p.dart',
+      globals: [
+        IrGlobal(name: 'ledPin', type: IrType.int32, storage: IrStorage.constant, initializer: i(13), line: 3),
+        IrGlobal(name: 'limit', type: IrType.uint8, storage: IrStorage.final_, initializer: i(9), line: 4),
+        IrGlobal(name: 'extra', type: IrType.int32, storage: IrStorage.mutable, initializer: i(0), line: 5),
+      ],
+      functions: [
+        IrFunction(
+          name: 'pulseLength',
+          line: 7,
+          returnType: IrType.int32,
+          parameters: const [IrParameter('i', IrType.int32), IrParameter('scale', IrType.float32)],
+          body: [IrReturn(cond(eq(mod(v('i'), i(2)), i(0)), i(150), i(450)), line: 8)],
+        ),
+        IrFunction(name: 'setup', line: 10, isEntryPoint: true, body: [
+          IrLocal(name: 'n', type: IrType.int32, storage: IrStorage.mutable, initializer: i(0), line: 11),
+          const IrLocal(name: 'm', type: IrType.int32, storage: IrStorage.mutable, line: 12),
+          IrFor(
+            initializer:
+                IrLocal(name: 'k', type: IrType.int32, storage: IrStorage.mutable, initializer: i(0), line: 13),
+            condition: lt(v('k'), i(3)),
+            updates: const [IrIncrement('k', line: 13), IrAssign('n', IrAssignOp.add, IrIntLiteral(2), line: 13)],
+            body: [
+              IrIf(eq(v('k'), i(1)), const [IrContinue(line: 15)], line: 14),
+              call('pulseLength', [v('k'), const IrDoubleLiteral(1)], line: 16),
+            ],
+            line: 13,
+          ),
+          IrFor(body: const [IrBreak(line: 19)], line: 18),
+          IrWhile(lt(v('n'), v('extra')), const [IrIncrement('n', decrement: true, line: 22)], line: 21),
+          IrIf(
+            gt(v('extra'), i(3)),
+            [IrAssign('extra', IrAssignOp.assign, i(0), line: 25)],
+            otherwise: [
+              IrIf(eq(v('extra'), i(1)), [IrAssign('extra', IrAssignOp.subtract, i(1), line: 27)],
+                  otherwise: [IrAssign('extra', IrAssignOp.assign, add(v('extra'), i(1)), line: 29)], line: 26),
+            ],
+            line: 24,
+          ),
+          IrBlock([IrLocal(name: 'q', type: IrType.bool_, storage: IrStorage.constant, initializer: b('t'), line: 32)],
+              line: 31),
+          const IrReturn(null, line: 34),
+        ]),
+      ],
+    );
+    expect(const CppEmitter(UnoTarget()).emit(program), '''
+// Generated by unodar from p.dart. Do not edit; change the Dart source instead.
+#include <Arduino.h>
+
+// Dart's % never returns a negative result; C++'s % keeps the sign of the left operand.
+constexpr int32_t unodar_mod(int32_t a, int32_t b) { return a % b < 0 ? a % b + (b < 0 ? -b : b) : a % b; }
+
+int32_t pulseLength(int32_t i, float scale);
+
+#line 3 "p.dart"
+constexpr int32_t ledPin = 13;
+#line 4 "p.dart"
+const uint8_t limit = 9;
+#line 5 "p.dart"
+int32_t extra = 0;
+
+#line 7 "p.dart"
+int32_t pulseLength(int32_t i, float scale) {
+#line 8 "p.dart"
+  return unodar_mod(i, 2) == 0 ? 150 : 450;
+}
+
+#line 10 "p.dart"
+void setup() {
+#line 11 "p.dart"
+  int32_t n = 0;
+#line 12 "p.dart"
+  int32_t m;
+#line 13 "p.dart"
+  for (int32_t k = 0; k < 3; k++, n += 2) {
+#line 14 "p.dart"
+    if (k == 1) {
+#line 15 "p.dart"
+      continue;
+    }
+#line 16 "p.dart"
+    pulseLength(k, 1.0f);
+  }
+#line 18 "p.dart"
+  for (;;) {
+#line 19 "p.dart"
+    break;
+  }
+#line 21 "p.dart"
+  while (n < extra) {
+#line 22 "p.dart"
+    n--;
+  }
+#line 24 "p.dart"
+  if (extra > 3) {
+#line 25 "p.dart"
+    extra = 0;
+  } else if (extra == 1) {
+#line 27 "p.dart"
+    extra -= 1;
+  } else {
+#line 29 "p.dart"
+    extra = extra + 1;
+  }
+#line 31 "p.dart"
+  {
+#line 32 "p.dart"
+    constexpr bool q = t;
+  }
+#line 34 "p.dart"
+  return;
+}
+''');
   });
 }

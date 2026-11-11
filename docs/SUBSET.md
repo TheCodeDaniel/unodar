@@ -136,6 +136,8 @@ property access such as `x.abs()` or `x.isEven` (E003 / E002), strings, `null`, 
 On the Uno, C++ `int` is 16 bits, so plain C++ `60 * 1000` wraps to -5536. Unodar guarantees that every `int`
 operation is computed in `int32_t`: when *both* operands would otherwise be narrower in C++, the emitter widens one
 of them, with an `L` suffix on a literal (`60L * 1000`) or `int32_t(x)` otherwise (e.g. two `Uint16` values).
+Comparisons get the same treatment where C++ would otherwise compare a `Uint16` (C++ `unsigned int` on the Uno)
+with a signed value as *unsigned*: in plain C++, `Uint16(1) < -1` is true.
 
 ### Constant expressions are checked
 
