@@ -20,6 +20,8 @@ final class Int32Target implements Target {
   String get int32LiteralSuffix => 'L';
   @override
   String cppType(IrType type) => _uno.cppType(type);
+  @override
+  Set<String> get reservedNames => _uno.reservedNames;
 }
 
 /// The emitted C++ for [expression], read back from a one-global program.
@@ -280,7 +282,7 @@ void loop() {
 #include <Arduino.h>
 
 // Dart's % never returns a negative result; C++'s % keeps the sign of the left operand.
-constexpr int32_t unodar_mod(int32_t a, int32_t b) { return a % b < 0 ? a % b + (b < 0 ? -b : b) : a % b; }
+constexpr int32_t unodar_mod(int32_t a, int32_t b) { return a % b < 0 ? (b < 0 ? a % b - b : a % b + b) : a % b; }
 
 int32_t pulseLength(int32_t i, float scale);
 

@@ -30,10 +30,12 @@ final class CppEmitter {
 
   final Target target;
 
-  /// The `%` helper. `constexpr` so that it also works in constant initializers.
+  /// The `%` helper. `constexpr` so that it also works in constant initializers. When `a % b` is negative it adds
+  /// `|b|` as `- b` or `+ b`, never by computing `-b`, so `b == INT32_MIN` is exact too; the only remaining undefined
+  /// case is C++'s own `INT32_MIN % -1` (docs/SUBSET.md "Known deviations from Dart").
   static const modHelper = [
     "// Dart's % never returns a negative result; C++'s % keeps the sign of the left operand.",
-    'constexpr int32_t unodar_mod(int32_t a, int32_t b) { return a % b < 0 ? a % b + (b < 0 ? -b : b) : a % b; }',
+    'constexpr int32_t unodar_mod(int32_t a, int32_t b) { return a % b < 0 ? (b < 0 ? a % b - b : a % b + b) : a % b; }',
   ];
 
   String emit(IrProgram program) {

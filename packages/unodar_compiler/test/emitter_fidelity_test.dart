@@ -31,6 +31,9 @@ final u16one = v('u16one', IrType.uint16);
 final u8a = v('u8a', IrType.uint8);
 final i16min = v('i16min', IrType.int16);
 
+/// INT32_MIN written as Dart requires it (`-2147483647 - 1`), since 2147483648 is not an int32 literal.
+final int32Min = sub(neg(i(2147483647)), i(1));
+
 /// Operands the vectors read, with their Dart values used on the right-hand side.
 final operands = [
   IrGlobal(name: 'u16max', type: IrType.uint16, storage: IrStorage.constant, initializer: i(65535), line: 1),
@@ -52,6 +55,11 @@ final List<Vector> vectors = [
   ('mod_exact', mod(i(-6), i(3)), -6 % 3),
   ('mod_big', mod(neg(i(1)), i(2147483647)), -1 % 2147483647),
   ('mod_of_sum', mod(add(i(-3), i(-4)), i(5)), (-3 + -4) % 5),
+  // b == INT32_MIN: the helper must not compute -b.
+  ('mod_by_min_neg', mod(i(-5), int32Min), -5 % -2147483648),
+  ('mod_by_min_pos', mod(i(5), int32Min), 5 % -2147483648),
+  ('mod_min_by_min', mod(int32Min, int32Min), -2147483648 % -2147483648),
+  ('mod_min_by_max', mod(int32Min, i(2147483647)), -2147483648 % 2147483647),
   // ~/ truncates toward zero in both.
   ('tdiv_neg_pos', tdiv(i(-7), i(2)), -7 ~/ 2),
   ('tdiv_pos_neg', tdiv(i(7), i(-2)), 7 ~/ -2),
@@ -142,15 +150,29 @@ void main() {
     expect(result.success, isTrue, reason: 'a static_assert failed: the generated C++ differs from Dart');
   }, skip: gate.skip, timeout: const Timeout(Duration(minutes: 5)));
 
-  // Negative controls: the harness must be able to fail. Each one swaps a single vector back to the naive C
-  // translation that unodar avoids, and avr-gcc must then reject the sketch.
-  final naive = {
-    'C++ % instead of unodar_mod': ('mod_neg_pos = unodar_mod(-7, 2);', 'mod_neg_pos = -7 % 2;'),
-    'int arithmetic without 32-bit widening': ('wide_u8_product = int32_t(u8a) * u8a;', 'wide_u8_product = u8a * u8a;'),
-    'C++ / on ints instead of float division': ('div_int = float(7) / float(2);', 'div_int = 7 / 2;'),
-    'unsigned comparison of a Uint16 with -1': ('wide_u16_lt_neg = u16one < -1L;', 'wide_u16_lt_neg = u16one < -1;'),
+  // Negative controls: the harness must be able to fail. Each one puts back the naive C translation that unodar
+  // avoids, and avr-gcc must then reject the sketch at exactly the named vector.
+  final naive = <String, (String vector, String correct, String wrong)>{
+    'C++ % instead of unodar_mod': ('mod_neg_pos', 'mod_neg_pos = unodar_mod(-7, 2);', 'mod_neg_pos = -7 % 2;'),
+    'int arithmetic without 32-bit widening': (
+      'wide_u8_product',
+      'wide_u8_product = int32_t(u8a) * u8a;',
+      'wide_u8_product = u8a * u8a;',
+    ),
+    'C++ / on ints instead of float division': ('div_int', 'div_int = float(7) / float(2);', 'div_int = 7 / 2;'),
+    'unsigned comparison of a Uint16 with -1': (
+      'wide_u16_lt_neg',
+      'wide_u16_lt_neg = u16one < -1L;',
+      'wide_u16_lt_neg = u16one < -1;',
+    ),
+    // The first draft of the helper added |b| as `(b < 0 ? -b : b)`, which overflows for b == INT32_MIN.
+    'a % helper that negates b': (
+      'mod_by_min_neg',
+      CppEmitter.modHelper[1],
+      'constexpr int32_t unodar_mod(int32_t a, int32_t b) { return a % b < 0 ? a % b + (b < 0 ? -b : b) : a % b; }',
+    ),
   };
-  for (final MapEntry(key: what, value: (correct, wrong)) in naive.entries) {
+  for (final MapEntry(key: what, value: (vector, correct, wrong)) in naive.entries) {
     test('negative control: $what is detected', () async {
       gate.check();
       final sketch = fidelitySketch();
@@ -159,8 +181,7 @@ void main() {
       printOnFailure(result.rawOutput);
       expect(result.success, isFalse);
       // The error must point at this vector: its initializer line or its static_assert line.
-      final vector = correct.substring(0, correct.indexOf(' '));
-      final index = vectors.indexWhere((vector_) => vector_.$1 == vector);
+      final index = vectors.indexWhere((v) => v.$1 == vector);
       expect(index, isNonNegative);
       expect(
         result.rawOutput,
