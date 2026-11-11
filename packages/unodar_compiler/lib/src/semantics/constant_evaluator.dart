@@ -182,7 +182,10 @@ final class ConstantEvaluator {
         TokenType.MINUS => _int(left - right),
         TokenType.STAR => _int(left * right),
         TokenType.TILDE_SLASH => right == 0 ? throw const _Problem(ConstantDivisionByZero()) : _int(left ~/ right),
-        TokenType.PERCENT => right == 0 ? throw const _Problem(ConstantDivisionByZero()) : _int(left % right),
+        // Dart's INT32_MIN % -1 is 0, but C++ computes it through the quotient 2147483648, which overflows.
+        TokenType.PERCENT => right == 0
+            ? throw const _Problem(ConstantDivisionByZero())
+            : (left == int32Min && right == -1 ? _int(left ~/ right) : _int(left % right)),
         _ => throw const _NotConstant(),
       };
     }

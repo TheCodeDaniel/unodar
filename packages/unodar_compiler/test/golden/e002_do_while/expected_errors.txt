@@ -1,4 +1,6 @@
 input.dart:8:3: error[E002]: a do-while loop is not supported in this version.
   = help: Use a `while` loop instead.
-input.dart:11:9: error[E002]: `++` inside an expression is not supported in this version.
+input.dart:11:3: error[E002]: the `*=` operator is not supported in this version.
+  = help: Write the assignment out in full, e.g. `x = x * y;`. Only `=`, `+=`, and `-=` are supported.
+input.dart:12:9: error[E002]: `++` inside an expression is not supported in this version.
   = help: Use `++` and `--` only as statements of their own, e.g. `count++;` on its own line.

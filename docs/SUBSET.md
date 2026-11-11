@@ -120,7 +120,7 @@ Rejected (E002): `do`/`while`, `switch`, `for`-`in`, labeled statements and labe
 | Arithmetic | `+`, `-`, `*` on numbers. | Same |
 | `~/` | Integer division, truncating toward zero. `int` operands only. | `/` (also truncates toward zero) |
 | `/` | On ints or doubles; the result is a `double`, as in Dart. | `float(a) / float(b)` for ints |
-| `%` | `int` operands only. **Dart semantics**: the result is never negative (`-7 % 2 == 1`). | `unodar_mod(a, b)`, a 3-line `constexpr` helper emitted only when used |
+| `%` | `int` operands only. **Dart semantics**: the result is never negative (`-7 % 2 == 1`), including for the divisor -2147483648. | `unodar_mod(a, b)`, a one-line `constexpr` helper emitted only when used |
 | Comparison | `==`, `!=`, `<`, `<=`, `>`, `>=`. Both sides numbers, or (for `==`/`!=`) both bools; anything else is E009, because `true == 1` is false in Dart and true in C++. | Same |
 | Logical | `&&`, `\|\|` (short-circuit) | Same |
 | Conditional | `c ? a : b`, where the result has a supported type. | Same |
@@ -143,7 +143,7 @@ with a signed value as *unsigned*: in plain C++, `Uint16(1) < -1` is true.
 
 Any subexpression made only of constants (literals, unodar constants, `const` variables) is evaluated at compile
 time with Dart semantics. If any intermediate value leaves the `int32_t` range, or it divides by zero with `~/`,
-`%`, or `/` on ints, it is rejected (E010). `delay(60 * 60 * 1000 * 1000)` is an error, not a silent wrap.
+`%`, or `/`, it is rejected (E010). So is `-2147483648 % -1`, which C++ cannot compute. `delay(60 * 60 * 1000 * 1000)` is an error, not a silent wrap.
 
 ### Precedence
 
@@ -209,7 +209,9 @@ conditions that cannot be detected at compile time; constant cases are rejected 
 
 | Situation | Dart | Generated C++ |
 |---|---|---|
-| `int` overflow at runtime (a result outside -2147483648…2147483647, including `-x`, `x ~/ -1`, and `x % -1` for the minimum value) | Exact 64-bit result | **Undefined behaviour** (C++ signed overflow). In practice it usually wraps, but the compiler may assume it never happens. Keep values in range. |
+| `int` overflow at runtime (a result outside -2147483648…2147483647, e.g. `a * b`, `a + b`, `-a` for large values) | Exact 64-bit result | **Undefined behaviour** (C++ signed overflow). In practice it usually wraps, but the compiler may assume it never happens. Keep values in range. |
+| `x ~/ -1` at runtime when `x` is -2147483648 | 2147483648 (Dart's `int` is 64-bit) | **Undefined behaviour**: the quotient does not fit `int32_t`. On AVR it typically gives -2147483648. |
+| `x % -1` at runtime when `x` is -2147483648 | 0 | **Undefined behaviour**: C++'s `%`, which `unodar_mod` starts from, overflows for this pair. Every other pair, including the divisor -2147483648, is exact. |
 | Integer `~/` or `%` by a variable that is zero | Throws `IntegerDivisionByZeroException` | **Undefined**; on AVR the program continues with a meaningless result. No check is inserted. |
 | `double` precision and range | 64-bit (≈15–17 digits, max ≈1.8e308) | 32-bit `float` (≈6–7 digits, max ≈3.4e38). An `int` mixed with a `double`, or divided with `/`, converts to `float` and keeps only 24 bits of precision (exact up to 16777216). |
 | A non-constant value passed to an Arduino function outside its parameter type | (external) | Converted to the C++ parameter type by C++ rules, e.g. `delay(-1)` waits about 49 days, a pin of 300 becomes 44. |

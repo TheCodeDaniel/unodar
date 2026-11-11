@@ -1,6 +1,7 @@
 # Diagnostics reference
 
-Every diagnostic has a stable code, a severity, a `file:line:col` location, a message, and a suggestion:
+Every example below is compiled by `test/unit/docs_test.dart`, which fails if the compiler's output differs from
+the text shown. Every diagnostic has a stable code, a severity, a `file:line:col` location, a message, and a suggestion:
 
 ```text
 <file>:<line>:<col>: error[<code>]: <message>
@@ -42,7 +43,8 @@ A statement, operator, or expression form that is outside the subset (see `docs/
 `switch`, `for`-`in`, labeled statements, `try`, `throw`, `assert`, empty statements; bitwise and shift operators,
 `??`, `is`/`as`, `%` or `~/` on doubles, compound assignments other than `+=`/`-=`; assignments, `++`, or `--`
 used inside a larger expression; property access such as `x.isEven`; strings, `null`, collection literals,
-cascades. The suggestion is specific to the construct.
+cascades. The suggestion is specific to the construct. A rejected statement (such as a `do` loop) is reported
+as a whole; the code inside it is checked once it has been rewritten.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -53,8 +55,9 @@ void setup() {}
 
 void loop() {
   do {
-    count *= 2;
+    count += 1;
   } while (count < 100);
+  count *= 2;
   delay(count++);
 }
 ```
@@ -62,13 +65,14 @@ void loop() {
 ```text
 input.dart:8:3: error[E002]: a do-while loop is not supported in this version.
   = help: Use a `while` loop instead.
-input.dart:9:5: error[E002]: the `*=` operator is not supported in this version.
+input.dart:11:3: error[E002]: the `*=` operator is not supported in this version.
   = help: Write the assignment out in full, e.g. `x = x * y;`. Only `=`, `+=`, and `-=` are supported.
-input.dart:11:9: error[E002]: `++` inside an expression is not supported in this version.
+input.dart:12:9: error[E002]: `++` inside an expression is not supported in this version.
   = help: Use `++` and `--` only as statements of their own, e.g. `count++;` on its own line.
 ```
 
-(Golden tests: `test/golden/e002_do_while`, `e002_bitwise_operator`, `e002_assignment_in_expression`, …)
+(Golden tests: `test/golden/e002_do_while`, `e002_statements`, `e002_operators`, `e002_double_operators`,
+`e002_expressions`, `e002_assignment_in_expression`.)
 
 ## E003: Call to a function that is not part of the supported unodar API
 
@@ -129,7 +133,7 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
   = help: Pass a value from 0 to 4294967295.
 ```
 
-(Golden test: `test/golden/e004_argument_out_of_range`.)
+(Golden tests: `test/golden/e004_argument_out_of_range`, `e004_more_ranges`.)
 
 ## E005: Unsupported top-level declaration
 
@@ -156,7 +160,7 @@ input.dart:5:1: error[E005]: a late variable ('ledPin') is not supported in this
   = help: Remove `late` and give the variable a constant initializer.
 ```
 
-(Golden tests: `test/golden/e005_class`, `e005_import`, `e005_late_variable`.)
+(Golden tests: `test/golden/e005_class`, `e005_import`, `e005_other_declarations`.)
 
 ## E006: Invalid `setup`/`loop` signature
 
@@ -250,14 +254,16 @@ input.dart:8:17: error[E009]: the type 'num' is not supported in this version. O
   = help: Make both branches the same type, e.g. write `1.0` instead of `1`.
 ```
 
-(Golden tests: `test/golden/e009_nullable_type`, `e009_unsupported_type`, `e009_bool_number_comparison`.)
+(Golden tests: `test/golden/e009_nullable_type`, `e009_unsupported_type`, `e009_types`,
+`e009_bool_number_comparison`.)
 
 ## E010: Constant out of range
 
 A compile-time constant that cannot be represented exactly in the C++ type: an integer literal above 2147483647,
 any intermediate result of a constant `int` expression outside -2147483648…2147483647, a double literal above the
-`float` maximum, or a constant division by zero (`~/`, `%`, or `/` on ints). Unodar `int` is `int32_t`, not Dart's
-64-bit `int`.
+`float` maximum, or a constant division by zero (`~/`, `%`, or `/`). `-2147483648 % -1` is also rejected: Dart gives 0,
+but C++ computes it through the quotient 2147483648, which overflows. Unodar `int` is `int32_t`, not Dart's 64-bit
+`int`.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -277,7 +283,8 @@ input.dart:7:9: error[E010]: this constant expression divides by zero.
   = help: Use a divisor that is not zero.
 ```
 
-(Golden tests: `test/golden/e010_constant_overflow`, `e010_literal_out_of_range`, `e010_division_by_zero`.)
+(Golden tests: `test/golden/e010_constant_overflow`, `e010_literal_out_of_range`, `e010_division_by_zero`,
+`e010_global_overflow`.)
 
 ## E011: Unsupported function signature
 
@@ -304,7 +311,7 @@ input.dart:5:3: error[E011]: unsupported signature for function 'first': it has 
   = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.
 ```
 
-(Golden tests: `test/golden/e011_optional_parameter`, `e011_named_parameter`, `e011_generic_function`.)
+(Golden tests: `test/golden/e011_optional_parameter`, `e011_signatures`.)
 
 ## E012: Closure or function value
 
@@ -360,7 +367,7 @@ input.dart:13:17: error[E013]: 'next()' may run before or after 'count' is read 
   = help: Store the call's result in a local variable first, e.g. `final value = next();`.
 ```
 
-(Golden tests: `test/golden/e013_call_and_global`, `e013_two_calls`, `e013_compound_assignment`.)
+(Golden tests: `test/golden/e013_call_and_global`, `e013_two_calls`, `e013_arguments`, `e013_compound_assignment`.)
 
 ## E014: Reserved name
 
