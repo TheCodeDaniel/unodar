@@ -44,7 +44,7 @@ void main() {
         Diagnostics.unsupportedSignature('f', 'it has type parameters', at),
         Diagnostics.closure(at),
         Diagnostics.callNextToGlobal('next()', 'count', at),
-        Diagnostics.reservedName('min', 'it is an Arduino core or avr-libc function or macro', 'minValue', at),
+        Diagnostics.reservedName('min', 'it is already defined by the Arduino core or avr-libc', 'minValue', at),
         Diagnostics.nonConstantInitializer('a', at),
         Diagnostics.recursion('f', ['f', 'f'], at),
       ];

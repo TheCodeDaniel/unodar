@@ -386,7 +386,7 @@ void loop() {}
 ```text
 input.dart:3:11: error[E014]: 'LED_PIN' cannot be used as a name: all-caps names are reserved for C and Arduino macros.
   = help: Rename it, e.g. `ledPin`.
-input.dart:5:5: error[E014]: 'min' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:5:5: error[E014]: 'min' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `minValue`.
 input.dart:8:7: error[E014]: 'and' cannot be used as a name: it is a C++ keyword.
   = help: Rename it, e.g. `andValue`.

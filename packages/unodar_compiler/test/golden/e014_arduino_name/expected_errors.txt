@@ -1,32 +1,32 @@
-input.dart:3:5: error[E014]: 'min' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:3:5: error[E014]: 'min' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `minValue`.
-input.dart:4:5: error[E014]: 'max' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:4:5: error[E014]: 'max' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `maxValue`.
-input.dart:5:5: error[E014]: 'abs' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:5:5: error[E014]: 'abs' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `absValue`.
-input.dart:6:5: error[E014]: 'round' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:6:5: error[E014]: 'round' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `roundValue`.
-input.dart:7:5: error[E014]: 'sq' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:7:5: error[E014]: 'sq' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `sqValue`.
-input.dart:8:5: error[E014]: 'map' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:8:5: error[E014]: 'map' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `mapValue`.
-input.dart:9:5: error[E014]: 'constrain' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:9:5: error[E014]: 'constrain' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `constrainValue`.
-input.dart:10:5: error[E014]: 'bit' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:10:5: error[E014]: 'bit' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `bitValue`.
-input.dart:11:5: error[E014]: 'word' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:11:5: error[E014]: 'word' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `wordValue`.
-input.dart:12:5: error[E014]: 'byte' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:12:5: error[E014]: 'byte' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `byteValue`.
-input.dart:13:5: error[E014]: 'millis' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:13:5: error[E014]: 'millis' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `millisValue`.
-input.dart:14:8: error[E014]: 'sqrt' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:14:8: error[E014]: 'sqrt' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `sqrtValue`.
-input.dart:16:6: error[E014]: 'init' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:16:6: error[E014]: 'init' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `initValue`.
-input.dart:18:12: error[E014]: 'sin' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:18:12: error[E014]: 'sin' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `sinValue`.
-input.dart:23:7: error[E014]: 'random' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:23:7: error[E014]: 'random' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `randomValue`.
-input.dart:24:12: error[E014]: 'yield' cannot be used as a name: it is an Arduino core or avr-libc function or macro.
+input.dart:24:12: error[E014]: 'yield' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `yieldValue`.

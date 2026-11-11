@@ -1,4 +1,5 @@
 import '../ir/ir.dart';
+import 'arduino_avr_names.dart';
 
 /// Board-specific facts the emitter needs (PRD §9.10 "Emitter is target-aware by construction").
 ///
@@ -48,7 +49,7 @@ final class UnoTarget implements Target {
   String get int32LiteralSuffix => 'L';
 
   @override
-  Set<String> get reservedNames => arduinoAvrReservedNames;
+  Set<String> get reservedNames => const {...arduinoAvrNames, ...arduinoExtraNames};
 
   @override
   String cppType(IrType type) => switch (type) {
@@ -62,36 +63,18 @@ final class UnoTarget implements Target {
       };
 }
 
-/// Lower- and mixed-case names defined by the Arduino AVR core (Arduino.h, WCharacter.h, WString.h, the serial
-/// classes) and the parts of avr-libc it includes (math.h, stdlib.h, string.h, stdio.h). Function-like macros
-/// (`min`, `max`, `abs`, `round`, `sq`, `constrain`, `bit`, …) would rewrite a user identifier; the functions would
-/// clash at compile or link time (`init`, `map`, `random`, `yield`, …). ALL-CAPS macros are covered by their own
-/// rule and not repeated here.
-const arduinoAvrReservedNames = {
-  // Arduino.h macros and inline helpers.
-  'min', 'max', 'abs', 'constrain', 'round', 'radians', 'degrees', 'sq', 'bit', 'bitRead', 'bitSet', 'bitClear', //
-  'bitWrite', 'bitToggle', 'lowByte', 'highByte', 'word', 'makeWord', 'byte', 'boolean', 'interrupts',
-  'noInterrupts', 'sei', 'cli', 'sbi', 'cbi', 'clockCyclesPerMicrosecond', 'clockCyclesToMicroseconds',
-  'microsecondsToClockCycles', 'digitalPinToPort', 'digitalPinToBitMask', 'digitalPinToTimer',
-  'analogInPinToBit', 'analogInputToDigitalPin', 'portOutputRegister', 'portInputRegister', 'portModeRegister',
-  'digitalPinToInterrupt', 'digitalPinHasPWM',
-  // Arduino core functions.
-  'init', 'initVariant', 'main', 'yield', 'serialEvent', 'serialEventRun', 'millis', 'micros', 'delay',
-  'delayMicroseconds', 'pinMode', 'digitalWrite', 'digitalRead', 'analogRead', 'analogWrite', 'analogReference',
-  'tone', 'noTone', 'pulseIn', 'pulseInLong', 'shiftIn', 'shiftOut', 'attachInterrupt', 'detachInterrupt',
-  'random', 'randomSeed', 'map', 'setup', 'loop',
-  // WCharacter.h.
-  'isAlphaNumeric', 'isAlpha', 'isAscii', 'isWhitespace', 'isControl', 'isDigit', 'isGraph', 'isLowerCase',
-  'isPrintable', 'isPunct', 'isSpace', 'isUpperCase', 'isHexadecimalDigit', 'toAscii', 'toLowerCase', 'toUpperCase',
-  // Core classes and objects.
-  'String', 'Serial', 'Print', 'Printable', 'Stream', 'HardwareSerial', 'IPAddress', 'Client', 'Server', 'Udp',
-  // avr-libc math.h.
-  'acos', 'asin', 'atan', 'atan2', 'cbrt', 'ceil', 'copysign', 'cos', 'cosh', 'exp', 'fabs', 'fdim', 'floor', 'fma',
-  'fmax', 'fmin', 'fmod', 'frexp', 'hypot', 'isfinite', 'isinf', 'isnan', 'ldexp', 'log', 'log10', 'lrint',
-  'lround', 'modf', 'pow', 'signbit', 'sin', 'sinh', 'sqrt', 'square', 'tan', 'tanh', 'trunc',
-  // avr-libc stdlib.h, string.h, stdio.h.
-  'atoi', 'atol', 'atof', 'strtol', 'strtoul', 'strtod', 'rand', 'srand', 'malloc', 'free', 'calloc', 'realloc',
-  'exit', 'abort', 'qsort', 'bsearch', 'div', 'ldiv', 'labs', 'itoa', 'ltoa', 'utoa', 'ultoa', 'dtostrf', 'dtostre',
-  'memcpy', 'memset', 'memcmp', 'memmove', 'strlen', 'strcmp', 'strncmp', 'strcpy', 'strncpy', 'strcat', 'strchr',
-  'printf', 'sprintf', 'snprintf', 'puts', 'putchar', 'getchar',
+/// Names that come from Arduino headers outside `Arduino.h` that sketches commonly include (`wiring_private.h`,
+/// the networking classes) and are therefore reserved too. Everything `Arduino.h` itself declares is in the
+/// generated [arduinoAvrNames].
+const arduinoExtraNames = {
+  'Client',
+  'IPAddress',
+  'Server',
+  'Udp',
+  'cbi',
+  'copysign',
+  'isfinite',
+  'main',
+  'sbi',
+  'serialEvent',
 };

@@ -79,16 +79,17 @@ final class ReservedNameRule implements ValidationRule {
   final value = '${name}Value';
   if (cppKeywords.contains(name)) return ('it is a C++ keyword', value);
   if (api.contains(name)) return ('it is a unodar API name', value);
-  if (arduino.contains(name)) return ('it is an Arduino core or avr-libc function or macro', value);
-  if (!name.contains(RegExp('[a-z]')) && name.contains(RegExp('[A-Z]'))) {
-    return ('all-caps names are reserved for C and Arduino macros', lowerCamel(name));
-  }
+  // Patterns before the Arduino list, so `size_t` is explained as a reserved pattern rather than a core name.
   if (name.contains(r'$')) return (r'names containing `$` are not valid C++', null);
   if (name.startsWith('unodar_')) return ('names starting with `unodar_` are reserved for generated code', null);
   if (name.endsWith('_t')) return ('names ending in `_t` are reserved by C and C++', null);
   if (name.contains('__')) return ('names containing `__` are reserved by C and C++', null);
   if (name.startsWith(RegExp('_[A-Z]'))) {
     return ('names starting with `_` and an upper-case letter are reserved by C and C++', null);
+  }
+  if (arduino.contains(name)) return ('it is already defined by the Arduino core or avr-libc', value);
+  if (!name.contains(RegExp('[a-z]')) && name.contains(RegExp('[A-Z]'))) {
+    return ('all-caps names are reserved for C and Arduino macros', lowerCamel(name));
   }
   return null;
 }
