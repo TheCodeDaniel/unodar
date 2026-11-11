@@ -1,0 +1,4 @@
+input.dart:6:13: error[E012]: a closure is not supported in this version. Functions can only be declared at the top level.
+  = help: Declare a top-level function and call it directly.
+input.dart:7:13: error[E012]: a closure is not supported in this version. Functions can only be declared at the top level.
+  = help: Declare a top-level function and call it directly.

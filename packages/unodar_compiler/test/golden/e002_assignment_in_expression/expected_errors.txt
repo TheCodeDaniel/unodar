@@ -1,0 +1,10 @@
+input.dart:9:9: error[E002]: an assignment inside an expression is not supported in this version.
+  = help: Assign in a statement of its own, then use the variable.
+input.dart:10:7: error[E002]: `++` inside an expression is not supported in this version.
+  = help: Use `++` and `--` only as statements of their own, e.g. `count++;` on its own line.
+input.dart:11:7: error[E002]: `--` inside an expression is not supported in this version.
+  = help: Use `++` and `--` only as statements of their own, e.g. `count++;` on its own line.
+input.dart:12:8: error[E002]: an assignment inside an expression is not supported in this version.
+  = help: Assign in a statement of its own, then use the variable.
+input.dart:13:8: error[E002]: an assignment inside an expression is not supported in this version.
+  = help: Assign in a statement of its own, then use the variable.

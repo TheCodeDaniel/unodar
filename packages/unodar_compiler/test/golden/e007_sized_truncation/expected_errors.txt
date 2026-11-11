@@ -1,0 +1,6 @@
+input.dart:4:15: error[E007]: Dart analysis error: A value of type 'int' can't be assigned to a variable of type 'Uint8'.
+  = help: Fix the Dart error first; `dart analyze` on this file shows the same problem.
+input.dart:10:3: error[E007]: Dart analysis error: A value of type 'num' can't be assigned to a variable of type 'Uint8'.
+  = help: Fix the Dart error first; `dart analyze` on this file shows the same problem.
+input.dart:11:8: error[E007]: Dart analysis error: A value of type 'int' can't be assigned to a variable of type 'Uint8'.
+  = help: Fix the Dart error first; `dart analyze` on this file shows the same problem.

@@ -1,0 +1,4 @@
+input.dart:3:6: error[E011]: unsupported signature for function 'blink': it has optional positional parameters and a default value.
+  = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.
+input.dart:5:3: error[E011]: unsupported signature for function 'first': it has type parameters.
+  = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.

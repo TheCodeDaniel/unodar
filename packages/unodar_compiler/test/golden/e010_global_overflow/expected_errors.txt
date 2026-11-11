@@ -1,0 +1,6 @@
+input.dart:4:22: error[E010]: this constant expression computes 86400000000, which is outside the 32-bit int range (-2147483648 to 2147483647).
+  = help: unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in docs/SUBSET.md.
+input.dart:5:9: error[E010]: this constant expression computes 4294967296, which is outside the 32-bit int range (-2147483648 to 2147483647).
+  = help: unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in docs/SUBSET.md.
+input.dart:6:22: error[E010]: this constant expression computes -2147483649, which is outside the 32-bit int range (-2147483648 to 2147483647).
+  = help: unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in docs/SUBSET.md.

@@ -1,2 +1,0 @@
-input.dart:8:3: error[E002]: an if statement is not supported in this version. Only calls to unodar API functions are allowed here.
-  = help: Rewrite this as a sequence of pinMode/digitalWrite/delay calls; see docs/SUBSET.md.

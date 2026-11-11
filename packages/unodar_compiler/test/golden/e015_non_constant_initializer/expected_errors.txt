@@ -1,0 +1,6 @@
+input.dart:8:9: error[E015]: the initializer of top-level variable 'a' is not a compile-time constant.
+  = help: Use only literals, unodar constants, and `const` variables declared above it; assign other values in setup().
+input.dart:9:9: error[E015]: the initializer of top-level variable 'b' is not a compile-time constant.
+  = help: Use only literals, unodar constants, and `const` variables declared above it; assign other values in setup().
+input.dart:10:9: error[E015]: the initializer of top-level variable 'c' is not a compile-time constant.
+  = help: Use only literals, unodar constants, and `const` variables declared above it; assign other values in setup().

@@ -1,0 +1,4 @@
+input.dart:3:6: error[E016]: recursion is not supported: 'ping' calls itself through ping → pong → ping.
+  = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.
+input.dart:11:6: error[E016]: recursion is not supported: 'a' calls itself through a → b → c → a.
+  = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.

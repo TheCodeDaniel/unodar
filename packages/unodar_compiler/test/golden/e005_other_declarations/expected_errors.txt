@@ -1,0 +1,16 @@
+input.dart:3:1: error[E005]: an enum is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+input.dart:5:1: error[E005]: a typedef is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+input.dart:7:1: error[E005]: an extension is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+input.dart:9:1: error[E005]: a mixin is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+input.dart:11:1: error[E005]: a top-level getter ('answer') is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+input.dart:13:1: error[E005]: a top-level setter ('answer') is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+input.dart:15:1: error[E005]: an external variable ('pinCount') is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+input.dart:17:1: error[E005]: an extension is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.

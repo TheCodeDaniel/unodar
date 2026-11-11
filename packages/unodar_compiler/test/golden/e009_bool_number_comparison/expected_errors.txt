@@ -1,0 +1,4 @@
+input.dart:10:7: error[E009]: comparing a bool with a number is not supported: Dart says they are never equal, but C++ converts the bool to 0 or 1.
+  = help: Compare numbers with numbers and bools with bools.
+input.dart:11:7: error[E009]: comparing a bool with a number is not supported: Dart says they are never equal, but C++ converts the bool to 0 or 1.
+  = help: Compare numbers with numbers and bools with bools.

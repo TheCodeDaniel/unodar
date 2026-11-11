@@ -32,8 +32,8 @@ void main() {
   });
 
   test('diagnostics go to stderr, nothing is written, exit 1', () async {
-    final r =
-        await run(['build', fromPackage('test', 'golden', 'e004_non_literal_argument', 'input.dart'), '-o', temp.path]);
+    final r = await run(
+        ['build', fromPackage('test', 'golden', 'e004_argument_out_of_range', 'input.dart'), '-o', temp.path]);
     expect(r.exitCode, 1);
     expect(r.out, isEmpty);
     expect(r.err, contains('error[E004]'));

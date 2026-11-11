@@ -1,0 +1,22 @@
+input.dart:3:5: error[E014]: 'and' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `andValue`.
+input.dart:4:5: error[E014]: 'or' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `orValue`.
+input.dart:6:6: error[E014]: 'unsigned' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `unsignedValue`.
+input.dart:6:19: error[E014]: 'char' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `charValue`.
+input.dart:11:7: error[E014]: 'not' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `notValue`.
+input.dart:12:7: error[E014]: 'auto' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `autoValue`.
+input.dart:13:7: error[E014]: 'register' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `registerValue`.
+input.dart:14:7: error[E014]: 'template' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `templateValue`.
+input.dart:15:7: error[E014]: 'volatile' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `volatileValue`.
+input.dart:16:7: error[E014]: 'goto' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `gotoValue`.
+input.dart:17:7: error[E014]: 'union' cannot be used as a name: it is a C++ keyword.
+  = help: Rename it, e.g. `unionValue`.

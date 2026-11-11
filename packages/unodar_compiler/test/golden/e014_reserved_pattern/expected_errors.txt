@@ -1,0 +1,10 @@
+input.dart:3:5: error[E014]: 'size_t' cannot be used as a name: names ending in `_t` are reserved by C and C++.
+  = help: Rename it.
+input.dart:4:5: error[E014]: 'my__value' cannot be used as a name: names containing `__` are reserved by C and C++.
+  = help: Rename it.
+input.dart:5:5: error[E014]: 'cost$' cannot be used as a name: names containing `$` are not valid C++.
+  = help: Rename it.
+input.dart:6:5: error[E014]: '_Hidden' cannot be used as a name: names starting with `_` and an upper-case letter are reserved by C and C++.
+  = help: Rename it.
+input.dart:7:5: error[E014]: 'unodar_mod' cannot be used as a name: names starting with `unodar_` are reserved for generated code.
+  = help: Rename it.

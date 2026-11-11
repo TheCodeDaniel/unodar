@@ -1,0 +1,2 @@
+input.dart:6:13: error[E012]: a function reference ('pulse') is not supported in this version. Functions can only be called directly.
+  = help: Call the function instead, e.g. `pulse()`.

@@ -10,16 +10,17 @@ void main() {
       final d = Diagnostics.unknownFunction('tone', api, at);
       expect(
         d.format(),
-        "blink.dart:5:3: error[E003]: unknown function 'tone'. "
-        'Only pinMode, digitalWrite, and delay are supported in this version.\n'
-        '  = help: Remove this call. More Arduino functions arrive in a later phase; see docs/SUBSET.md.',
+        "blink.dart:5:3: error[E003]: unknown function 'tone'. Only functions declared in this file and the unodar API "
+        'functions pinMode, digitalWrite, and delay can be called in this version.\n'
+        '  = help: Declare the function in this file, or remove this call. More Arduino functions arrive in a later '
+        'phase; see docs/SUBSET.md.',
       );
     });
   });
 
   group('registry', () {
-    test('codes are E001..E008, unique, and in order', () {
-      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 8; i++) 'E00$i']);
+    test('codes are E001..E016, unique, and in order', () {
+      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 16; i++) 'E${'$i'.padLeft(3, '0')}']);
     });
 
     test('every code has a non-empty summary for docs/DIAGNOSTICS.md', () {
@@ -31,13 +32,21 @@ void main() {
     test('every factory produces a diagnostic with a suggestion', () {
       final all = [
         Diagnostics.missingEntryPoint('loop', at),
-        Diagnostics.unsupportedStatement('an if statement', at),
+        Diagnostics.unsupportedStatement('a do-while loop', 'Use a while loop.', at),
         Diagnostics.unknownFunction('tone', api, at),
-        Diagnostics.unsupportedArgument('a variable reference', at),
-        Diagnostics.unsupportedDeclaration('a top-level variable', at),
+        Diagnostics.argumentOutOfRange('-1', 'ms', 'delay', 'unsigned long', '0 to 4294967295', at),
+        Diagnostics.unsupportedDeclaration('a class', at),
         Diagnostics.invalidEntrySignature('setup', 'it returns int', at),
         Diagnostics.analysisError("The argument type 'String' can't be assigned to 'int'.", at),
         Diagnostics.reservedMain(at),
+        Diagnostics.unsupportedType('num', at),
+        Diagnostics.constantOverflow(3600000000, at),
+        Diagnostics.unsupportedSignature('f', 'it has type parameters', at),
+        Diagnostics.closure(at),
+        Diagnostics.callNextToGlobal('next()', 'count', at),
+        Diagnostics.reservedName('min', 'it is an Arduino core or avr-libc function or macro', 'minValue', at),
+        Diagnostics.nonConstantInitializer('a', at),
+        Diagnostics.recursion('f', ['f', 'f'], at),
       ];
       expect(all.map((d) => d.code), DiagnosticCode.values, reason: 'one factory per code, in code order');
       for (final d in all) {
@@ -52,7 +61,7 @@ void main() {
     final sorted = sortDiagnostics([
       Diagnostics.reservedMain(loc(9, 1)),
       Diagnostics.unknownFunction('tone', api, loc(2, 5)),
-      Diagnostics.unsupportedArgument('x', loc(2, 5)),
+      Diagnostics.namedArgument('x', 'delay', loc(2, 5)),
       Diagnostics.unknownFunction('tone', api, loc(2, 1)),
     ]);
     expect(sorted.map((d) => '${d.location.line}:${d.location.column}:${d.code.id}'), [

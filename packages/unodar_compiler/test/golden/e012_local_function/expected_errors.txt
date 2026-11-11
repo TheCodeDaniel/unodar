@@ -1,0 +1,4 @@
+input.dart:6:3: error[E012]: a local function ('twice') is not supported in this version. Functions can only be declared at the top level.
+  = help: Move it to the top level of the file.
+input.dart:7:3: error[E012]: a local function ('nothing') is not supported in this version. Functions can only be declared at the top level.
+  = help: Move it to the top level of the file.

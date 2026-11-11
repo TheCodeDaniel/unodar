@@ -1,0 +1,8 @@
+input.dart:3:20: error[E010]: the integer literal 2147483648 is outside the 32-bit int range (-2147483648 to 2147483647).
+  = help: unodar ints are 32-bit (int32_t). For the minimum value write `-2147483647 - 1`.
+input.dart:4:22: error[E010]: the integer literal 2147483648 is outside the 32-bit int range (-2147483648 to 2147483647).
+  = help: unodar ints are 32-bit (int32_t). For the minimum value write `-2147483647 - 1`.
+input.dart:5:21: error[E010]: the double literal 1e39 is outside the float range (about -3.4e38 to 3.4e38).
+  = help: unodar doubles are 32-bit floats; see "Known deviations from Dart" in docs/SUBSET.md.
+input.dart:11:9: error[E010]: the integer literal 3000000000 is outside the 32-bit int range (-2147483648 to 2147483647).
+  = help: unodar ints are 32-bit (int32_t). For the minimum value write `-2147483647 - 1`.

@@ -1,0 +1,8 @@
+input.dart:3:11: error[E014]: 'LED_PIN' cannot be used as a name: all-caps names are reserved for C and Arduino macros.
+  = help: Rename it, e.g. `ledPin`.
+input.dart:4:5: error[E014]: 'X' cannot be used as a name: all-caps names are reserved for C and Arduino macros.
+  = help: Rename it, e.g. `x`.
+input.dart:6:16: error[E014]: 'PIN' cannot be used as a name: all-caps names are reserved for C and Arduino macros.
+  = help: Rename it, e.g. `pin`.
+input.dart:11:7: error[E014]: 'MAX_COUNT' cannot be used as a name: all-caps names are reserved for C and Arduino macros.
+  = help: Rename it, e.g. `maxCount`.

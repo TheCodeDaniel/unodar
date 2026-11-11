@@ -37,7 +37,7 @@ final class CompileInputError extends CompileResult {
 /// Stages are injected so tests can exercise one stage at a time and later phases can swap targets/registries.
 final class Compiler {
   Compiler({ApiRegistry? api, this.target = const UnoTarget(), this.frontend = const Frontend()})
-      : api = api ?? ApiRegistry.phase1();
+      : api = api ?? ApiRegistry.core();
 
   final ApiRegistry api;
   final Target target;
@@ -55,14 +55,14 @@ final class Compiler {
     }
 
     // Analyzer errors normally stop compilation (E007): validating a broken AST yields misleading diagnostics.
-    // The one exception is a call to an undefined function written as a plain statement in setup/loop, e.g.
+    // The one exception is a call to an undefined function written as a plain statement, e.g.
     // `tone(8, 440);`. The analyzer calls that an undefined name, but the user's real problem is "not part of the
     // unodar API", which the validator reports as E003 with a better suggestion.
-    final unresolvedCalls = unresolvedEntryPointCallOffsets(source.unit);
+    final unresolvedCalls = unresolvedCallStatementOffsets(source.unit);
     final fatal = analysisErrors.where((e) => !unresolvedCalls.contains(e.offset));
     if (fatal.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
 
-    final diagnostics = Validator(api: api).validate(source);
+    final diagnostics = Validator(api: api, target: target).validate(source);
     if (diagnostics.isNotEmpty) return CompileFailure(diagnostics);
     // Defensive: never let a deferred analyzer error through just because no rule explained it.
     if (analysisErrors.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));

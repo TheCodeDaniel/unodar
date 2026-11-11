@@ -1,0 +1,4 @@
+input.dart:3:1: error[E005]: a class is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+input.dart:5:1: error[E005]: a late variable ('ledPin') is not supported in this version. Only top-level functions and variables may be declared.
+  = help: Remove `late` and give the variable a constant initializer.

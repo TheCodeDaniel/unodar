@@ -1,0 +1,2 @@
+input.dart:13:17: error[E013]: 'next()' may run before or after 'count' is read in the generated C++, but Dart always evaluates left to right.
+  = help: Store the call's result in a local variable first, e.g. `final value = next();`.

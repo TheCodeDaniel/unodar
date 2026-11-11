@@ -1,0 +1,4 @@
+input.dart:3:5: error[E016]: recursion is not supported: 'factorial' calls itself through factorial → factorial.
+  = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.
+input.dart:7:6: error[E016]: recursion is not supported: 'loop' calls itself through loop → loop.
+  = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.

@@ -1,0 +1,4 @@
+input.dart:8:3: error[E002]: a do-while loop is not supported in this version.
+  = help: Use a `while` loop instead.
+input.dart:11:9: error[E002]: `++` inside an expression is not supported in this version.
+  = help: Use `++` and `--` only as statements of their own, e.g. `count++;` on its own line.

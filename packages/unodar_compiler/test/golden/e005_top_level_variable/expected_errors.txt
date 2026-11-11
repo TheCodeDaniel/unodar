@@ -1,2 +1,0 @@
-input.dart:3:1: error[E005]: a top-level variable ('ledPin') is not supported in this version. Only `void setup()` and `void loop()` may be declared.
-  = help: Remove this declaration and inline its use into setup() or loop().

@@ -1,0 +1,4 @@
+input.dart:13:12: error[E013]: 'bump()' may run before or after 'total' is read in the generated C++, but Dart always evaluates left to right.
+  = help: Store the call's result in a local variable first, e.g. `final value = bump();`.
+input.dart:14:12: error[E013]: 'bump()' may run before or after 'total' is read in the generated C++, but Dart always evaluates left to right.
+  = help: Store the call's result in a local variable first, e.g. `final value = bump();`.

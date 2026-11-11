@@ -1,0 +1,4 @@
+input.dart:15:8: error[E013]: 'next()' and 'next()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = next();`.
+input.dart:16:15: error[E013]: 'next()' may run before or after 'count' is read in the generated C++, but Dart always evaluates left to right.
+  = help: Store the call's result in a local variable first, e.g. `final value = next();`.

@@ -1,0 +1,8 @@
+input.dart:6:11: error[E004]: argument 300 is out of range for parameter 'pin' of pinMode, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:7:15: error[E004]: argument 256 is out of range for parameter 'mode' of pinMode, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:11:20: error[E004]: argument -1 is out of range for parameter 'value' of digitalWrite, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:12:9: error[E004]: argument -2147483648 is out of range for parameter 'ms' of delay, which is an unsigned long (0 to 4294967295).
+  = help: Pass a value from 0 to 4294967295.

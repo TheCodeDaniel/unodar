@@ -1,0 +1,4 @@
+input.dart:6:9: error[E010]: this constant expression computes 3600000000, which is outside the 32-bit int range (-2147483648 to 2147483647).
+  = help: unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in docs/SUBSET.md.
+input.dart:7:9: error[E010]: this constant expression divides by zero.
+  = help: Use a divisor that is not zero.

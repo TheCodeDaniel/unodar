@@ -1,0 +1,28 @@
+input.dart:10:7: error[E002]: the `&` operator is not supported in this version.
+  = help: Bitwise and shift operators arrive in a later phase; use arithmetic instead.
+input.dart:11:7: error[E002]: the `|` operator is not supported in this version.
+  = help: Bitwise and shift operators arrive in a later phase; use arithmetic instead.
+input.dart:12:7: error[E002]: the `^` operator is not supported in this version.
+  = help: Bitwise and shift operators arrive in a later phase; use arithmetic instead.
+input.dart:13:7: error[E002]: the `~` operator is not supported in this version.
+  = help: Bitwise and shift operators arrive in a later phase; use arithmetic instead.
+input.dart:14:7: error[E002]: the `<<` operator is not supported in this version.
+  = help: Bitwise and shift operators arrive in a later phase; use arithmetic instead.
+input.dart:15:7: error[E002]: the `>>` operator is not supported in this version.
+  = help: Bitwise and shift operators arrive in a later phase; use arithmetic instead.
+input.dart:16:7: error[E002]: the `>>>` operator is not supported in this version.
+  = help: Bitwise and shift operators arrive in a later phase; use arithmetic instead.
+input.dart:17:7: error[E002]: a type test (`is`) is not supported in this version.
+  = help: Declare the variable with the type you need instead.
+input.dart:18:7: error[E002]: a cast (`as`) is not supported in this version.
+  = help: Declare the variable with the type you need instead.
+input.dart:19:7: error[E002]: the `??` operator is not supported in this version.
+  = help: Nullable values are not supported, so `??` is never needed.
+input.dart:20:3: error[E002]: the `*=` operator is not supported in this version.
+  = help: Write the assignment out in full, e.g. `x = x * y;`. Only `=`, `+=`, and `-=` are supported.
+input.dart:21:3: error[E002]: the `~/=` operator is not supported in this version.
+  = help: Write the assignment out in full, e.g. `x = x * y;`. Only `=`, `+=`, and `-=` are supported.
+input.dart:22:3: error[E002]: the `%=` operator is not supported in this version.
+  = help: Write the assignment out in full, e.g. `x = x * y;`. Only `=`, `+=`, and `-=` are supported.
+input.dart:23:3: error[E002]: the `|=` operator is not supported in this version.
+  = help: Write the assignment out in full, e.g. `x = x * y;`. Only `=`, `+=`, and `-=` are supported.

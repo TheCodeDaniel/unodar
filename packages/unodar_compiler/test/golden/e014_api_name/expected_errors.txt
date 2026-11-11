@@ -1,0 +1,6 @@
+input.dart:4:5: error[E014]: 'pinMode' cannot be used as a name: it is a unodar API name.
+  = help: Rename it, e.g. `pinModeValue`.
+input.dart:6:6: error[E014]: 'delay' cannot be used as a name: it is a unodar API name.
+  = help: Rename it, e.g. `delayValue`.
+input.dart:9:7: error[E014]: 'HIGH' cannot be used as a name: it is a unodar API name.
+  = help: Rename it, e.g. `HIGHValue`.

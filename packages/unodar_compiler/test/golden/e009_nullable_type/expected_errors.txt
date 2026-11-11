@@ -1,0 +1,8 @@
+input.dart:3:1: error[E009]: the nullable type 'int?' is not supported in this version.
+  = help: Use the non-nullable type 'int' and give the variable a value.
+input.dart:5:11: error[E009]: the nullable type 'double?' is not supported in this version.
+  = help: Use the non-nullable type 'double' and give the variable a value.
+input.dart:7:1: error[E009]: the nullable type 'int?' is not supported in this version.
+  = help: Use the non-nullable type 'int' and give the variable a value.
+input.dart:12:3: error[E009]: the nullable type 'bool?' is not supported in this version.
+  = help: Use the non-nullable type 'bool' and give the variable a value.

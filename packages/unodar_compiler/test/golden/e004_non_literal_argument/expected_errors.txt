@@ -1,4 +1,0 @@
-input.dart:8:16: error[E004]: a negative number is not supported as an argument. Only integer literals and unodar constants are allowed.
-  = help: Use a literal such as `13` or a constant such as `HIGH`, `LOW`, `OUTPUT`, `INPUT`, `INPUT_PULLUP`.
-input.dart:9:9: error[E004]: an arithmetic or logical expression is not supported as an argument. Only integer literals and unodar constants are allowed.
-  = help: Use a literal such as `13` or a constant such as `HIGH`, `LOW`, `OUTPUT`, `INPUT`, `INPUT_PULLUP`.

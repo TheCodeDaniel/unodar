@@ -1,4 +1,0 @@
-input.dart:7:1: error[E005]: a function ('blink') is not supported in this version. Only `void setup()` and `void loop()` may be declared.
-  = help: Remove this declaration and inline its use into setup() or loop().
-input.dart:12:3: error[E003]: unknown function 'blink'. Only pinMode, digitalWrite, and delay are supported in this version.
-  = help: Remove this call. More Arduino functions arrive in a later phase; see docs/SUBSET.md.

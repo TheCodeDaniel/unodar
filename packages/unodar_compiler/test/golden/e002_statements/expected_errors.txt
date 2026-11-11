@@ -1,0 +1,22 @@
+input.dart:8:3: error[E002]: a switch statement is not supported in this version.
+  = help: Use `if` / `else if` instead.
+input.dart:12:3: error[E002]: a for-in loop is not supported in this version.
+  = help: Use a counting loop instead: `for (int i = 0; i < n; i++) { ... }`.
+input.dart:15:3: error[E002]: a labeled statement is not supported in this version.
+  = help: Remove the label; only unlabeled `break` and `continue` are supported.
+input.dart:19:3: error[E002]: a try statement is not supported in this version.
+  = help: Exceptions are not supported on the device; remove it.
+input.dart:22:3: error[E002]: a throw expression is not supported in this version.
+  = help: Exceptions are not supported on the device; remove it.
+input.dart:23:3: error[E002]: an empty statement (`;`) is not supported in this version.
+  = help: Remove the stray `;`.
+input.dart:24:3: error[E002]: an assert statement is not supported in this version.
+  = help: Asserts are not supported on the device; remove it.
+input.dart:25:3: error[E002]: a late local variable is not supported in this version.
+  = help: Remove `late`; `int x;` followed by an assignment already works.
+input.dart:26:3: error[E002]: a for loop that declares more than one variable is not supported in this version.
+  = help: Declare the extra variables before it.
+input.dart:27:3: error[E002]: a pattern variable declaration is not supported in this version.
+  = help: Declare one variable at a time.
+input.dart:28:3: error[E002]: an expression statement that is not a call or an assignment is not supported in this version.
+  = help: Remove it, or turn it into a call or an assignment.

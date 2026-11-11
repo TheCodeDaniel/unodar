@@ -6,11 +6,19 @@ enum DiagnosticCode {
   missingEntryPoint('E001', 'Missing required `setup()` or `loop()`'),
   unsupportedStatement('E002', 'Unsupported statement or expression kind'),
   unknownFunction('E003', 'Call to a function that is not part of the supported unodar API'),
-  unsupportedArgument('E004', 'Unsupported argument (only int literals and unodar constants allowed)'),
-  unsupportedDeclaration('E005', 'Unsupported top-level declaration (variables, classes, extra functions)'),
+  unsupportedArgument('E004', 'Unsupported argument (constant out of range for the Arduino parameter, or named)'),
+  unsupportedDeclaration('E005', 'Unsupported top-level declaration (classes, enums, typedefs, getters, late)'),
   invalidEntrySignature('E006', 'Invalid `setup`/`loop` signature (must be `void`, no parameters)'),
   analysisError('E007', 'Dart analysis error in the source file (type error, syntax error, unresolved import)'),
-  reservedMain('E008', '`main()` is reserved (widget API arrives in a later phase)');
+  reservedMain('E008', '`main()` is reserved (widget API arrives in a later phase)'),
+  unsupportedType('E009', 'Unsupported type (nullable, num, dynamic, String, …) or bool/number comparison'),
+  constantOutOfRange('E010', 'Constant out of range: int32 overflow, float range, or division by zero'),
+  unsupportedSignature('E011', 'Unsupported function signature (optional/named/default parameters, generics, async)'),
+  functionValue('E012', 'Closure, function reference, or local function'),
+  evaluationOrder('E013', 'Evaluation order would differ in C++'),
+  reservedName('E014', 'Name that collides with C++ or the Arduino core'),
+  nonConstantInitializer('E015', 'Top-level initializer is not a compile-time constant'),
+  recursion('E016', 'Recursive function (direct or mutual)');
 
   const DiagnosticCode(this.id, this.summary);
 

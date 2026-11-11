@@ -1,0 +1,4 @@
+input.dart:10:9: error[E013]: 'a()' and 'b()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = a();`.
+input.dart:11:9: error[E013]: 'a()' and 'b()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = a();`.

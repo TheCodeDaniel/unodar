@@ -1,10 +1,15 @@
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/syntactic_entity.dart';
+import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../frontend/frontend.dart';
 import '../ir/ir.dart';
-import '../validator/rules.dart';
+import '../semantics/elements.dart';
+import '../semantics/types.dart';
+import '../semantics/walk.dart';
 
 /// Thrown when lowering meets a construct the validator should have rejected. Always a compiler bug (exit code 2),
 /// never a user error: it means a validator rule and the lowering disagree about the subset.
@@ -17,7 +22,8 @@ final class LoweringError extends Error {
   String toString() => 'internal compiler error during lowering: $message';
 }
 
-/// Lowers a **validated** source to IR. Dart names become C++ names here, via the [ApiRegistry].
+/// Lowers a **validated** source to IR. Dart names become C++ names here, via the [ApiRegistry]; Dart operators
+/// become IR operators with Dart semantics (the emitter makes them faithful in C++).
 ///
 /// Lowering is deliberately strict: rather than guess at anything unexpected, it throws [LoweringError]. Together
 /// with the validator this upholds "reject loudly, never miscompile".
@@ -26,41 +32,260 @@ final class Lowering {
 
   final ApiRegistry api;
 
-  IrProgram lower(ResolvedSource source) => IrProgram(
+  IrProgram lower(ResolvedSource source) => _Lowerer(api, source).program();
+}
+
+final class _Lowerer {
+  _Lowerer(this.api, this.source);
+
+  final ApiRegistry api;
+  final ResolvedSource source;
+
+  IrProgram program() => IrProgram(
         sourceName: source.displayName,
-        functions: [for (final function in entryPoints(source.unit)) _function(function, source)],
+        globals: [for (final variable in topLevelVariables(source.unit)) _global(variable)],
+        functions: [for (final function in compiledFunctions(source.unit)) _function(function)],
       );
 
-  IrFunction _function(FunctionDeclaration function, ResolvedSource source) {
-    final body = function.functionExpression.body;
-    if (body is! BlockFunctionBody) throw LoweringError('${function.name.lexeme} has no block body');
+  int _line(SyntacticEntity node) => source.lineInfo.getLocation(node.offset).lineNumber;
+
+  IrType _type(DartType? type, Object where) =>
+      irTypeOf(type) ?? (throw LoweringError('unsupported type $type at $where'));
+
+  IrStorage _storage(VariableDeclaration variable) => variable.isConst
+      ? IrStorage.constant
+      : variable.isFinal
+          ? IrStorage.final_
+          : IrStorage.mutable;
+
+  IrGlobal _global(VariableDeclaration variable) => IrGlobal(
+        name: variable.name.lexeme,
+        type: _type(variable.declaredFragment?.element.type, variable.name),
+        storage: _storage(variable),
+        initializer: _expression(variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'))),
+        line: _line(variable.name),
+      );
+
+  IrFunction _function(FunctionDeclaration function) {
+    final expression = function.functionExpression;
+    final element = function.declaredFragment?.element ?? (throw LoweringError('unresolved ${function.name}'));
+    final returnType = _type(element.returnType, function.name);
+    final body = expression.body;
+    final List<IrStatement> statements = switch (body) {
+      BlockFunctionBody(:final block) => _statements(block.statements),
+      ExpressionFunctionBody(expression: final e) when returnType == IrType.void_ => [_statementLevel(e)],
+      ExpressionFunctionBody(expression: final e) => [IrReturn(_expression(e), line: _line(e))],
+      _ => throw LoweringError('unsupported body of ${function.name.lexeme}'),
+    };
     return IrFunction(
       name: function.name.lexeme,
-      line: _line(source, function.firstTokenAfterCommentAndMetadata.offset),
-      body: [for (final statement in body.block.statements) _statement(statement, source)],
-      isEntryPoint: true,
+      line: _line(function.firstTokenAfterCommentAndMetadata),
+      returnType: returnType,
+      parameters: [
+        for (final parameter in expression.parameters?.parameters ?? const <FormalParameter>[])
+          IrParameter(parameter.name!.lexeme, _type(parameter.declaredFragment?.element.type, parameter)),
+      ],
+      body: statements,
+      isEntryPoint: isEntryPoint(function),
     );
   }
 
-  IrStatement _statement(Statement statement, ResolvedSource source) {
-    if (statement case ExpressionStatement(expression: final MethodInvocation call)) {
-      final function = api.resolveCall(call) ?? (throw LoweringError('unresolved call ${call.toSource()}'));
-      return IrExpressionStatement(
-        IrCall(function.cppName, [for (final argument in call.argumentList.arguments) _argument(argument)]),
-        line: _line(source, statement.offset),
-      );
+  // -------------------------------------------------------------------------------------------------------------
+  // Statements
+
+  /// The statements of a branch or loop body: a block's statements, or the single statement.
+  List<IrStatement> _body(Statement statement) =>
+      statement is Block ? _statements(statement.statements) : _statements([statement]);
+
+  /// Lowers a statement list; `int a = 1, b = 2;` becomes one IR local per variable, in order, in the same scope.
+  List<IrStatement> _statements(List<Statement> statements) => [
+        for (final statement in statements)
+          if (statement is VariableDeclarationStatement)
+            for (final variable in statement.variables.variables) _local(variable)
+          else
+            _statement(statement),
+      ];
+
+  IrStatement _statement(Statement statement) {
+    final line = _line(statement);
+    switch (statement) {
+      case Block(:final statements):
+        return IrBlock(_statements(statements), line: line);
+      case ExpressionStatement(:final expression):
+        return _statementLevel(expression);
+      case IfStatement(:final expression, :final thenStatement, :final elseStatement):
+        return IrIf(
+          _expression(expression),
+          _body(thenStatement),
+          otherwise: elseStatement == null ? null : _body(elseStatement),
+          line: line,
+        );
+      case WhileStatement(:final condition, :final body):
+        return IrWhile(_expression(condition), _body(body), line: line);
+      case ForStatement(:final forLoopParts, :final body):
+        return _for(forLoopParts, _body(body), line);
+      case ReturnStatement(:final expression):
+        return IrReturn(expression == null ? null : _expression(expression), line: line);
+      case BreakStatement(label: null):
+        return IrBreak(line: line);
+      case ContinueStatement(label: null):
+        return IrContinue(line: line);
+      default:
+        throw LoweringError('unsupported statement ${statement.toSource()}');
     }
-    throw LoweringError('unsupported statement ${statement.toSource()}');
   }
 
-  IrExpression _argument(Argument argument) {
-    if (argument is IntegerLiteral && argument.value != null) return IrIntLiteral(argument.value!);
-    if (argument is Expression) {
-      final constant = api.resolveConstant(argument);
-      if (constant != null) return IrConstant(constant.cppName);
-    }
-    throw LoweringError('unsupported argument ${argument.toSource()}');
+  IrLocal _local(VariableDeclaration variable) {
+    final initializer = variable.initializer;
+    return IrLocal(
+      name: variable.name.lexeme,
+      type: _type(variable.declaredFragment?.element.type, variable.name),
+      storage: _storage(variable),
+      initializer: initializer == null ? null : _expression(initializer),
+      line: _line(variable.parent!.parent!),
+    );
   }
 
-  int _line(ResolvedSource source, int offset) => source.lineInfo.getLocation(offset).lineNumber;
+  IrFor _for(ForLoopParts parts, List<IrStatement> body, int line) => switch (parts) {
+        ForPartsWithDeclarations(variables: VariableDeclarationList(variables: [final v]), :final condition) => IrFor(
+            initializer: _local(v),
+            condition: condition == null ? null : _expression(condition),
+            updates: [for (final u in parts.updaters) _statementLevel(u)],
+            body: body,
+            line: line,
+          ),
+        ForPartsWithExpression(:final initialization, :final condition, :final updaters) => IrFor(
+            initializer: initialization == null ? null : _statementLevel(initialization),
+            condition: condition == null ? null : _expression(condition),
+            updates: [for (final u in updaters) _statementLevel(u)],
+            body: body,
+            line: line,
+          ),
+        _ => throw LoweringError('unsupported for loop ${parts.toSource()}'),
+      };
+
+  /// A call, an assignment, or `++`/`--` used as a statement.
+  IrStatement _statementLevel(Expression expression) {
+    final line = _line(expression);
+    switch (expression) {
+      case MethodInvocation():
+        return IrExpressionStatement(_call(expression), line: line);
+      case AssignmentExpression(leftHandSide: SimpleIdentifier(:final name), :final operator, :final rightHandSide):
+        final op = switch (operator.type) {
+          TokenType.EQ => IrAssignOp.assign,
+          TokenType.PLUS_EQ => IrAssignOp.add,
+          TokenType.MINUS_EQ => IrAssignOp.subtract,
+          _ => throw LoweringError('unsupported assignment ${expression.toSource()}'),
+        };
+        return IrAssign(name, op, _expression(rightHandSide), line: line);
+      case PrefixExpression(operand: SimpleIdentifier(:final name), :final operator) ||
+              PostfixExpression(operand: SimpleIdentifier(:final name), :final operator)
+          when isIncrementOrDecrement(expression):
+        return IrIncrement(name, decrement: operator.type == TokenType.MINUS_MINUS, line: line);
+      default:
+        throw LoweringError('unsupported statement-level expression ${expression.toSource()}');
+    }
+  }
+
+  // -------------------------------------------------------------------------------------------------------------
+  // Expressions
+
+  IrType _typeOf(Expression expression) => _type(expression.staticType, expression.toSource());
+
+  IrExpression _expression(Expression expression) {
+    switch (expression) {
+      case IntegerLiteral(:final value?):
+        // An integer literal in a double context (`double d = 1;`) is a double in Dart.
+        return (expression.staticType?.isDartCoreDouble ?? false)
+            ? IrDoubleLiteral(value.toDouble())
+            : IrIntLiteral(value);
+      case DoubleLiteral(:final value):
+        return IrDoubleLiteral(value);
+      case BooleanLiteral(:final value):
+        return IrBoolLiteral(value);
+      case ParenthesizedExpression(expression: final inner):
+        return _expression(inner);
+      case SimpleIdentifier():
+        return _identifier(expression);
+      case PrefixExpression(:final operator, :final operand):
+        return switch (operator.type) {
+          TokenType.MINUS => IrUnary(IrUnaryOp.negate, _expression(operand), _typeOf(expression)),
+          TokenType.BANG => IrUnary(IrUnaryOp.not, _expression(operand), IrType.bool_),
+          _ => throw LoweringError('unsupported prefix ${expression.toSource()}'),
+        };
+      case BinaryExpression(:final operator, :final leftOperand, :final rightOperand):
+        final op = _binaryOps[operator.type] ?? (throw LoweringError('unsupported operator ${operator.lexeme}'));
+        return IrBinary(op, _expression(leftOperand), _expression(rightOperand), _typeOf(expression));
+      case ConditionalExpression(:final condition, :final thenExpression, :final elseExpression):
+        return IrConditional(
+          _expression(condition),
+          _expression(thenExpression),
+          _expression(elseExpression),
+          _typeOf(expression),
+        );
+      case MethodInvocation():
+        return _call(expression);
+      case InstanceCreationExpression(:final argumentList):
+        final type =
+            sizedTypeOf(expression.staticType!) ?? (throw LoweringError('constructor ${expression.toSource()}'));
+        return IrConvert(type, _expression(argumentList.arguments.single.argumentExpression));
+      default:
+        throw LoweringError('unsupported expression ${expression.toSource()}');
+    }
+  }
+
+  static const _binaryOps = {
+    TokenType.PLUS: IrBinaryOp.add,
+    TokenType.MINUS: IrBinaryOp.subtract,
+    TokenType.STAR: IrBinaryOp.multiply,
+    TokenType.TILDE_SLASH: IrBinaryOp.truncatingDivide,
+    TokenType.PERCENT: IrBinaryOp.modulo,
+    TokenType.SLASH: IrBinaryOp.divide,
+    TokenType.EQ_EQ: IrBinaryOp.equal,
+    TokenType.BANG_EQ: IrBinaryOp.notEqual,
+    TokenType.LT: IrBinaryOp.less,
+    TokenType.LT_EQ: IrBinaryOp.lessOrEqual,
+    TokenType.GT: IrBinaryOp.greater,
+    TokenType.GT_EQ: IrBinaryOp.greaterOrEqual,
+    TokenType.AMPERSAND_AMPERSAND: IrBinaryOp.and,
+    TokenType.BAR_BAR: IrBinaryOp.or,
+  };
+
+  IrExpression _identifier(SimpleIdentifier identifier) {
+    switch (referenceOf(identifier)) {
+      case UnodarConstantReference():
+        final constant = api.resolveConstant(identifier) ?? (throw LoweringError('unknown constant $identifier'));
+        return IrConstant(constant.cppName);
+      case LocalReference() || GlobalReference():
+        return IrVariable(identifier.name, _typeOf(identifier));
+      default:
+        throw LoweringError('unsupported reference $identifier');
+    }
+  }
+
+  /// A call to an API function (C++ name, arguments in registry order) or a user function.
+  IrCall _call(MethodInvocation call) {
+    final arguments = call.argumentList.arguments;
+    final apiFunction = api.resolveCall(call);
+    if (apiFunction != null) {
+      // Arguments go to C++ in registry order. Named parameters are modelled for Phase 3; until then a named
+      // argument is E004, so `named` is always empty here.
+      final positional = [
+        for (final a in arguments)
+          if (a is! NamedArgument) a.argumentExpression
+      ];
+      final named = {
+        for (final a in arguments)
+          if (a is NamedArgument) a.name.lexeme: a.argumentExpression
+      };
+      if (named.isNotEmpty) throw LoweringError('named argument in ${call.toSource()}');
+      return IrCall(apiFunction.cppName, [for (final e in positional) _expression(e)]);
+    }
+    if (userFunctionOf(call) == null) throw LoweringError('unresolved call ${call.toSource()}');
+    return IrCall(
+      call.methodName.name,
+      [for (final a in arguments) _expression(a.argumentExpression)],
+      type: _typeOf(call),
+    );
+  }
 }

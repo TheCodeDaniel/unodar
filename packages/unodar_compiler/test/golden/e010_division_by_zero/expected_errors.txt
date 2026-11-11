@@ -1,0 +1,10 @@
+input.dart:4:9: error[E010]: this constant expression divides by zero.
+  = help: Use a divisor that is not zero.
+input.dart:5:9: error[E010]: this constant expression divides by zero.
+  = help: Use a divisor that is not zero.
+input.dart:6:12: error[E010]: this constant expression divides by zero.
+  = help: Use a divisor that is not zero.
+input.dart:11:9: error[E010]: this constant expression divides by zero.
+  = help: Use a divisor that is not zero.
+input.dart:12:13: error[E010]: this constant expression divides by zero.
+  = help: Use a divisor that is not zero.
