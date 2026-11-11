@@ -11,6 +11,8 @@ Read `docs/PRD.md` (scope, source of truth) and `docs/PLAN.md` (current phase pl
 - `packages/unodar` must never depend on `analyzer` or Flutter.
 - **Size budgets** (`packages/unodar_compiler/test/size_budgets.dart`) change only in a dedicated commit that explains
   why the output grew and shows the new measurement. Never bump a budget to get a red test green.
+- **Git history:** never rewrite history (rebase, amend, reset, squash of existing commits) or force-push without
+  asking the maintainer first.
 
 ## Style
 - Line length is **120** everywhere (set once in the root `analysis_options.yaml`, inherited by all packages).
