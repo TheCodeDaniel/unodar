@@ -75,7 +75,7 @@ C++ behaves identically:
 | Construct | Rule | C++ |
 |---|---|---|
 | `void setup()`, `void loop()` | Both required. Exactly `void name() { … }` (E006). | Same |
-| Functions | `R name(T a, T b) { … }` or `=> expr;`. `R` is a supported type or `void`; every parameter is required, positional, and has an explicit supported type. Recursion is allowed. | Same, plus a prototype for each function |
+| Functions | `R name(T a, T b) { … }` or `=> expr;`. `R` is a supported type or `void`; every parameter is required, positional, and has an explicit supported type. Recursion, direct or mutual, is rejected (E016). | Same, plus a prototype for each function |
 | `const` variables | `const int x = …;` or `const x = …;` (type inferred). | `constexpr int32_t x = …;` |
 | `final` variables | As above with `final`. | `const int32_t x = …;` |
 | Mutable variables | `int x = …;` or `var x = …;`. | `int32_t x = …;` |
@@ -172,6 +172,13 @@ C++ or the Arduino core (E014):
 - Names ending in `_t`, containing `__` or `$`, starting with `_` and an upper-case letter, or starting with
   `unodar_` (reserved for generated helpers).
 
+## Recursion
+
+A function may not call itself, directly (`f` calls `f`) or through other functions (`ping` calls `pong` calls
+`ping`), E016. The compiler builds the call graph of all user functions, including `setup` and `loop`, and rejects
+every cycle. Reason: the Uno has a 2 KB stack and no overflow check, so where Dart throws `StackOverflowError`,
+the board would silently overwrite its global variables. Rewrite recursion as a loop.
+
 ## Calling the unodar API
 
 | Function | Arduino C++ parameters |
@@ -204,7 +211,6 @@ conditions that cannot be detected at compile time; constant cases are rejected 
 | Integer `~/` or `%` by a variable that is zero | Throws `IntegerDivisionByZeroException` | **Undefined**; on AVR the program continues with a meaningless result. No check is inserted. |
 | `double` precision and range | 64-bit (≈15–17 digits, max ≈1.8e308) | 32-bit `float` (≈6–7 digits, max ≈3.4e38). An `int` mixed with a `double`, or divided with `/`, converts to `float` and keeps only 24 bits of precision (exact up to 16777216). |
 | A non-constant value passed to an Arduino function outside its parameter type | (external) | Converted to the C++ parameter type by C++ rules, e.g. `delay(-1)` waits about 49 days, a pin of 300 becomes 44. |
-| Deep recursion | Throws `StackOverflowError` | No check: the 2 KB stack grows into global variables and the program misbehaves. |
 
 ## Diagnostics summary
 
@@ -225,4 +231,5 @@ conditions that cannot be detected at compile time; constant cases are rejected 
 | Code whose meaning depends on evaluation order | E013 |
 | Name that collides with C++ or Arduino | E014 |
 | Top-level initializer that is not a compile-time constant | E015 |
+| A function that calls itself, directly or through other functions | E016 |
 | Strings, `Serial`, widgets, `Signal`, classes, interop annotations, `cpp()` | not yet available |

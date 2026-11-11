@@ -424,3 +424,37 @@ input.dart:6:15: error[E015]: the initializer of top-level variable 'b' refers t
 ```
 
 (Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`.)
+
+## E016: Recursive function
+
+A function that calls itself, directly or through other user functions. The compiler checks the call graph of
+all functions in the file (including `setup` and `loop`) for cycles and reports each cycle once, at the first
+function of the cycle in source order, with the path. Recursion is rejected because the Uno's 2 KB stack has no
+overflow check: Dart would throw `StackOverflowError`, the board would silently corrupt memory.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+int factorial(int n) => n <= 1 ? 1 : n * factorial(n - 1);
+
+void ping(int n) {
+  if (n > 0) pong(n - 1);
+}
+
+void pong(int n) {
+  if (n > 0) ping(n - 1);
+}
+
+void setup() {}
+
+void loop() {}
+```
+
+```text
+input.dart:3:5: error[E016]: recursion is not supported: 'factorial' calls itself through factorial → factorial.
+  = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.
+input.dart:5:6: error[E016]: recursion is not supported: 'ping' calls itself through ping → pong → ping.
+  = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.
+```
+
+(Golden tests: `test/golden/e016_direct_recursion`, `e016_mutual_recursion`.)

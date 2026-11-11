@@ -8,11 +8,11 @@ Exit gate: every new golden passes and compiles for `arduino:avr:uno`; the seman
 
 | # | Step | Test written first |
 |---|---|---|
-| 1 | Docs: SUBSET, DIAGNOSTICS (E009–E015), DECISIONS, this plan | `docs_test` stays green |
+| 1 | Docs: SUBSET, DIAGNOSTICS (E009–E016), DECISIONS, this plan | `docs_test` stays green |
 | 2 | `packages/unodar`: `Uint8`, `Uint16`, `Int16` extension types | Dart unit tests of the wrapping semantics |
 | 3 | IR + emitter: typed expressions/statements, globals, params/returns, precedence-aware printing, 16-bit widening, `unodar_mod`, prototypes | `emitter_test` on hand-built IR; blink output byte-identical |
-| 4 | Diagnostics registry E009–E015, Phase 2 wording for E002–E005 | Phase 1 goldens updated deliberately |
-| 5 | Validator relaxation, one construct per commit: top-level vars → expressions/operators + constant evaluator → locals/assignments → `if` → `while` → `for`/`break`/`continue` → user functions/`return` → evaluation order → API arguments | A positive golden and a negative golden per construct |
+| 4 | Diagnostics registry E009–E016, Phase 2 wording for E002–E005 | Phase 1 goldens updated deliberately |
+| 5 | Validator relaxation, one construct per commit: top-level vars → expressions/operators + constant evaluator → locals/assignments → `if` → `while` → `for`/`break`/`continue` → user functions/`return` → recursion check (E016) → evaluation order → API arguments | A positive golden and a negative golden per construct |
 | 6 | Fidelity harness: `const` vectors, Dart values from the analyzer, `static_assert` under avr-gcc | `fidelity_test` (tagged `arduino`) |
 | 7 | arduino-cli compile of **every** positive golden; missing budget = failure | `arduino_compile_test` |
 | 8 | Size budgets for the new goldens (dedicated commit with measurements) | `size_budgets.dart` |
