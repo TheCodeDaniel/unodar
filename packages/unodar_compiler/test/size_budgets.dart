@@ -31,4 +31,23 @@ const sizeBudgets = <String, SizeBudget>{
   // Phase 1 baseline, measured 2026-11-10 with arduino-cli 1.5.1 and arduino:avr 1.8.8.
   // Most of the 924 B is the Arduino core (init, timer0 ISR for millis/delay, pin tables), not unodar output.
   'blink': SizeBudget(baselineFlash: 924, baselineRam: 9, maxFlash: 1200, maxRam: 20),
+
+  // Phase 2 baselines, measured 2026-11-11 with arduino-cli 1.5.1 and arduino:avr 1.8.8 (same tool versions as
+  // blink). Limits follow blink's rule: flash max = baseline + 30 %, rounded up to 50 B; RAM max = baseline + 11 B.
+  // These are first measurements of new goldens, not raises of existing budgets.
+  // `doubles` is the largest: it links the AVR soft-float routines (float add/mul/div/compare, int<->float).
+  'api_arguments': SizeBudget(baselineFlash: 1006, baselineRam: 9, maxFlash: 1350, maxRam: 20),
+  'doubles': SizeBudget(baselineFlash: 1838, baselineRam: 13, maxFlash: 2400, maxRam: 24),
+  'expressions': SizeBudget(baselineFlash: 548, baselineRam: 9, maxFlash: 750, maxRam: 20),
+  'for_loop': SizeBudget(baselineFlash: 882, baselineRam: 13, maxFlash: 1150, maxRam: 24),
+  'functions': SizeBudget(baselineFlash: 994, baselineRam: 9, maxFlash: 1300, maxRam: 20),
+  'globals': SizeBudget(baselineFlash: 1436, baselineRam: 23, maxFlash: 1900, maxRam: 34),
+  'if_else': SizeBudget(baselineFlash: 1112, baselineRam: 13, maxFlash: 1450, maxRam: 24),
+  'locals_assignments': SizeBudget(baselineFlash: 634, baselineRam: 13, maxFlash: 850, maxRam: 24),
+  'pulse': SizeBudget(baselineFlash: 1106, baselineRam: 13, maxFlash: 1450, maxRam: 24),
+  'sized_types': SizeBudget(baselineFlash: 766, baselineRam: 14, maxFlash: 1000, maxRam: 25),
+  // subset_features is the Phase 1 golden that never had a budget; measured now with the Phase 2 emitter, whose
+  // output for it is byte-identical to Phase 1.
+  'subset_features': SizeBudget(baselineFlash: 902, baselineRam: 9, maxFlash: 1200, maxRam: 20),
+  'while_loop': SizeBudget(baselineFlash: 812, baselineRam: 13, maxFlash: 1100, maxRam: 24),
 };
