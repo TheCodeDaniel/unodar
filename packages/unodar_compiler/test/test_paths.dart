@@ -9,5 +9,5 @@ final String packageRoot = p.dirname(
 );
 
 /// [parts] joined onto [packageRoot].
-String fromPackage(String part1, [String? part2, String? part3, String? part4]) =>
-    p.join(packageRoot, part1, part2, part3, part4);
+String fromPackage(String part1, [String? part2, String? part3, String? part4, String? part5]) =>
+    p.join(packageRoot, part1, part2, part3, part4, part5);

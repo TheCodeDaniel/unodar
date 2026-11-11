@@ -27,6 +27,12 @@ void main() {
 
   test('golden directory is not empty', () => expect(cases, isNotEmpty));
 
+  // The pulse golden is examples/pulse, so the example's output is reviewed, compiled, and size-budgeted too.
+  test('the pulse golden is a verbatim copy of examples/pulse/main.dart', () {
+    expect(File(fromPackage('test', 'golden', 'pulse', 'input.dart')).readAsStringSync(),
+        File(fromPackage('..', '..', 'examples', 'pulse', 'main.dart')).readAsStringSync());
+  });
+
   for (final dir in cases) {
     test(p.basename(dir.path), () async {
       final input = p.join(dir.path, 'input.dart');

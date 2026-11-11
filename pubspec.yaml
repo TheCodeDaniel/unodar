@@ -10,6 +10,7 @@ workspace:
   - packages/unodar
   - packages/unodar_compiler
   - examples/blink
+  - examples/pulse
 
 dev_dependencies:
   lints: ^6.0.0
