@@ -353,6 +353,15 @@ Servo 1.3.0). `tool/check_arduino.sh` and the `arduino`-tagged tests fail with t
 | `read()` → `int`, `readMicroseconds()` → `int` | |
 | `attached()` → `bool`, `detach()` | |
 
+### Libraries reserve RAM
+
+The Uno has 2048 bytes of RAM, and the objects of each library you use take part of it before your own variables
+do: `Serial` keeps a 64-byte receive and a 64-byte transmit buffer, `Wire` a set of 32-byte buffers, a
+`SoftwareSerial` object its own 64-byte receive buffer, and Servo a table for every servo it can drive. A test
+program using `Serial`, `Wire`, a `SoftwareSerial` object and a `Servo` object together uses **544 B of the 2048 B**
+before any `loop()` locals. This is static allocation (arduino-cli reports it as "Global variables use …"), so it is
+fixed and visible at build time; leave room for the stack. The size budgets record RAM for every binding golden.
+
 ## Escape hatch: `cpp()` and `@CppInclude`
 
 For anything not wrapped yet:
