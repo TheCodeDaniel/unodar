@@ -139,7 +139,7 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
 ```
 
 (Golden tests: `test/golden/e004_argument_out_of_range`, `e004_more_ranges`, `e004_core_io_ranges`,
-`e004_serial_digits`, `e004_binding_ranges`.)
+`e004_serial_digits`, `e004_binding_ranges`, `e004_wire_ranges`.)
 
 ## E005: Unsupported top-level declaration
 

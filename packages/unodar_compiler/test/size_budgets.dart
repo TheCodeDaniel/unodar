@@ -62,4 +62,6 @@ const sizeBudgets = <String, SizeBudget>{
   // user_binding: two SoftwareSerial objects (64-byte shared receive buffer, per-object state) plus Serial, which
   // the `usb` binding reaches; RAM 348 B of 2048 B.
   'user_binding': SizeBudget(baselineFlash: 5038, baselineRam: 348, maxFlash: 6550, maxRam: 359),
+  // wire: TwoWire and twi.c keep five 32-byte buffers, plus Serial's two 64-byte buffers; RAM 408 B of 2048 B.
+  'wire': SizeBudget(baselineFlash: 4536, baselineRam: 408, maxFlash: 5900, maxRam: 419),
 };

@@ -1,0 +1,12 @@
+input.dart:5:17: error[E004]: argument -1 is out of range for parameter 'frequency' of Wire.setClock, which is a uint32_t (0 to 4294967295).
+  = help: Pass a value from 0 to 4294967295.
+input.dart:9:26: error[E004]: argument 256 is out of range for parameter 'address' of Wire.beginTransmission, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:10:14: error[E004]: argument -1 is out of range for parameter 'value' of Wire.write, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:11:14: error[E004]: argument 256 is out of range for parameter 'value' of Wire.write, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:13:26: error[E004]: argument 40000 is out of range for parameter 'quantity' of Wire.requestFrom, which is an int (-32768 to 32767).
+  = help: Pass a value from -32768 to 32767.
+input.dart:15:21: error[E013]: 'Wire.read()' and 'Wire.read()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = Wire.read();`.
