@@ -275,10 +275,12 @@ final class ArgumentRule implements ValidationRule {
         }
         if (index >= positional.length) continue; // An analyzer error (too many arguments) already.
         final parameter = positional[index++];
+        final (min, max) = (parameter.min, parameter.max);
+        if (min == null || max == null) continue;
         final value = context.constants.valueOf(argument.argumentExpression);
-        if (value is int && (value < parameter.min || value > parameter.max)) {
-          context.report(Diagnostics.argumentOutOfRange('$value', parameter.name, function.dartName, parameter.cppType,
-              '${parameter.min} to ${parameter.max}', context.at(argument)));
+        if (value is int && (value < min || value > max)) {
+          context.report(Diagnostics.argumentOutOfRange(
+              '$value', parameter.name, function.dartName, parameter.cppType!, '$min to $max', context.at(argument)));
         }
       }
     }

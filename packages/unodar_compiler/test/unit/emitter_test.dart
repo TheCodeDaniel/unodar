@@ -16,6 +16,9 @@ final class Int32Target implements Target {
   List<String> get includes => const ['Arduino.h'];
   @override
   List<String> get buildProperties => _uno.buildProperties;
+
+  @override
+  CppScalarType? cppScalarType(String name) => _uno.cppScalarType(name);
   @override
   int get nativeIntBits => 32;
   @override
