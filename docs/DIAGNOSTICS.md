@@ -109,8 +109,9 @@ An argument the unodar API function cannot accept:
 
 - a **constant** argument outside the range of the Arduino C++ parameter type (`uint8_t` pin/mode/value:
   0 to 255; `int` analog value: -32768 to 32767; `unsigned long` milliseconds and baud rate: not negative), or of
-  a binding parameter's `@CppType`. Non-constant values are converted at runtime instead (see "Known deviations
-  from Dart" in `docs/SUBSET.md`);
+  a binding parameter's `@CppType`, or of its narrower `@CppRange` (Servo's `attach` `min:` 33 to 1059, `max:`
+  1889 to 2915). A `@CppRange` violation is reported as "…, which accepts 33 to 1059 (`@CppRange`).". Non-constant
+  values are converted at runtime instead (see "Known deviations from Dart" in `docs/SUBSET.md`);
 - `digits:` given to `Serial.print`/`println` with a value that is not a `double` (for an `int`, Arduino's second
   argument would mean the number base);
 - a named argument the function does not declare. The analyzer already reports such a call as E007; E004 is the
@@ -139,7 +140,8 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
 ```
 
 (Golden tests: `test/golden/e004_argument_out_of_range`, `e004_more_ranges`, `e004_core_io_ranges`,
-`e004_serial_digits`, `e004_binding_ranges`, `e004_wire_ranges`, `e004_servo_ranges`.)
+`e004_serial_digits`, `e004_binding_ranges`, `e004_wire_ranges`, `e004_servo_ranges`, `e004_servo_pulse_min`,
+`e004_servo_pulse_max`.)
 
 ## E005: Unsupported top-level declaration
 
@@ -379,7 +381,7 @@ input.dart:13:17: error[E013]: 'next()' may run before or after 'count' is read 
 ```
 
 (Golden tests: `test/golden/e013_call_and_global`, `e013_two_calls`, `e013_arguments`, `e013_compound_assignment`,
-`e013_api_calls`.)
+`e013_api_calls`, `e013_method_calls`.)
 
 ## E014: Reserved name
 
@@ -487,7 +489,9 @@ parameters; an optional positional parameter, a named parameter without a consta
 or an unsupported parameter or return type. Also an interop annotation in the wrong place or with a bad argument:
 `@CppInclude` anywhere but the `library;` directive, `@CppName`/`@CppType`/`@CppHeader` on a declaration they do
 not apply to, an argument that is not a string literal, a C++ name that is not a valid identifier, a header that
-is not a plain file path, or a `@CppType` that is not one of the accepted types or does not fit the Dart type. All
+is not a plain file path, a `@CppType` that is not one of the accepted types or does not fit the Dart type, or a
+`@CppRange` that is not on an integer binding parameter, whose bounds are not integer literals, are reversed, or lie
+outside the parameter's C++ type. All
 problems with one member are listed in one diagnostic.
 
 ```dart
@@ -512,7 +516,8 @@ input.dart:7:19: error[E017]: unsupported binding method 'readTemperature': it h
   = help: Make each parameter required, or named with a constant default value, e.g. `{int retries = 1}`.
 ```
 
-(Golden tests: `test/golden/e017_binding_members`, `e017_binding_signatures`, `e017_annotations`.)
+(Golden tests: `test/golden/e017_binding_members`, `e017_binding_signatures`, `e017_annotations`,
+`e017_cpp_range`.)
 
 ## E018: Bound object misuse
 

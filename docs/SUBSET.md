@@ -306,6 +306,11 @@ Rules (E017 for any violation):
   `bool`, `float`, `double`, `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int`,
   `unsigned int`, `long`, `unsigned long`, `size_t`. An integer method without `@CppType` is emitted as
   `int32_t(obj.method(…))`.
+- `@CppRange(min, max)` on an integer parameter narrows the range of its C++ type to the values the library
+  actually handles, e.g. `{@CppType('int') @CppRange(33, 1059) int min = 544}` on `Servo.attach`. Constant
+  arguments outside it are E004, like those outside the C++ type. Both bounds are integer literals within the C++
+  type's range, and `min <= max`. It does not change the C++ type or the conversion; non-constant values are not
+  checked (see deviations).
 - C++ names must be valid C++ identifiers, and header names plain file paths (`Wire.h`, `utility/twi.h`).
 
 **Using a binding** (E018 otherwise): a bound object is a top-level `final` variable initialized by its
@@ -344,7 +349,7 @@ Servo 1.3.0). `tool/check_arduino.sh` and the `arduino`-tagged tests fail with t
 | Dart (`Servo`) | C++ |
 |---|---|
 | `final servo = Servo();` | `Servo servo;` |
-| `attach(pin, {min = 544, max = 2400})` → `int` | `servo.attach(int, int, int)`; pulse widths in µs. The library stores them in 4 µs steps as `int8_t` offsets, so keep `min` within 33…1059 and `max` within 1889…2915. |
+| `attach(pin, {min = 544, max = 2400})` → `int` | `servo.attach(int, int, int)`; pulse widths in µs. The library stores them as `int8_t` offsets in 4 µs steps from 544 and 2400, so only `min` 33…1059 and `max` 1889…2915 work; constants outside are E004 (`@CppRange`). |
 | `write(angle)`, `writeMicroseconds(us)` | `int` parameters |
 | `read()` → `int`, `readMicroseconds()` → `int` | |
 | `attached()` → `bool`, `detach()` | |
@@ -425,7 +430,7 @@ conditions that cannot be detected at compile time; constant cases are rejected 
 | `x % -1` at runtime when `x` is -2147483648 | 0 | **Undefined behaviour**: C++'s `%`, which `unodar_mod` starts from, overflows for this pair. Every other pair, including the divisor -2147483648, is exact. |
 | Integer `~/` or `%` by a variable that is zero | Throws `IntegerDivisionByZeroException` | **Undefined**; on AVR the program continues with a meaningless result. No check is inserted. |
 | `double` precision and range | 64-bit (≈15–17 digits, max ≈1.8e308) | 32-bit `float` (≈6–7 digits, max ≈3.4e38). An `int` mixed with a `double`, or divided with `/`, converts to `float` and keeps only 24 bits of precision (exact up to 16777216). |
-| A non-constant value passed to an Arduino function or a binding parameter outside its C++ parameter type | (external) | Converted to the C++ parameter type by C++ rules, e.g. `delay(-1)` waits about 49 days, a pin of 300 becomes 44. |
+| A non-constant value passed to an Arduino function or a binding parameter outside its C++ parameter type or its `@CppRange` | (external) | Converted to the C++ parameter type by C++ rules, e.g. `delay(-1)` waits about 49 days, a pin of 300 becomes 44; a value outside a `@CppRange` is passed unchanged and the library misbehaves (Servo wraps its `int8_t` offset). |
 | `millis()` after about 24.8 days, `micros()` after about 35.8 minutes of uptime | (external) | The value passes 2147483647 and continues at -2147483648, wrapping like an `int32_t` (Arduino's `unsigned long` counter, converted). **Elapsed time stays correct**: `now - last` wraps too (`-fwrapv`), so `if (now - last >= interval)` works across the wrap for any interval below 2147483648. Comparing two readings directly (`now > last`) does not. |
 | `Serial.print` of a `double` | (external; Dart's `toString()` would print `1.5`) | Arduino's fixed-point format: `digits` decimals (default 2), so `1.50`; `nan`, `inf`, and `ovf` (above about 4.3e9) for special values. |
 | Bound objects | (external) | Constructed before `setup()` runs (C++ static initialization), not lazily on first use like a Dart top-level `final`. |
