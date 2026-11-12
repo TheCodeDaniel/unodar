@@ -12,6 +12,8 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/emitter/emitter.dart';
 
+import 'test_paths.dart';
+
 const installHelp = '''
 arduino-cli and the arduino:avr core are required for this check. Install with:
   brew install arduino-cli            # macOS; other platforms: https://arduino.github.io/arduino-cli/latest/installation/
@@ -52,6 +54,9 @@ final class ArduinoBuild {
 
   Map<String, Object?>? get _builder => json?['builder_result'] as Map<String, Object?>?;
 
+  /// The Intel HEX image arduino-cli produced (what an upload would write to flash).
+  String get hexPath => p.join(_builder!['build_path']! as String, '$name.ino.hex');
+
   /// The heap functions the linked program contains (PRD §11 "no heap"), read from its symbol table with the
   /// core's own `avr-nm`. Empty means nothing in the sketch, the core, or a library calls the allocator: avr-libc's
   /// malloc is only linked in when something references it.
@@ -85,8 +90,9 @@ final class ArduinoBuild {
   }
 }
 
-/// Writes [cpp] as `<name>/<name>.ino` in a temporary sketch folder and compiles it for the Uno.
-Future<ArduinoBuild> compileSketch(String name, String cpp) async {
+/// Writes [cpp] as `<name>/<name>.ino` in a temporary sketch folder and compiles it for the Uno, with
+/// [buildProperties] (default: the target's, i.e. -fwrapv; the runtime harness's negative control passes none).
+Future<ArduinoBuild> compileSketch(String name, String cpp, {List<String>? buildProperties}) async {
   final sketch = Directory.systemTemp.createTempSync('unodar_arduino_').path;
   addTearDown(() => Directory(sketch).deleteSync(recursive: true));
   final dir = Directory(p.join(sketch, name))..createSync();
@@ -96,7 +102,7 @@ Future<ArduinoBuild> compileSketch(String name, String cpp) async {
     'compile',
     '--fqbn',
     const UnoTarget().fqbn,
-    for (final property in const UnoTarget().buildProperties) ...['--build-property', property],
+    for (final property in buildProperties ?? const UnoTarget().buildProperties) ...['--build-property', property],
     // Inside the temporary sketch folder, so the .elf is ours to inspect and is removed with it.
     '--build-path',
     p.join(sketch, 'build'),
@@ -112,6 +118,55 @@ Future<ArduinoBuild> compileSketch(String name, String cpp) async {
     json = null;
   }
   return ArduinoBuild(run.exitCode, json, output, name: name);
+}
+
+/// The avr8js runner (docs/DECISIONS.md "runtime fidelity harness").
+final String avrRunner = p.join(packageRoot, '..', '..', 'tool', 'avr_runner', 'run.mjs');
+
+const nodeHelp = '''
+The runtime fidelity harness runs programs in avr8js, which needs Node.js 20.19 or later. Install with:
+  brew install node                   # macOS; other platforms: https://nodejs.org/
+  (cd tool/avr_runner && npm ci)      # installs the pinned avr8js from package-lock.json''';
+
+/// Null when Node.js and the runner's pinned avr8js are installed; otherwise what is missing.
+String? missingRunner() {
+  try {
+    final node = Process.runSync('node', ['--version']);
+    if (node.exitCode != 0) return 'node failed: ${node.stderr}';
+  } on ProcessException {
+    return 'node (Node.js) is not on PATH';
+  }
+  final installed = File(p.join(p.dirname(avrRunner), 'node_modules', 'avr8js', 'package.json'));
+  if (!installed.existsSync()) return 'avr8js is not installed in tool/avr_runner (run `npm ci` there)';
+  return null;
+}
+
+/// Runs [hexPath] in avr8js until it prints [until] (or the runner's cycle limit), with ADC channel voltages
+/// [adc] (`{0: 5.0}` sets A0 to 5 V). Returns what the program sent on the serial port.
+Future<String> runInSimulator(String hexPath, {Map<int, double> adc = const {}, String until = 'DONE'}) async {
+  final run = await Process.run('node', [
+    avrRunner,
+    hexPath,
+    '--until',
+    until,
+    for (final MapEntry(:key, :value) in adc.entries) ...['--adc', 'A$key=$value'],
+  ]);
+  if (run.exitCode != 0) fail('avr_runner exited with ${run.exitCode}:\n${run.stdout}\n${run.stderr}');
+  return run.stdout as String;
+}
+
+/// [arduinoGate] for tests that also run programs in avr8js.
+({Object skip, void Function() check}) simulatorGate() {
+  final arduino = arduinoGate();
+  final missing = missingRunner();
+  final require = Platform.environment['UNODAR_REQUIRE_ARDUINO'] == '1';
+  return (
+    skip: arduino.skip != false ? arduino.skip : (missing == null || require ? false : 'SKIPPED: $missing.\n$nodeHelp'),
+    check: () {
+      arduino.check();
+      if (missing != null) fail('$missing (UNODAR_REQUIRE_ARDUINO=1).\n$nodeHelp');
+    },
+  );
 }
 
 /// The `skip:` value for a group that needs the toolchain, and a check that fails when it is required but missing.

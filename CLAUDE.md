@@ -26,9 +26,11 @@ UPDATE_GOLDENS=1 dart test packages/unodar_compiler/test/golden_test.dart   # de
 dart run packages/unodar_compiler/bin/unodar.dart build examples/blink/main.dart -o out
 tool/check_arduino.sh                                                     # arduino-cli compile of the examples
 tool/extract_arduino_names.sh                                             # regenerate input for the E014 deny-list
+(cd tool/avr_runner && npm ci)                                            # avr8js for the runtime fidelity harness
 ```
 Tests tagged `arduino` (compile checks, size budgets, fidelity harnesses, reserved names) skip with install
-instructions when arduino-cli is missing. **CI must set `UNODAR_REQUIRE_ARDUINO=1`** so they fail instead;
+instructions when arduino-cli, the arduino:avr core, or the Servo library is missing; the runtime fidelity harness
+also needs Node.js and `npm ci` in `tool/avr_runner`. **CI must set `UNODAR_REQUIRE_ARDUINO=1`** so they fail instead;
 `.github/workflows/ci.yml` does, and also fails on any skipped test (`tool/ci_no_skips.sh`).
 
 ## Pipeline map (`packages/unodar_compiler/lib/src/`)

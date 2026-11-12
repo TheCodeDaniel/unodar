@@ -5,3 +5,5 @@ pubspec_overrides.yaml
 # Compiler output from the CLI and tests.
 out/
 .determinism_tmp/
+# The avr8js runner's dependencies (installed with `npm ci` from tool/avr_runner/package-lock.json).
+tool/avr_runner/node_modules/

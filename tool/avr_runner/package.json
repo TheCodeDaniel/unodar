@@ -1,0 +1,12 @@
+{
+  "name": "unodar-avr-runner",
+  "private": true,
+  "description": "Runs an ATmega328P .hex in avr8js and prints its USART output (unodar runtime fidelity harness).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "avr8js": "0.21.1"
+  }
+}
