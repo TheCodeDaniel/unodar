@@ -52,7 +52,7 @@ abstract final class Diagnostics {
   static Diagnostic namedArgument(String name, String function, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.unsupportedArgument,
         location: at,
-        message: "the named argument '$name' is not supported: $function has no named parameters in this version.",
+        message: "the named argument '$name' of $function is not supported in this version.",
         suggestion: 'Pass the arguments positionally, in the order of the declaration.',
       );
 

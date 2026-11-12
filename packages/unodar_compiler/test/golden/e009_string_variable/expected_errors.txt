@@ -1,0 +1,6 @@
+input.dart:3:13: error[E009]: the type 'String' is not supported in this version. Only int, double, bool, Uint8, Uint16, and Int16 are supported.
+  = help: Use one of the supported types; see docs/SUBSET.md.
+input.dart:4:18: error[E009]: the type 'String' is not supported in this version. Only int, double, bool, Uint8, Uint16, and Int16 are supported.
+  = help: Use one of the supported types; see docs/SUBSET.md.
+input.dart:12:18: error[E009]: the type 'num' is not supported in this version. Only int, double, bool, Uint8, Uint16, and Int16 are supported.
+  = help: Make both branches the same type, e.g. write `1.0` instead of `1`.

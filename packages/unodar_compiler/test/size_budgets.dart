@@ -55,4 +55,7 @@ const sizeBudgets = <String, SizeBudget>{
   // rule as Phase 2. Each lands with its golden (docs/DECISIONS.md); step 9 reviews them together.
   // core_io links analogRead/analogWrite (wiring_analog.c) and micros().
   'core_io': SizeBudget(baselineFlash: 1740, baselineRam: 14, maxFlash: 2300, maxRam: 25),
+  // serial_print links HardwareSerial and Print (incl. printFloat and the soft-float routines); its 204 B RAM is
+  // mostly Serial's 64-byte receive and transmit buffers.
+  'serial_print': SizeBudget(baselineFlash: 4154, baselineRam: 204, maxFlash: 5450, maxRam: 215),
 };

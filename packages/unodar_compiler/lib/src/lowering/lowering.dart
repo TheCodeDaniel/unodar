@@ -263,35 +263,101 @@ final class _Lowerer {
     }
   }
 
-  /// A call to an API function (C++ name, arguments in registry order) or a user function.
+  /// A call to an API function, an object method, or a user function.
   IrCall _call(MethodInvocation call) {
-    final arguments = call.argumentList.arguments;
     final apiFunction = api.resolveCall(call);
     if (apiFunction != null) {
-      // Arguments go to C++ in registry order. Named parameters are modelled for Phase 3; until then a named
-      // argument is E004, so `named` is always empty here.
-      final positional = [
-        for (final a in arguments)
-          if (a is! NamedArgument) a.argumentExpression
-      ];
-      final named = {
-        for (final a in arguments)
-          if (a is NamedArgument) a.name.lexeme: a.argumentExpression
-      };
-      if (named.isNotEmpty) throw LoweringError('named argument in ${call.toSource()}');
       return IrCall(
         apiFunction.cppName,
-        [for (final e in positional) _expression(e)],
+        _apiArguments(apiFunction, call.argumentList),
         type: apiFunction.returnType,
         cppResult: _cppResult(apiFunction),
+      );
+    }
+    final method = api.resolveMethodCall(call);
+    if (method != null) {
+      final function = method.method;
+      if (function.parameters.firstOrNull?.isPrintable ?? false) {
+        return _printCall(method.receiver, function, call.argumentList);
+      }
+      return IrCall(
+        function.cppName,
+        _apiArguments(function, call.argumentList),
+        receiver: method.receiver,
+        type: function.returnType,
+        cppResult: _cppResult(function),
       );
     }
     if (userFunctionOf(call) == null) throw LoweringError('unresolved call ${call.toSource()}');
     return IrCall(
       call.methodName.name,
-      [for (final a in arguments) _expression(a.argumentExpression)],
+      [for (final a in call.argumentList.arguments) _expression(a.argumentExpression)],
       type: _typeOf(call),
     );
+  }
+
+  /// The arguments of an API call in C++ parameter order: positional ones, then each named parameter's argument or,
+  /// if omitted, its declared default.
+  List<IrExpression> _apiArguments(ApiFunction function, ArgumentList list) {
+    final positional = [
+      for (final a in list.arguments)
+        if (a is! NamedArgument) a.argumentExpression
+    ];
+    final named = {
+      for (final a in list.arguments)
+        if (a is NamedArgument) a.name.lexeme: a.argumentExpression
+    };
+    if (positional.length != function.positionalParameters.length) {
+      throw LoweringError('argument count of ${function.dartName}');
+    }
+    var index = 0;
+    return [
+      for (final parameter in function.parameters)
+        if (!parameter.isNamed)
+          _expression(positional[index++])
+        else if (named[parameter.name] case final argument?)
+          _expression(argument)
+        else
+          _default(parameter),
+    ];
+  }
+
+  IrExpression _default(ApiParameter parameter) => switch ((parameter.defaultValue, parameter.type)) {
+        (final int value, IrType.float32) => IrDoubleLiteral(value.toDouble()),
+        (final int value, _) => IrIntLiteral(value),
+        (final double value, _) => IrDoubleLiteral(value),
+        (final bool value, _) => IrBoolLiteral(value),
+        _ => throw LoweringError('missing required named argument ${parameter.name}'),
+      };
+
+  /// `Serial.print`/`println` (docs/SUBSET.md "Serial"): the value's static type picks the C++ overload. A string
+  /// literal is a flash string, `Serial.println('')` is `Serial.println()`, a bool prints `true`/`false` like Dart,
+  /// and only a double takes `digits` (given or default).
+  IrCall _printCall(String receiver, ApiFunction function, ArgumentList list) {
+    final value = list.arguments.firstWhere((a) => a is! NamedArgument).argumentExpression;
+    final digits = [
+      for (final a in list.arguments)
+        if (a is NamedArgument && a.name.lexeme == 'digits') a.argumentExpression
+    ].firstOrNull;
+    IrCall print(List<IrExpression> arguments) => IrCall(function.cppName, arguments, receiver: receiver);
+    if (value is StringLiteral) {
+      final text = value.stringValue ?? (throw LoweringError('interpolated print argument ${value.toSource()}'));
+      if (text.isEmpty && function.cppName == 'println') return print(const []);
+      return print([IrStringLiteral(text)]);
+    }
+    final ir = _expression(value);
+    switch (ir.type) {
+      case IrType.bool_:
+        return print([IrConditional(ir, const IrStringLiteral('true'), const IrStringLiteral('false'), IrType.string)]);
+      case IrType.float32:
+        final parameter = function.namedParameter('digits')!;
+        return print([ir, digits == null ? _default(parameter) : _expression(digits)]);
+      case IrType.int32 || IrType.uint8 || IrType.uint16 || IrType.int16:
+        if (digits != null) throw LoweringError('digits with a non-double value ${list.toSource()}');
+        return print([ir]);
+      case IrType.void_ || IrType.string:
+        throw LoweringError('unprintable value ${value.toSource()}');
+    }
   }
 
   /// The C++ result type of an API function or binding method, for the emitter's conversions; null for `void`.

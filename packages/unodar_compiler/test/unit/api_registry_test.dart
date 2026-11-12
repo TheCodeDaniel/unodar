@@ -45,6 +45,27 @@ void loop() {}
     }
   });
 
+  test('every registered object and class method matches its Dart declaration', () {
+    for (final name in ['Serial']) {
+      final object = registry.object(name)!;
+      final getter = unodar[name] as GetterElement;
+      final variable = getter.variable as TopLevelVariableElement;
+      expect((variable.isExternal, variable.isFinal), (true, true), reason: name);
+      final cls = registry.classOf(object);
+      final declaration = unodar[cls.dartName] as ClassElement;
+      expect(variable.type.element, same(declaration), reason: name);
+      expect(declaration.methods.map((m) => m.name), cls.methods.map((m) => m.dartName), reason: cls.dartName);
+      for (final method in cls.methods) {
+        final dart = declaration.methods.singleWhere((m) => m.name == method.dartName);
+        expect(
+          [for (final p in dart.formalParameters) (p.name, p.isNamed, p.computeConstantValue()?.toIntValue())],
+          [for (final p in method.parameters) (p.name, p.isNamed, p.defaultValue)],
+          reason: '${cls.dartName}.${method.dartName}',
+        );
+      }
+    }
+  });
+
   test('every registered constant is a const in package:unodar', () {
     for (final name in registry.constantNames) {
       final getter = unodar[name];

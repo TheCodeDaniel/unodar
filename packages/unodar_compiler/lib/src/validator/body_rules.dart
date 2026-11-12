@@ -165,7 +165,19 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
       return e002("a property access ('${expression.toSource()}')",
           'Properties and methods of values are not supported in this version.');
     case StringLiteral():
-      return e002('a string literal', 'Strings arrive with Serial in Phase 3.');
+      if (!isPrintArgument(expression)) {
+        return e002('a string literal here',
+            'A string literal can only be the value printed by `Serial.print` or `Serial.println`.');
+      }
+      final value = expression.stringValue;
+      if (value == null) {
+        return e002('string interpolation',
+            "Print the parts with separate calls, e.g. `Serial.print('x = '); Serial.println(x);`.");
+      }
+      if (value.contains('\x00')) {
+        return e002('a NUL character in a string', 'Remove it: C++ would end the string there.');
+      }
+      return null;
     case IsExpression() || AsExpression():
       return e002(expression is IsExpression ? 'a type test (`is`)' : 'a cast (`as`)',
           'Declare the variable with the type you need instead.');
@@ -212,7 +224,14 @@ final class ExpressionTypeRule implements ValidationRule {
     for (final root in roots) {
       walkExpression(root, (expression) {
         if (expressionIssue(expression) != null) return false;
-        if (expression is MethodInvocation && expression.target != null) return false;
+        // A print argument; any other string literal is reported by ExpressionRule.
+        if (expression is StringLiteral) return false;
+        // Method calls on numbers (`x.abs()`) are E003; methods of API objects are checked like functions.
+        if (expression is MethodInvocation &&
+            expression.target != null &&
+            context.api.resolveMethodCall(expression) == null) {
+          return false;
+        }
         final type = expression.staticType;
         // An unresolved name has no real type; the analyzer (E007) or ApiCallRule (E003) reports it.
         if (type is InvalidType) return false;
@@ -244,7 +263,7 @@ final class ApiCallRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
-      if (context.api.resolveCall(call) != null || userFunctionOf(call) != null) continue;
+      if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null) continue;
       final target = call.target;
       final name = target == null ? call.methodName.name : '${target.toSource()}.${call.methodName.name}';
       context.report(Diagnostics.unknownFunction(name, context.api.functionNames, context.at(call.methodName)));
@@ -264,7 +283,7 @@ final class ArgumentRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
-      final function = context.api.resolveCall(call);
+      final function = context.api.resolveApiCall(call);
       if (function == null) continue;
       final positional = function.positionalParameters;
       var index = 0;

@@ -214,7 +214,23 @@ final class ApiRegistry {
           ApiConstant('A5', cppName: 'A5'),
           ApiConstant('LED_BUILTIN', cppName: 'LED_BUILTIN'),
         ],
+        // `serial.dart`. Hand-written, not read from annotations: `print`'s value picks the C++ overload.
+        classes: const [
+          ApiClass('HardwareSerial', cppName: 'HardwareSerial', methods: [
+            ApiFunction('begin', cppName: 'begin', parameters: [ApiParameter.unsignedLong('baud')]),
+            ApiFunction('print', cppName: 'print', parameters: _printParameters),
+            ApiFunction('println', cppName: 'println', parameters: _printParameters),
+          ]),
+        ],
+        objects: const [ApiObject('Serial', cppName: 'Serial', className: 'HardwareSerial')],
       );
+
+  /// `print(Object value, {int digits = 2})`. The value is [ApiParameter.printable]; `digits` is passed only with
+  /// a `double` value (`Print::print(double, int)`; `printFloat` takes it as a `uint8_t`, hence its range).
+  static const _printParameters = [
+    ApiParameter.printable('value'),
+    ApiParameter.uint8('digits', isNamed: true, defaultValue: 2),
+  ];
 
   final Map<String, ApiFunction> _functions;
   final Map<String, ApiConstant> _constants;

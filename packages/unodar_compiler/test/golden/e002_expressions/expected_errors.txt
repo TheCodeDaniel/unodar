@@ -1,7 +1,7 @@
 input.dart:8:7: error[E002]: a property access ('n.isEven') is not supported in this version.
   = help: Properties and methods of values are not supported in this version.
-input.dart:9:13: error[E002]: a string literal is not supported in this version.
-  = help: Strings arrive with Serial in Phase 3.
+input.dart:9:13: error[E002]: a string literal here is not supported in this version.
+  = help: A string literal can only be the value printed by `Serial.print` or `Serial.println`.
 input.dart:10:13: error[E002]: a collection literal is not supported in this version.
   = help: See docs/SUBSET.md for the supported statements and expressions.
 input.dart:11:13: error[E002]: null is not supported in this version.
