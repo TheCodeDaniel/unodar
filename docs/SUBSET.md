@@ -160,7 +160,8 @@ Comparisons get the same treatment where C++ would otherwise compare a `Uint16` 
 with a signed value as *unsigned*: in plain C++, `Uint16(1) < -1` is true.
 
 The same holds for the results of Arduino functions: `analogRead` returns a 16-bit C++ `int`, so
-`analogRead(A0) * 100` is emitted as `int32_t(analogRead(A0)) * 100`. `millis()` and `micros()` return C++
+`analogRead(A0) * 100` is emitted as `analogRead(A0) * 100L` and `analogRead(A0) * scale` as
+`int32_t(analogRead(A0)) * scale` when `scale` is narrow too. `millis()` and `micros()` return C++
 `unsigned long` and are emitted as `int32_t(millis())`, so they compare and subtract as Dart `int`s. Because
 sketches are built with `-fwrapv` (see [Building](#building)), the usual timer check `now - last >= interval` stays
 correct when the counter wraps.

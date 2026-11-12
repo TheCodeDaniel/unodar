@@ -75,6 +75,7 @@ final class UnoTarget implements Target {
   String cppType(IrType type) => switch (type) {
         IrType.void_ => 'void',
         IrType.bool_ => 'bool',
+        IrType.string => 'const __FlashStringHelper *',
         IrType.int32 => 'int32_t',
         IrType.float32 => 'float',
         IrType.uint8 => 'uint8_t',
