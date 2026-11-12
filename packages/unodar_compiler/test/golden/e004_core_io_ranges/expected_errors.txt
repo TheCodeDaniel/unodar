@@ -1,0 +1,8 @@
+input.dart:6:29: error[E004]: argument 256 is out of range for parameter 'pin' of digitalRead, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:7:28: error[E004]: argument -1 is out of range for parameter 'pin' of analogRead, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:8:18: error[E004]: argument 40000 is out of range for parameter 'value' of analogWrite, which is an int (-32768 to 32767).
+  = help: Pass a value from -32768 to 32767.
+input.dart:9:15: error[E004]: argument 300 is out of range for parameter 'pin' of analogWrite, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.

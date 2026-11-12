@@ -97,7 +97,7 @@ void loop() {
 ```
 
 ```text
-input.dart:8:3: error[E003]: unknown function 'tone'. Only functions declared in this file and the unodar API functions pinMode, digitalWrite, and delay can be called in this version.
+input.dart:8:3: error[E003]: unknown function 'tone'. Only functions declared in this file and the unodar API functions pinMode, digitalWrite, delay, digitalRead, analogRead, analogWrite, millis, and micros can be called in this version.
   = help: Declare the function in this file, or remove this call. More Arduino functions arrive in a later phase; see docs/SUBSET.md.
 ```
 

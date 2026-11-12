@@ -38,7 +38,8 @@ void loop() {
 
 ## `docs/DIAGNOSTICS.md`, E003 example output
 
-Lands with the new E003 wording (plan step 5, core I/O).
+Lands with the new E003 wording, in the `cpp()` commit (plan step 5, last construct), since its help points to
+`cpp()`. Until then the E003 message keeps listing the API functions.
 
 ```text
 input.dart:8:3: error[E003]: unknown function 'tone': it is neither declared in this file nor part of the unodar API.

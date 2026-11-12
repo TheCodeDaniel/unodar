@@ -279,7 +279,12 @@ final class _Lowerer {
           if (a is NamedArgument) a.name.lexeme: a.argumentExpression
       };
       if (named.isNotEmpty) throw LoweringError('named argument in ${call.toSource()}');
-      return IrCall(apiFunction.cppName, [for (final e in positional) _expression(e)]);
+      return IrCall(
+        apiFunction.cppName,
+        [for (final e in positional) _expression(e)],
+        type: apiFunction.returnType,
+        cppResult: _cppResult(apiFunction),
+      );
     }
     if (userFunctionOf(call) == null) throw LoweringError('unresolved call ${call.toSource()}');
     return IrCall(
@@ -287,5 +292,12 @@ final class _Lowerer {
       [for (final a in arguments) _expression(a.argumentExpression)],
       type: _typeOf(call),
     );
+  }
+
+  /// The C++ result type of an API function or binding method, for the emitter's conversions; null for `void`.
+  static IrCppResult? _cppResult(ApiFunction function) {
+    if (function.returnType == IrType.void_) return null;
+    final cppType = function.cppReturnType;
+    return cppType == null ? const IrCppResult.unknown() : IrCppResult(cppType);
   }
 }

@@ -173,9 +173,9 @@ final class ApiRegistry {
   }
 
   /// The Arduino core slice declared in `packages/unodar/lib/src/arduino_core.dart`. Parameter and result types are
-  /// those of the Arduino AVR core 1.8.8 (`Arduino.h`, `wiring_digital.c`, `wiring.c`); `api_registry_test` checks
-  /// each row against its Dart declaration. Phase 3 adds each function, constant, and `Serial` in the commit that
-  /// enables it end to end, together with its golden (docs/PLAN.md step 5).
+  /// those of the Arduino AVR core 1.8.8 (`Arduino.h`, `wiring_digital.c`, `wiring_analog.c`, `wiring.c`);
+  /// `api_registry_test` checks each row against its Dart declaration. Phase 3 rows enter in the commit that
+  /// enables them end to end, with their golden (docs/DECISIONS.md).
   factory ApiRegistry.core() => ApiRegistry(
         functions: const [
           ApiFunction('pinMode',
@@ -183,6 +183,22 @@ final class ApiRegistry {
           ApiFunction('digitalWrite',
               cppName: 'digitalWrite', parameters: [ApiParameter.uint8('pin'), ApiParameter.uint8('value')]),
           ApiFunction('delay', cppName: 'delay', parameters: [ApiParameter.unsignedLong('ms')]),
+          ApiFunction('digitalRead',
+              cppName: 'digitalRead',
+              parameters: [ApiParameter.uint8('pin')],
+              returnType: IrType.int32,
+              cppReturnType: 'int'),
+          ApiFunction('analogRead',
+              cppName: 'analogRead',
+              parameters: [ApiParameter.uint8('pin')],
+              returnType: IrType.int32,
+              cppReturnType: 'int'),
+          ApiFunction('analogWrite',
+              cppName: 'analogWrite', parameters: [ApiParameter.uint8('pin'), ApiParameter.int16('value')]),
+          ApiFunction('millis',
+              cppName: 'millis', parameters: [], returnType: IrType.int32, cppReturnType: 'unsigned long'),
+          ApiFunction('micros',
+              cppName: 'micros', parameters: [], returnType: IrType.int32, cppReturnType: 'unsigned long'),
         ],
         constants: const [
           ApiConstant('HIGH', cppName: 'HIGH'),
@@ -190,6 +206,13 @@ final class ApiRegistry {
           ApiConstant('OUTPUT', cppName: 'OUTPUT'),
           ApiConstant('INPUT', cppName: 'INPUT'),
           ApiConstant('INPUT_PULLUP', cppName: 'INPUT_PULLUP'),
+          ApiConstant('A0', cppName: 'A0'),
+          ApiConstant('A1', cppName: 'A1'),
+          ApiConstant('A2', cppName: 'A2'),
+          ApiConstant('A3', cppName: 'A3'),
+          ApiConstant('A4', cppName: 'A4'),
+          ApiConstant('A5', cppName: 'A5'),
+          ApiConstant('LED_BUILTIN', cppName: 'LED_BUILTIN'),
         ],
       );
 

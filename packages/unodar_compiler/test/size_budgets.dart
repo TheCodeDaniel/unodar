@@ -50,4 +50,9 @@ const sizeBudgets = <String, SizeBudget>{
   // output for it is byte-identical to Phase 1.
   'subset_features': SizeBudget(baselineFlash: 902, baselineRam: 9, maxFlash: 1200, maxRam: 20),
   'while_loop': SizeBudget(baselineFlash: 812, baselineRam: 13, maxFlash: 1100, maxRam: 24),
+
+  // Phase 3 first measurements, 2026-11-12, arduino-cli 1.5.1, arduino:avr 1.8.8, built with -fwrapv. Same limit
+  // rule as Phase 2. Each lands with its golden (docs/DECISIONS.md); step 9 reviews them together.
+  // core_io links analogRead/analogWrite (wiring_analog.c) and micros().
+  'core_io': SizeBudget(baselineFlash: 1740, baselineRam: 14, maxFlash: 2300, maxRam: 25),
 };

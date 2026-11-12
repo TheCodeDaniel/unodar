@@ -6,5 +6,5 @@ input.dart:14:7: error[E002]: the `~/` operator on a double is not supported in 
   = help: C++ has no operator that matches it. Use ints, or compute it with `/` and `-`.
 input.dart:15:7: error[E002]: the `~/` operator on a double is not supported in this version.
   = help: C++ has no operator that matches it. Use ints, or compute it with `/` and `-`.
-input.dart:16:9: error[E003]: unknown function 'd.remainder'. Only functions declared in this file and the unodar API functions pinMode, digitalWrite, and delay can be called in this version.
+input.dart:16:9: error[E003]: unknown function 'd.remainder'. Only functions declared in this file and the unodar API functions pinMode, digitalWrite, delay, digitalRead, analogRead, analogWrite, millis, and micros can be called in this version.
   = help: Declare the function in this file, or remove this call. More Arduino functions arrive in a later phase; see docs/SUBSET.md.
