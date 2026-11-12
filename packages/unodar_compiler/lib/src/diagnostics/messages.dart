@@ -53,6 +53,16 @@ abstract final class Diagnostics {
         suggestion: 'Pass a value from $range.',
       );
 
+  static Diagnostic argumentOutsideCppRange(
+          String value, String parameter, String function, String range, SourceLocation at) =>
+      Diagnostic(
+        code: DiagnosticCode.unsupportedArgument,
+        location: at,
+        message: "argument $value is out of range for parameter '$parameter' of $function, which accepts $range "
+            '(`@CppRange`).',
+        suggestion: 'Pass a value from $range; the library does not handle values outside it.',
+      );
+
   static Diagnostic namedArgument(String name, String function, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.unsupportedArgument,
         location: at,

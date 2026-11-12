@@ -99,12 +99,14 @@ bool isPrintArgument(StringLiteral literal) {
 }
 
 /// The name of the unodar interop annotation [annotation] (`CppClass`, `CppHeader`, `CppName`, `CppType`,
-/// `CppInclude`), or null if it is not one.
+/// `CppRange`, `CppInclude`), or null if it is not one.
 String? interopAnnotationName(ElementAnnotation annotation) {
   final element = annotation.element;
   final cls = element is ConstructorElement ? element.enclosingElement : null;
   if (cls is! ClassElement || !isUnodarElement(cls)) return null;
-  return const {'CppClass', 'CppHeader', 'CppName', 'CppType', 'CppInclude'}.contains(cls.name) ? cls.name : null;
+  return const {'CppClass', 'CppHeader', 'CppName', 'CppType', 'CppRange', 'CppInclude'}.contains(cls.name)
+      ? cls.name
+      : null;
 }
 
 /// Whether [element] carries the unodar interop annotation [name].

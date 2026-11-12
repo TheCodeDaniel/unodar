@@ -38,6 +38,16 @@ final class CppType {
   final String type;
 }
 
+/// Narrows the values a binding's integer parameter accepts to [min]..[max], within its C++ type, e.g.
+/// `@CppRange(33, 1059)`. Constant arguments outside are rejected (E004); the C++ type and conversion stay those of
+/// `@CppType`. Use it where the library only handles part of the type's range.
+final class CppRange {
+  const CppRange(this.min, this.max);
+
+  final int min;
+  final int max;
+}
+
 /// An extra header for raw C++, e.g. `@CppInclude('avr/wdt.h') library;`. Allowed only on the `library;` directive.
 final class CppInclude {
   const CppInclude(this.header);

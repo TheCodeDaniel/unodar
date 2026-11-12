@@ -102,14 +102,16 @@ final class BindingReader {
     if (type == IrType.void_) throw BindingError(parameter, 'void parameter');
     final cppType = _string(parameter, 'CppType') ?? target.cppType(type);
     final scalar = _scalar(cppType, parameter);
+    final range = cppRangeOf(parameter);
     return ApiParameter(
       parameter.name!,
       type: type,
       cppType: cppType,
-      min: scalar.min,
-      max: scalar.max,
+      min: range?.$1 ?? scalar.min,
+      max: range?.$2 ?? scalar.max,
       isNamed: parameter.isNamed,
       defaultValue: parameter.isOptionalNamed ? _defaultValue(parameter) : null,
+      hasCppRange: range != null,
     );
   }
 
@@ -148,6 +150,18 @@ final class BindingReader {
     }
     return null;
   }
+}
+
+/// The `(min, max)` of a `@CppRange` on [element], or null if it has none (or its bounds are not constant ints,
+/// which E017 reports).
+(int, int)? cppRangeOf(Element element) {
+  for (final annotation in element.metadata.annotations) {
+    if (interopAnnotationName(annotation) != 'CppRange') continue;
+    final value = annotation.computeConstantValue();
+    final (min, max) = (value?.getField('min')?.toIntValue(), value?.getField('max')?.toIntValue());
+    return min == null || max == null ? null : (min, max);
+  }
+  return null;
 }
 
 /// The field holding each interop annotation's argument (`packages/unodar/lib/src/interop.dart`).

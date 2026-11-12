@@ -21,6 +21,7 @@ final class ApiParameter {
     this.max,
     this.isNamed = false,
     this.defaultValue,
+    this.hasCppRange = false,
   });
 
   const ApiParameter.uint8(String name, {bool isNamed = false, int? defaultValue})
@@ -41,7 +42,8 @@ final class ApiParameter {
         min = null,
         max = null,
         isNamed = false,
-        defaultValue = null;
+        defaultValue = null,
+        hasCppRange = false;
 
   /// The Dart parameter name.
   final String name;
@@ -56,6 +58,9 @@ final class ApiParameter {
   /// convert (E004). Null for other parameters.
   final int? min;
   final int? max;
+
+  /// Whether [min] and [max] come from a `@CppRange` that narrows [cppType]'s range (for the E004 wording).
+  final bool hasCppRange;
 
   /// A Dart named parameter. Every parameter is passed to C++ positionally, in declaration order.
   final bool isNamed;

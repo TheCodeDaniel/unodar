@@ -22,6 +22,7 @@ void loop() {}
   String describe(ApiParameter p) => [
         '${p.name}: ${p.type?.name} as ${p.cppType}',
         if (p.min != null) '[${p.min}..${p.max}]',
+        if (p.hasCppRange) '@CppRange',
         if (p.isNamed) 'named${p.defaultValue == null ? ' required' : ' = ${p.defaultValue}'}',
       ].join(' ');
 
@@ -60,8 +61,8 @@ void loop() {}
       expect((servo.cppName, servo.header), ('Servo', 'Servo.h'));
       expect(servo.constructor, isEmpty);
       expect(servo.methods.map(signature), [
-        'attach(pin: int32 as int [-32768..32767], min: int32 as int [-32768..32767] named = 544, '
-            'max: int32 as int [-32768..32767] named = 2400) -> int32 as uint8_t',
+        'attach(pin: int32 as int [-32768..32767], min: int32 as int [33..1059] @CppRange named = 544, '
+            'max: int32 as int [1889..2915] @CppRange named = 2400) -> int32 as uint8_t',
         'write(angle: int32 as int [-32768..32767]) -> void_',
         'writeMicroseconds(microseconds: int32 as int [-32768..32767]) -> void_',
         'read() -> int32 as int',

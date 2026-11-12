@@ -9,10 +9,15 @@ final class Servo {
   external Servo();
 
   /// Attaches the servo to [pin]. [min] and [max] are the pulse widths in µs for 0° and 180°; the library stores
-  /// them as 4 µs steps in an `int8_t`, so keep [min] within 33…1059 and [max] within 1889…2915. Returns the
-  /// servo's channel, or 255 on failure. `attach(pin)` is the same as C++ `attach(pin)`.
+  /// them as `int8_t` offsets in 4 µs steps from 544 and 2400, so only [min] 33…1059 and [max] 1889…2915 work
+  /// (constants outside are rejected). Returns the servo's channel, or 255 on failure. `attach(pin)` is the same as
+  /// C++ `attach(pin)`.
   @CppType('uint8_t')
-  external int attach(@CppType('int') int pin, {@CppType('int') int min = 544, @CppType('int') int max = 2400});
+  external int attach(
+    @CppType('int') int pin, {
+    @CppType('int') @CppRange(33, 1059) int min = 544,
+    @CppType('int') @CppRange(1889, 2915) int max = 2400,
+  });
 
   /// Turns to [angle] degrees (0 to 180). Values of 544 and above are taken as a pulse width in µs instead.
   external void write(@CppType('int') int angle);

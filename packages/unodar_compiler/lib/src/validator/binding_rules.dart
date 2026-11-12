@@ -5,6 +5,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_resolution.dart';
+import '../api/binding_reader.dart';
 import '../diagnostics/diagnostics.dart';
 import '../emitter/target.dart';
 import '../frontend/frontend.dart';
@@ -115,6 +116,14 @@ List<Diagnostic> bindingClassDiagnostics(ClassDeclaration declaration, ResolvedS
     }
     final cppType = _cppTypeOf(parameter);
     if (cppType != null) problems.addAll(_cppTypeProblems(cppType, type, "'${parameter.name}'", target));
+    if (cppRangeOf(parameter) case (final min, final max)) {
+      final rangeProblems = _cppRangeProblems(parameter, type, cppType ?? target.cppType(type), min, max, target);
+      if (rangeProblems.isNotEmpty && optional.isEmpty) {
+        help = 'Put @CppRange only on integer parameters, with min <= max inside the C++ type and around the '
+            'default value, e.g. `@CppRange(33, 1059)`.';
+      }
+      problems.addAll(rangeProblems);
+    }
   }
   if (executable is MethodElement) {
     final type = irTypeOf(executable.returnType);
@@ -146,6 +155,28 @@ List<String> _cppTypeProblems(String cppType, IrType dartType, String what, Targ
     IrType.void_ || IrType.string => false,
   };
   return fits ? const [] : ["a @CppType that does not fit the Dart type ('$cppType' on $what)"];
+}
+
+/// Problems of a `@CppRange(min, max)` on [parameter], whose C++ type is [cppType].
+List<String> _cppRangeProblems(
+    FormalParameterElement parameter, IrType type, String cppType, int min, int max, Target target) {
+  final name = "'${parameter.name}'";
+  final scalar = target.cppScalarType(cppType);
+  if (!type.isInteger || scalar == null || scalar.kind != CppScalarKind.integer) {
+    return ['a @CppRange on a parameter that is not an integer ($name)'];
+  }
+  if (min > max) return ['a @CppRange whose bounds are reversed ($min > $max on $name)'];
+  if (min < scalar.min! || max > scalar.max!) {
+    return [
+      'a @CppRange outside its C++ type ($min to $max on $cppType $name, which holds '
+          '${scalar.min} to ${scalar.max})'
+    ];
+  }
+  final value = parameter.computeConstantValue()?.toIntValue();
+  if (parameter.isOptionalNamed && value != null && (value < min || value > max)) {
+    return ['a default value outside its @CppRange ($value on $name, $min to $max)'];
+  }
+  return const [];
 }
 
 final _cppIdentifier = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
@@ -184,12 +215,27 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
       'CppClass' || 'CppHeader' => target is ClassDeclaration,
       'CppName' => _isBindingMethod(target) || _isExternalObject(target),
       'CppType' => _isBindingMethod(target) || _isBindingParameter(target),
+      'CppRange' => _isBindingParameter(target),
       'CppInclude' => target is LibraryDirective,
       _ => false,
     };
     if (!allowed) {
       context.report(Diagnostics.misplacedAnnotation(name, _allowedFor[name]!, context.at(node)));
       return;
+    }
+    if (name == 'CppRange') {
+      final arguments = node.arguments?.arguments;
+      final bounds = [
+        if (arguments != null)
+          for (final argument in arguments) argument.argumentExpression
+      ];
+      bool isIntLiteral(Expression e) =>
+          e is IntegerLiteral || (e is PrefixExpression && e.operator.lexeme == '-' && e.operand is IntegerLiteral);
+      if (bounds.length != 2 || !bounds.every(isIntLiteral)) {
+        context.report(Diagnostics.annotationArgument(name, 'its bounds must be two integer literals',
+            'Write them directly, e.g. `@CppRange(33, 1059)`.', context.at(node)));
+      }
+      return; // The bounds themselves are checked with the parameter (E017 signature problems).
     }
     final argument = node.arguments?.arguments.singleOrNull;
     final value = argument is StringLiteral ? argument.stringValue : null;
@@ -232,6 +278,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     'CppHeader': 'binding classes',
     'CppName': 'methods of a binding class and external objects',
     'CppType': 'parameters and methods of a binding class',
+    'CppRange': 'integer parameters of a binding class',
     'CppInclude': 'the `library;` directive',
   };
 
@@ -240,6 +287,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     'CppHeader': 'Servo.h',
     'CppName': 'write',
     'CppType': 'uint8_t',
+    'CppRange': '33, 1059',
     'CppInclude': 'avr/wdt.h',
   };
 }

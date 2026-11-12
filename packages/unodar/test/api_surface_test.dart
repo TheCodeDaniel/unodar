@@ -20,7 +20,8 @@ void main() {
     const name = CppName('write');
     const type = CppType('uint8_t');
     const include = CppInclude('avr/wdt.h');
-    expect([header.header, cppClass.name, name.name, type.type, include.header],
-        ['Servo.h', 'Servo', 'write', 'uint8_t', 'avr/wdt.h']);
+    const range = CppRange(33, 1059);
+    expect([header.header, cppClass.name, name.name, type.type, include.header, range.min, range.max],
+        ['Servo.h', 'Servo', 'write', 'uint8_t', 'avr/wdt.h', 33, 1059]);
   });
 }

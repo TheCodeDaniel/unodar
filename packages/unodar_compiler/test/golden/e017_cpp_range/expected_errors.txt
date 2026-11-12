@@ -1,0 +1,12 @@
+input.dart:7:17: error[E017]: unsupported binding method 'level': it has a @CppRange outside its C++ type (0 to 300 on uint8_t 'value', which holds 0 to 255).
+  = help: Put @CppRange only on integer parameters, with min <= max inside the C++ type and around the default value, e.g. `@CppRange(33, 1059)`.
+input.dart:8:17: error[E017]: unsupported binding method 'gain': it has a @CppRange on a parameter that is not an integer ('factor').
+  = help: Put @CppRange only on integer parameters, with min <= max inside the C++ type and around the default value, e.g. `@CppRange(33, 1059)`.
+input.dart:9:17: error[E017]: unsupported binding method 'scale': it has a @CppRange whose bounds are reversed (10 > 5 on 'value').
+  = help: Put @CppRange only on integer parameters, with min <= max inside the C++ type and around the default value, e.g. `@CppRange(33, 1059)`.
+input.dart:10:22: error[E017]: invalid @CppRange: its bounds must be two integer literals.
+  = help: Write them directly, e.g. `@CppRange(33, 1059)`.
+input.dart:11:17: error[E017]: unsupported binding method 'mode': it has a default value outside its @CppRange (0 on 'value', 1 to 3).
+  = help: Put @CppRange only on integer parameters, with min <= max inside the C++ type and around the default value, e.g. `@CppRange(33, 1059)`.
+input.dart:15:1: error[E017]: @CppRange is not allowed here: it applies only to integer parameters of a binding class.
+  = help: Remove it, or move it to integer parameters of a binding class.
