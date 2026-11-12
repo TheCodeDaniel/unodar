@@ -14,6 +14,12 @@ if ! arduino-cli core list | grep -q 'arduino:avr'; then
   exit 2
 fi
 
+# Servo is not part of the core; the Servo golden and examples need it (docs/SUBSET.md "Servo").
+if ! arduino-cli lib list | grep -qE '^Servo\s'; then
+  echo "error: the Servo library is missing. Install: arduino-cli lib install Servo@1.3.0" >&2
+  exit 2
+fi
+
 # Signed overflow must wrap (docs/SUBSET.md "Building"). Kept identical to UnoTarget.buildProperties by
 # test/unit/build_properties_test.dart.
 build_properties=(

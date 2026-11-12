@@ -1,7 +1,8 @@
 /// Shared access to the real Arduino toolchain for tests tagged `arduino`.
 ///
-/// When `arduino-cli` or the `arduino:avr` core is missing, tests using it are SKIPPED WITH A REASON that names the
-/// exact install commands; with UNODAR_REQUIRE_ARDUINO=1 (e.g. in CI) a missing toolchain is a failure instead.
+/// When `arduino-cli`, the `arduino:avr` core, or the Servo library is missing, tests using it are SKIPPED WITH A
+/// REASON that names the exact install commands; with UNODAR_REQUIRE_ARDUINO=1 (e.g. in CI) a missing toolchain is a
+/// failure instead.
 library;
 
 import 'dart:convert';
@@ -15,18 +16,27 @@ const installHelp = '''
 arduino-cli and the arduino:avr core are required for this check. Install with:
   brew install arduino-cli            # macOS; other platforms: https://arduino.github.io/arduino-cli/latest/installation/
   arduino-cli core update-index
-  arduino-cli core install arduino:avr''';
+  arduino-cli core install arduino:avr
+  arduino-cli lib install Servo@1.3.0  # Servo is not part of the core (docs/SUBSET.md "Servo")''';
 
 /// Null when the toolchain is ready; otherwise what is missing.
 String? missingToolchain() {
   try {
     final cores = Process.runSync('arduino-cli', ['core', 'list']);
     if (cores.exitCode != 0) return 'arduino-cli failed: ${cores.stderr}';
-    if (!(cores.stdout as String).contains('arduino:avr')) return 'the arduino:avr core is not installed';
-    return null;
+    final libraries = Process.runSync('arduino-cli', ['lib', 'list']);
+    if (libraries.exitCode != 0) return 'arduino-cli failed: ${libraries.stderr}';
+    return missingFrom(coreList: cores.stdout as String, libraryList: libraries.stdout as String);
   } on ProcessException {
     return 'arduino-cli is not on PATH';
   }
+}
+
+/// What is missing given the output of `arduino-cli core list` and `arduino-cli lib list`, or null.
+String? missingFrom({required String coreList, required String libraryList}) {
+  if (!coreList.contains('arduino:avr')) return 'the arduino:avr core is not installed';
+  if (!RegExp(r'^Servo\s', multiLine: true).hasMatch(libraryList)) return 'the Servo library is not installed';
+  return null;
 }
 
 /// The outcome of `arduino-cli compile --format json` for one golden case.
