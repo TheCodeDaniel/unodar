@@ -1,0 +1,11 @@
+name: unodar_example_dial
+description: A potentiometer turns a servo and the reading is reported over Serial. Shows the Phase 3 hardware API.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  unodar:
+    path: ../../packages/unodar

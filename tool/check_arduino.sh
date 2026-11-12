@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds examples/blink and examples/pulse with unodar and compiles the result with arduino-cli for the Uno.
+# Builds examples/blink, examples/pulse and examples/dial with unodar and compiles the result with arduino-cli for the Uno.
 # Fails loudly (non-zero) if the toolchain is missing: it never skips.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -30,7 +30,7 @@ build_properties=(
 
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
-for example in blink pulse; do
+for example in blink pulse dial; do
   ino="$(dart run packages/unodar_compiler/bin/unodar.dart build "examples/$example/main.dart" -o "$out/$example")"
   echo "generated: $ino"
   arduino-cli compile --fqbn arduino:avr:uno "${build_properties[@]}" "$(dirname "$ino")"

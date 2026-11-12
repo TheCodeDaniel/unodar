@@ -100,5 +100,18 @@ void main() {
         expect(await run(cpp, {0: 5.0, 1: 0.0}), contains('FAIL % is never negative'));
       });
     });
+
+    test('examples/dial reports the potentiometer reading over Serial', () async {
+      gate.check();
+      final result = await Compiler().compile(fromPackage('..', '..', 'examples', 'dial', 'main.dart'));
+      if (result is! CompileSuccess) fail('examples/dial did not compile with unodar: $result');
+      final build = await compileSketch('dial', result.cpp);
+      printOnFailure(build.rawOutput);
+      expect(build.success, isTrue);
+      // 2.5 V on A0 reads 512: the servo angle is 512 * 180 ~/ 1023 = 90, and 512 * 5.0 / 1023 prints as 2.502.
+      final output = await runInSimulator(build.hexPath, adc: {0: 2.5}, until: 'volts=2.502');
+      expect(output, startsWith('dial ready\r\n'));
+      expect(output, contains('level=512 angle=90 volts=2.502'));
+    });
   }, skip: gate.skip, timeout: const Timeout(Duration(minutes: 5)));
 }
