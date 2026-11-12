@@ -49,7 +49,7 @@ void main() {
     Future<ArduinoBuild> build(String goldenCase) => builds.putIfAbsent(goldenCase, () => buildGolden(goldenCase));
 
     for (final goldenCase in goldens) {
-      test('$goldenCase compiles and stays within its size budget', () async {
+      test('$goldenCase compiles, stays within its size budget, and links no heap allocator', () async {
         checkToolchain();
         final result = await build(goldenCase);
         printOnFailure(result.rawOutput);
@@ -66,6 +66,7 @@ void main() {
         const policy = 'See test/size_budgets.dart: find the cause before changing a budget.';
         expect(flash, lessThanOrEqualTo(budget.maxFlash), reason: '$goldenCase flash over budget. $policy');
         expect(ram, lessThanOrEqualTo(budget.maxRam), reason: '$goldenCase RAM over budget. $policy');
+        expect(result.heapSymbols(), isEmpty, reason: '$goldenCase links heap functions (PRD §11: no heap)');
       });
     }
 
@@ -77,7 +78,25 @@ void main() {
         final build = await compileSketch(example, result.cpp);
         printOnFailure(build.rawOutput);
         expect(build.success, isTrue, reason: 'arduino-cli compile failed');
+        expect(build.heapSymbols(), isEmpty, reason: 'examples/$example links heap functions');
       });
     }
+
+    // Negative control: the check finds the allocator when something really uses the heap (Arduino's String).
+    test('the no-heap check detects a sketch that uses the heap', () async {
+      checkToolchain();
+      final build = await compileSketch('heap_control', '''
+#include <Arduino.h>
+void setup() {
+  String text = "uptime ";
+  text += millis();
+  Serial.println(text);
+}
+void loop() {}
+''');
+      printOnFailure(build.rawOutput);
+      expect(build.success, isTrue);
+      expect(build.heapSymbols(), containsAll(['malloc', 'free', 'realloc']));
+    });
   }, skip: gate.skip, timeout: const Timeout(Duration(minutes: 5)));
 }

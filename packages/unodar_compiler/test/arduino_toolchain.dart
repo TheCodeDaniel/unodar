@@ -41,11 +41,37 @@ String? missingFrom({required String coreList, required String libraryList}) {
 
 /// The outcome of `arduino-cli compile --format json` for one golden case.
 final class ArduinoBuild {
-  ArduinoBuild(this.exitCode, this.json, this.rawOutput);
+  ArduinoBuild(this.exitCode, this.json, this.rawOutput, {required this.name});
 
   final int exitCode;
   final Map<String, Object?>? json;
   final String rawOutput;
+
+  /// The sketch name; the linked program is `<build path>/<name>.ino.elf`.
+  final String name;
+
+  Map<String, Object?>? get _builder => json?['builder_result'] as Map<String, Object?>?;
+
+  /// The heap functions the linked program contains (PRD §11 "no heap"), read from its symbol table with the
+  /// core's own `avr-nm`. Empty means nothing in the sketch, the core, or a library calls the allocator: avr-libc's
+  /// malloc is only linked in when something references it.
+  List<String> heapSymbols() {
+    final properties = [...(_builder?['build_properties'] as List<Object?>? ?? const []).cast<String>()];
+    final compilerPath = properties
+        .firstWhere((p) => p.startsWith('compiler.path='), orElse: () => throw StateError('no compiler.path'))
+        .substring('compiler.path='.length);
+    final elf = p.join(_builder!['build_path']! as String, '$name.ino.elf');
+    final nm = Process.runSync(p.join(compilerPath, 'avr-nm'), ['-C', elf]);
+    if (nm.exitCode != 0) throw StateError('avr-nm failed on $elf: ${nm.stderr}');
+    return [
+      for (final line in (nm.stdout as String).split('\n'))
+        if (heapSymbol.firstMatch(line) case final match?) match.group(1)!,
+    ];
+  }
+
+  /// Defined or referenced allocator symbols in `avr-nm -C` output.
+  static final heapSymbol =
+      RegExp(r'\s(malloc|calloc|realloc|free|operator new(?:\[\])?\(.*\)|operator delete(?:\[\])?\(.*\))$');
 
   bool get success => exitCode == 0 && json?['success'] == true;
 
@@ -71,6 +97,9 @@ Future<ArduinoBuild> compileSketch(String name, String cpp) async {
     '--fqbn',
     const UnoTarget().fqbn,
     for (final property in const UnoTarget().buildProperties) ...['--build-property', property],
+    // Inside the temporary sketch folder, so the .elf is ours to inspect and is removed with it.
+    '--build-path',
+    p.join(sketch, 'build'),
     '--format',
     'json',
     dir.path,
@@ -82,7 +111,7 @@ Future<ArduinoBuild> compileSketch(String name, String cpp) async {
   } on FormatException {
     json = null;
   }
-  return ArduinoBuild(run.exitCode, json, output);
+  return ArduinoBuild(run.exitCode, json, output, name: name);
 }
 
 /// The `skip:` value for a group that needs the toolchain, and a check that fails when it is required but missing.
