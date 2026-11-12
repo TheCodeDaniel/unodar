@@ -62,6 +62,13 @@ void loop() {
   }
 #line 38 "input.dart"
   const int32_t mixed = analogRead(A2);
-#line 39 "input.dart"
+#line 40 "input.dart"
+  const int32_t adjusted = analogRead(A4) + lastToggle;
+#line 41 "input.dart"
+  if (adjusted < 0) {
+#line 42 "input.dart"
+    lastToggle = 0;
+  }
+#line 44 "input.dart"
   analogWrite(3, mixed / 4 + unodar_mod(mixed, 4) - unodar_mod(analogRead(A3), 2));
 }

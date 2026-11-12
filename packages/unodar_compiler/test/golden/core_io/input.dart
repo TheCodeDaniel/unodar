@@ -36,5 +36,10 @@ void loop() {
     digitalWrite(LED_BUILTIN, LOW);
   }
   final mixed = analogRead(A2);
+  // An API call next to a mutable global is fine: it cannot change the global.
+  final adjusted = analogRead(A4) + lastToggle;
+  if (adjusted < 0) {
+    lastToggle = 0;
+  }
   analogWrite(3, mixed ~/ 4 + mixed % 4 - analogRead(A3) % 2);
 }

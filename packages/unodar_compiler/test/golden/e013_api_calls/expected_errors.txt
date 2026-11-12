@@ -1,0 +1,10 @@
+input.dart:13:18: error[E013]: 'micros()' and 'micros()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = micros();`.
+input.dart:14:16: error[E013]: 'digitalRead()' and 'digitalRead()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = digitalRead();`.
+input.dart:15:15: error[E013]: 'digitalRead()' and 'analogRead()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = digitalRead();`.
+input.dart:16:17: error[E013]: 'bump()' and 'analogRead()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = bump();`.
+input.dart:17:12: error[E013]: 'bump()' may run before or after 'count' is read in the generated C++, but Dart always evaluates left to right.
+  = help: Store the call's result in a local variable first, e.g. `final value = bump();`.
