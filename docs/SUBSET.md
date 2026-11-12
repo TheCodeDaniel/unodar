@@ -296,7 +296,8 @@ Rules (E017 for any violation):
   header that declares it; omit it only for classes that `Arduino.h` already declares.
 - The class has no `extends`, `implements`, `with`, or type parameters, and only these members: at most one
   unnamed `external` constructor, and `external` instance methods. No fields, getters, setters, operators, static
-  members, or members with a body.
+  members, or members with a body. A class that C++ code only reaches through existing objects (like `TwoWire`,
+  reached through `Wire`) is declared `abstract` and has no constructor.
 - Parameters and return types use the supported types. Parameters are required positional, or named with a constant
   default value (`{int min = 544}`) or `required`. No optional positional parameters.
 - `@CppName('name')` on a method gives its C++ name. Use it for **overloads**: Dart has no overloading, so give each
