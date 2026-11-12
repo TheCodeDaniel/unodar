@@ -58,4 +58,5 @@ const sizeBudgets = <String, SizeBudget>{
   // serial_print links HardwareSerial and Print (incl. printFloat and the soft-float routines); its 204 B RAM is
   // mostly Serial's 64-byte receive and transmit buffers.
   'serial_print': SizeBudget(baselineFlash: 4154, baselineRam: 204, maxFlash: 5450, maxRam: 215),
+  'named_arguments': SizeBudget(baselineFlash: 3624, baselineRam: 200, maxFlash: 4750, maxRam: 211),
 };

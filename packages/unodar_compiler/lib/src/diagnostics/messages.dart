@@ -52,8 +52,15 @@ abstract final class Diagnostics {
   static Diagnostic namedArgument(String name, String function, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.unsupportedArgument,
         location: at,
-        message: "the named argument '$name' of $function is not supported in this version.",
+        message: "$function has no named parameter '$name'.",
         suggestion: 'Pass the arguments positionally, in the order of the declaration.',
+      );
+
+  static Diagnostic digitsWithoutDouble(String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedArgument,
+        location: at,
+        message: "'digits' only applies when printing a double, but this value is ${_article(type)} $type.",
+        suggestion: "Remove `digits:`. For an int, Arduino's second argument would be the number base, not decimals.",
       );
 
   static Diagnostic unsupportedDeclaration(String what, SourceLocation at, {String? suggestion}) => Diagnostic(

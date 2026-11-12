@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/element/type.dart';
 
+import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
@@ -275,8 +276,9 @@ final class ApiCallRule implements ValidationRule {
 Iterable<MethodInvocation> allCalls(CompilationUnit unit) =>
     allRootExpressions(unit).expand(subexpressions).whereType<MethodInvocation>();
 
-/// Arguments to unodar API functions: constants must fit the Arduino parameter type; no named arguments (E004).
-/// Arguments of calls that already got E003 are not checked.
+/// Arguments to API functions and methods (E004): constants must fit the C++ parameter type; a named argument must
+/// be declared (the analyzer reports an undeclared one first, E007; this is the compiler's own guard); `digits:` is
+/// only for a printed `double`. Arguments of calls that already got E003 are not checked.
 final class ArgumentRule implements ValidationRule {
   const ArgumentRule();
 
@@ -286,20 +288,35 @@ final class ArgumentRule implements ValidationRule {
       final function = context.api.resolveApiCall(call);
       if (function == null) continue;
       final positional = function.positionalParameters;
+      final name = call.target == null ? function.dartName : '${call.target!.toSource()}.${function.dartName}';
       var index = 0;
       for (final argument in call.argumentList.arguments) {
+        final ApiParameter parameter;
         if (argument is NamedArgument) {
-          context.report(Diagnostics.namedArgument(argument.name.lexeme, function.dartName, context.at(argument)));
-          continue;
+          final named = function.namedParameter(argument.name.lexeme);
+          if (named == null) {
+            context.report(Diagnostics.namedArgument(argument.name.lexeme, name, context.at(argument)));
+            continue;
+          }
+          if (function.parameters.first.isPrintable) {
+            final value = call.argumentList.arguments.firstWhere((a) => a is! NamedArgument).argumentExpression;
+            final type = value is StringLiteral ? 'String' : value.staticType?.getDisplayString();
+            if (type != 'double') {
+              context.report(Diagnostics.digitsWithoutDouble(type ?? 'unknown', context.at(argument)));
+              continue;
+            }
+          }
+          parameter = named;
+        } else {
+          if (index >= positional.length) continue; // An analyzer error (too many arguments) already.
+          parameter = positional[index++];
         }
-        if (index >= positional.length) continue; // An analyzer error (too many arguments) already.
-        final parameter = positional[index++];
         final (min, max) = (parameter.min, parameter.max);
         if (min == null || max == null) continue;
         final value = context.constants.valueOf(argument.argumentExpression);
         if (value is int && (value < min || value > max)) {
           context.report(Diagnostics.argumentOutOfRange(
-              '$value', parameter.name, function.dartName, parameter.cppType!, '$min to $max', context.at(argument)));
+              '$value', parameter.name, name, parameter.cppType!, '$min to $max', context.at(argument)));
         }
       }
     }

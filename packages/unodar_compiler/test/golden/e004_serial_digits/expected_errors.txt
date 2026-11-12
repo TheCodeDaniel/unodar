@@ -1,0 +1,12 @@
+input.dart:4:16: error[E004]: argument -9600 is out of range for parameter 'baud' of Serial.begin, which is an unsigned long (0 to 4294967295).
+  = help: Pass a value from 0 to 4294967295.
+input.dart:9:25: error[E004]: 'digits' only applies when printing a double, but this value is an int.
+  = help: Remove `digits:`. For an int, Arduino's second argument would be the number base, not decimals.
+input.dart:10:29: error[E004]: 'digits' only applies when printing a double, but this value is a bool.
+  = help: Remove `digits:`. For an int, Arduino's second argument would be the number base, not decimals.
+input.dart:11:27: error[E004]: 'digits' only applies when printing a double, but this value is a String.
+  = help: Remove `digits:`. For an int, Arduino's second argument would be the number base, not decimals.
+input.dart:12:32: error[E004]: argument 300 is out of range for parameter 'digits' of Serial.println, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:13:30: error[E004]: argument -1 is out of range for parameter 'digits' of Serial.print, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
