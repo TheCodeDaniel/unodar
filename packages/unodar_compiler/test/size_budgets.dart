@@ -45,8 +45,8 @@ const sizeBudgets = <String, SizeBudget>{
   'if_else': SizeBudget(baselineFlash: 1112, baselineRam: 13, maxFlash: 1450, maxRam: 24),
   'locals_assignments': SizeBudget(baselineFlash: 634, baselineRam: 13, maxFlash: 850, maxRam: 24),
   'pulse': SizeBudget(baselineFlash: 1106, baselineRam: 13, maxFlash: 1450, maxRam: 24),
-  // Re-measured 2026-11-12 (Phase 3 review): 762 B since every sketch is built with -fwrapv (d213602), which lets
-  // avr-gcc drop an overflow-dependent sequence. Limit unchanged by the rule (762 + 30 % rounds up to 1000).
+  // Re-measured 2026-11-12 (Phase 3 review): 762 B since every sketch is built with -fwrapv (d213602); the 4 B
+  // difference appeared with that change and was not analysed further. Limit unchanged (762 + 30 % rounds up to 1000).
   'sized_types': SizeBudget(baselineFlash: 762, baselineRam: 14, maxFlash: 1000, maxRam: 25),
   // subset_features is the Phase 1 golden that never had a budget; measured now with the Phase 2 emitter, whose
   // output for it is byte-identical to Phase 1.
