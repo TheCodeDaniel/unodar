@@ -20,7 +20,9 @@ enum DiagnosticCode {
   nonConstantInitializer('E015', 'Top-level initializer is not a compile-time constant'),
   recursion('E016', 'Recursive function (direct or mutual)'),
   invalidBinding('E017', 'Invalid binding class or interop annotation'),
-  boundObjectMisuse('E018', 'Bound object misuse');
+  boundObjectMisuse('E018', 'Bound object misuse'),
+  cppMisuse('E019', '`cpp()` misuse'),
+  cppHeap('E020', 'Heap allocation in `cpp()`');
 
   const DiagnosticCode(this.id, this.summary);
 

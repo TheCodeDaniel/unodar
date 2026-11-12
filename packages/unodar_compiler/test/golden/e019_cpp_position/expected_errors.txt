@@ -1,0 +1,4 @@
+input.dart:6:26: error[E019]: cpp() can only be used as a statement of its own.
+  = help: Move it to its own line, e.g. into the loop body.
+input.dart:7:8: error[E019]: cpp() can only be used as a statement of its own.
+  = help: Move it to its own line, e.g. into the loop body.

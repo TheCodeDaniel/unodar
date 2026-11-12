@@ -3,24 +3,24 @@ import 'package:unodar_compiler/src/diagnostics/diagnostics.dart';
 
 void main() {
   const at = SourceLocation(file: 'blink.dart', line: 5, column: 3);
-  const api = ['pinMode', 'digitalWrite', 'delay'];
+  const api = 'tone(8, 440)';
 
   group('Diagnostic.format', () {
     test('matches the PRD §9.6 header shape and puts the suggestion on a help line', () {
       final d = Diagnostics.unknownFunction('tone', api, at);
       expect(
         d.format(),
-        "blink.dart:5:3: error[E003]: unknown function 'tone'. Only functions declared in this file and the unodar API "
-        'functions pinMode, digitalWrite, and delay can be called in this version.\n'
-        '  = help: Declare the function in this file, or remove this call. More Arduino functions arrive in a later '
-        'phase; see docs/SUBSET.md.',
+        "blink.dart:5:3: error[E003]: unknown function 'tone': it is neither declared in this file nor part of the "
+        'unodar API.\n'
+        '  = help: Declare the function in this file, or call the Arduino function through the escape hatch, e.g. '
+        "`cpp('tone(8, 440);');`. See docs/SUBSET.md for the unodar API.",
       );
     });
   });
 
   group('registry', () {
-    test('codes are E001..E018, unique, and in order', () {
-      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 18; i++) 'E${'$i'.padLeft(3, '0')}']);
+    test('codes are E001..E020, unique, and in order', () {
+      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 20; i++) 'E${'$i'.padLeft(3, '0')}']);
     });
 
     test('every code has a non-empty summary for docs/DIAGNOSTICS.md', () {
@@ -49,6 +49,8 @@ void main() {
         Diagnostics.recursion('f', ['f', 'f'], at),
         Diagnostics.bindingMember('a field', 'address', 'Remove it.', at),
         Diagnostics.boundObjectUse('servo', at),
+        Diagnostics.cppPosition(at),
+        Diagnostics.cppHeap('malloc', at),
       ];
       expect(all.map((d) => d.code), DiagnosticCode.values, reason: 'one factory per code, in code order');
       for (final d in all) {

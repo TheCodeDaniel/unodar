@@ -73,8 +73,21 @@ final class ResolvedMethod {
   final ApiFunction method;
 }
 
-/// Whether [literal] is the value argument of `Serial.print`/`println` (its first positional argument), the only
-/// place a string literal is allowed (docs/SUBSET.md "Serial").
+/// Whether [call] is the escape hatch `cpp('…')` from `package:unodar`.
+bool isCppCall(MethodInvocation call) {
+  final element = call.methodName.element;
+  return call.target == null && element is TopLevelFunctionElement && isUnodarElement(element) && element.name == 'cpp';
+}
+
+/// Whether [literal] is the argument of `cpp(…)` (checked further by E019/E020).
+bool isCppArgument(StringLiteral literal) {
+  final list = literal.parent;
+  final call = list?.parent;
+  return list is ArgumentList && call is MethodInvocation && isCppCall(call);
+}
+
+/// Whether [literal] is the value argument of `Serial.print`/`println` (its first positional argument), where a
+/// string literal is allowed (docs/SUBSET.md "Serial"); the other place is `cpp('…')`.
 bool isPrintArgument(StringLiteral literal) {
   final list = literal.parent;
   if (list is! ArgumentList || list.arguments.first != literal) return false;

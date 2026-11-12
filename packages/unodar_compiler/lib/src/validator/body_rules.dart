@@ -167,6 +167,8 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     case PrefixedIdentifier() || PropertyAccess():
       return e002("a property access ('${expression.toSource()}')",
           'Properties and methods of values are not supported in this version.');
+    case StringLiteral() when isCppArgument(expression):
+      return null; // E019/E020 check cpp()'s argument.
     case StringLiteral():
       if (!isPrintArgument(expression)) {
         return e002('a string literal here',
@@ -268,12 +270,15 @@ final class ApiCallRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
-      if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null) continue;
+      if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null || isCppCall(call)) continue;
       // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
       if (call.target != null && bindingClassOf(call.target!.staticType) != null) continue;
       final target = call.target;
       final name = target == null ? call.methodName.name : '${target.toSource()}.${call.methodName.name}';
-      context.report(Diagnostics.unknownFunction(name, context.api.functionNames, context.at(call.methodName)));
+      final source = call.toSource();
+      final example =
+          target == null && !source.contains("'") && !source.contains('"') && !source.contains('\n') ? source : null;
+      context.report(Diagnostics.unknownFunction(name, example, context.at(call.methodName)));
     }
   }
 }
@@ -366,6 +371,41 @@ final class ConstantRangeRule implements ValidationRule {
         }
         return false;
       });
+    }
+  }
+}
+
+/// `cpp('…')` is a statement of its own (or a `void` arrow body) with one string literal without interpolation
+/// (E019), and its text uses no heap allocation (E020).
+final class EscapeHatchRule implements ValidationRule {
+  const EscapeHatchRule();
+
+  /// Whole words that allocate on the heap, also inside C++ comments and strings (docs/SUBSET.md "Escape hatch").
+  static final heapWords = RegExp(r'\b(new|delete|malloc|calloc|realloc|free|String)\b');
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    final statements = <MethodInvocation>{
+      for (final function in compiledFunctions(unit))
+        if (isVoidArrow(function)) ...[
+          if ((function.functionExpression.body as ExpressionFunctionBody).expression case final MethodInvocation c) c,
+        ],
+      for (final statement in allStatements(unit))
+        if (statement case ExpressionStatement(expression: final MethodInvocation c)) c,
+    };
+    for (final call in allCalls(unit).where(isCppCall)) {
+      if (!statements.contains(call)) {
+        context.report(Diagnostics.cppPosition(context.at(call)));
+        continue;
+      }
+      final argument = call.argumentList.arguments.singleOrNull?.argumentExpression;
+      final text = argument is StringLiteral ? argument.stringValue : null;
+      if (argument == null || text == null) {
+        context.report(Diagnostics.cppArgument(context.at(argument ?? call)));
+        continue;
+      }
+      final heap = heapWords.firstMatch(text);
+      if (heap != null) context.report(Diagnostics.cppHeap(heap.group(1)!, context.at(argument)));
     }
   }
 }

@@ -212,6 +212,10 @@ final class _Lowerer {
   IrStatement _statementLevel(Expression expression) {
     final line = _line(expression);
     switch (expression) {
+      case MethodInvocation() when isCppCall(expression):
+        // cpp('…'): the validator guarantees a single string literal (E019).
+        final literal = expression.argumentList.arguments.single.argumentExpression as StringLiteral;
+        return IrRawCpp(literal.stringValue!, line: line);
       case MethodInvocation():
         return IrExpressionStatement(_call(expression), line: line);
       case AssignmentExpression(leftHandSide: SimpleIdentifier(:final name), :final operator, :final rightHandSide):

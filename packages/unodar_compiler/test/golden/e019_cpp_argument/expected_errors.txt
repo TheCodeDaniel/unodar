@@ -1,0 +1,4 @@
+input.dart:6:7: error[E019]: the argument of cpp() must be a string literal without interpolation.
+  = help: Write the C++ text out in full, e.g. `cpp('pinMode(13, OUTPUT);');`.
+input.dart:7:7: error[E019]: the argument of cpp() must be a string literal without interpolation.
+  = help: Write the C++ text out in full, e.g. `cpp('pinMode(13, OUTPUT);');`.

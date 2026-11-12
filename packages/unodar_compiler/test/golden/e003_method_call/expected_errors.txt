@@ -1,6 +1,6 @@
-input.dart:8:9: error[E003]: unknown function 'n.abs'. Only functions declared in this file and the unodar API functions pinMode, digitalWrite, delay, digitalRead, analogRead, analogWrite, millis, and micros can be called in this version.
-  = help: Declare the function in this file, or remove this call. More Arduino functions arrive in a later phase; see docs/SUBSET.md.
-input.dart:9:3: error[E003]: unknown function 'print'. Only functions declared in this file and the unodar API functions pinMode, digitalWrite, delay, digitalRead, analogRead, analogWrite, millis, and micros can be called in this version.
-  = help: Declare the function in this file, or remove this call. More Arduino functions arrive in a later phase; see docs/SUBSET.md.
-input.dart:10:11: error[E003]: unknown function 'n.abs'. Only functions declared in this file and the unodar API functions pinMode, digitalWrite, delay, digitalRead, analogRead, analogWrite, millis, and micros can be called in this version.
-  = help: Declare the function in this file, or remove this call. More Arduino functions arrive in a later phase; see docs/SUBSET.md.
+input.dart:8:9: error[E003]: unknown function 'n.abs': it is neither declared in this file nor part of the unodar API.
+  = help: Methods of numbers and other Dart values are not supported; use operators or a function declared in this file. See docs/SUBSET.md for the unodar API.
+input.dart:9:3: error[E003]: unknown function 'print': it is neither declared in this file nor part of the unodar API.
+  = help: Declare the function in this file, or call the Arduino function through the escape hatch, e.g. `cpp('print(n);');`. See docs/SUBSET.md for the unodar API.
+input.dart:10:11: error[E003]: unknown function 'n.abs': it is neither declared in this file nor part of the unodar API.
+  = help: Methods of numbers and other Dart values are not supported; use operators or a function declared in this file. See docs/SUBSET.md for the unodar API.

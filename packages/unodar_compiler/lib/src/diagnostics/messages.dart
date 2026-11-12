@@ -24,13 +24,17 @@ abstract final class Diagnostics {
         suggestion: suggestion,
       );
 
-  static Diagnostic unknownFunction(String name, List<String> apiFunctions, SourceLocation at) => Diagnostic(
+  /// [cppExample] is the call as C++ text for the escape-hatch hint (`tone(8, 440)`), or null for a method call on
+  /// a Dart value, which has no C++ equivalent.
+  static Diagnostic unknownFunction(String name, String? cppExample, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.unknownFunction,
         location: at,
-        message: "unknown function '$name'. Only functions declared in this file and the unodar API functions "
-            '${englishList(apiFunctions)} can be called in this version.',
-        suggestion: 'Declare the function in this file, or remove this call. More Arduino functions arrive in a later '
-            'phase; see docs/SUBSET.md.',
+        message: "unknown function '$name': it is neither declared in this file nor part of the unodar API.",
+        suggestion: cppExample == null
+            ? 'Methods of numbers and other Dart values are not supported; use operators or a function declared in '
+                'this file. See docs/SUBSET.md for the unodar API.'
+            : 'Declare the function in this file, or call the Arduino function through the escape hatch, e.g. '
+                "`cpp('$cppExample;');`. See docs/SUBSET.md for the unodar API.",
       );
 
   static Diagnostic argumentOutOfRange(
@@ -314,6 +318,32 @@ abstract final class Diagnostics {
         location: at,
         message: 'a $cls object can only be created as the initializer of a top-level `final` variable.',
         suggestion: 'Declare it at the top level, e.g. `final ${lowerFirst(cls)} = $cls(…);`, and use that.',
+      );
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // E019, E020: the escape hatch.
+
+  static Diagnostic cppArgument(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.cppMisuse,
+        location: at,
+        message: 'the argument of cpp() must be a string literal without interpolation.',
+        suggestion: "Write the C++ text out in full, e.g. `cpp('pinMode(13, OUTPUT);');`.",
+      );
+
+  static Diagnostic cppPosition(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.cppMisuse,
+        location: at,
+        message: 'cpp() can only be used as a statement of its own.',
+        suggestion: 'Move it to its own line, e.g. into the loop body.',
+      );
+
+  static Diagnostic cppHeap(String word, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.cppHeap,
+        location: at,
+        message: "the C++ text uses '$word', which "
+            '${word == 'free' || word == 'delete' ? 'frees heap memory' : 'allocates on the heap'}. Generated code '
+            'must not use the heap.',
+        suggestion: "Allocate statically instead, e.g. a global array: `cpp('static char buffer[16];');`.",
       );
 
   static String _article(String word) => word.startsWith('uint') || !'aeiou'.contains(word[0]) ? 'a' : 'an';

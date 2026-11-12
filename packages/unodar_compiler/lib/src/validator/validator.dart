@@ -26,6 +26,7 @@ final class Validator {
     ExpressionTypeRule(),
     ApiCallRule(),
     ArgumentRule(),
+    EscapeHatchRule(),
     ConstantRangeRule(),
     // Whole program.
     EvaluationOrderRule(),
