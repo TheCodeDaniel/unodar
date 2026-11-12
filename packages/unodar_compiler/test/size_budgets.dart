@@ -64,4 +64,6 @@ const sizeBudgets = <String, SizeBudget>{
   'user_binding': SizeBudget(baselineFlash: 5038, baselineRam: 348, maxFlash: 6550, maxRam: 359),
   // wire: TwoWire and twi.c keep five 32-byte buffers, plus Serial's two 64-byte buffers; RAM 408 B of 2048 B.
   'wire': SizeBudget(baselineFlash: 4536, baselineRam: 408, maxFlash: 5900, maxRam: 419),
+  // servo: Servo.cpp's timer1 ISR and its table of 12 servos; RAM 57 B of 2048 B.
+  'servo': SizeBudget(baselineFlash: 2724, baselineRam: 57, maxFlash: 3550, maxRam: 68),
 };

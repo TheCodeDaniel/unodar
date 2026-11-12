@@ -1,0 +1,8 @@
+input.dart:6:19: error[E004]: argument 40000 is out of range for parameter 'min' of servo.attach, which is an int (-32768 to 32767).
+  = help: Pass a value from -32768 to 32767.
+input.dart:7:16: error[E004]: argument -32769 is out of range for parameter 'pin' of servo.attach, which is an int (-32768 to 32767).
+  = help: Pass a value from -32768 to 32767.
+input.dart:11:15: error[E004]: argument 32768 is out of range for parameter 'angle' of servo.write, which is an int (-32768 to 32767).
+  = help: Pass a value from -32768 to 32767.
+input.dart:12:27: error[E004]: argument -40000 is out of range for parameter 'microseconds' of servo.writeMicroseconds, which is an int (-32768 to 32767).
+  = help: Pass a value from -32768 to 32767.

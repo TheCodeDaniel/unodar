@@ -17,32 +17,28 @@ literals stored in flash, and C++ objects are global variables, allocated static
 ```dart
 import 'package:unodar/unodar.dart';
 
-const int ledPin = 13;
-int extra = 0;
-
-void pulse(int ms) {
-  digitalWrite(ledPin, HIGH);
-  delay(ms);
-  digitalWrite(ledPin, LOW);
-  delay(150);
-}
-
-int pulseLength(int i) => i % 2 == 0 ? 150 : 450;
+const int sensorPin = A0;
+final servo = Servo();
+int lastReport = 0;
 
 void setup() {
-  pinMode(ledPin, OUTPUT);
+  Serial.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
+  servo.attach(9, min: 600, max: 2400);
 }
 
 void loop() {
-  for (int i = 0; i < 3; i++) {
-    pulse(pulseLength(i));
+  final level = analogRead(sensorPin);
+  servo.write(level * 180 ~/ 1023);
+  analogWrite(6, level ~/ 4);
+  final now = millis();
+  if (now - lastReport >= 1000) {
+    lastReport = now;
+    Serial.print('level=');
+    Serial.println(level);
+    Serial.println(level / 1023 * 5.0, digits: 3);
+    Serial.println(digitalRead(2) == HIGH);
   }
-  if (extra >= 3) {
-    extra = 0;
-  } else {
-    extra += 1;
-  }
-  delay(1000);
 }
 ```
 
