@@ -1,0 +1,20 @@
+input.dart:2:1: error[E017]: invalid @CppInclude: '../secret.h' is not a plain header path.
+  = help: Use a value like `@CppInclude('avr/wdt.h')`; see docs/SUBSET.md.
+input.dart:8:1: error[E017]: invalid @CppClass: 'Two Wire' is not a valid C++ class name.
+  = help: Use a value like `@CppClass('Servo')`; see docs/SUBSET.md.
+input.dart:10:3: error[E017]: invalid @CppName: 'write-byte' is not a valid C++ identifier.
+  = help: Use a value like `@CppName('write')`; see docs/SUBSET.md.
+input.dart:11:27: error[E017]: @CppName is not allowed here: it applies only to methods of a binding class and external objects.
+  = help: Remove it, or move it to methods of a binding class and external objects.
+input.dart:14:1: error[E017]: invalid @CppClass: its argument must be a string literal.
+  = help: Write the text directly, e.g. `@CppClass('Servo')`.
+input.dart:15:1: error[E017]: invalid @CppHeader: '<Servo.h>' is not a plain header path.
+  = help: Use a value like `@CppHeader('Servo.h')`; see docs/SUBSET.md.
+input.dart:18:1: error[E017]: @CppName is not allowed here: it applies only to methods of a binding class and external objects.
+  = help: Remove it, or move it to methods of a binding class and external objects.
+input.dart:19:1: error[E017]: @CppType is not allowed here: it applies only to parameters and methods of a binding class.
+  = help: Remove it, or move it to parameters and methods of a binding class.
+input.dart:22:1: error[E017]: @CppInclude is not allowed here: it applies only to the `library;` directive.
+  = help: Remove it, or move it to the `library;` directive.
+input.dart:23:1: error[E017]: @CppHeader is not allowed here: it applies only to binding classes.
+  = help: Remove it, or move it to binding classes.

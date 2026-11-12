@@ -41,11 +41,38 @@ final class _Lowerer {
   final ApiRegistry api;
   final ResolvedSource source;
 
-  IrProgram program() => IrProgram(
-        sourceName: source.displayName,
-        globals: [for (final variable in topLevelVariables(source.unit)) _global(variable)],
-        functions: [for (final function in compiledFunctions(source.unit)) _function(function)],
-      );
+  /// Headers of the binding classes the program uses, in order of first use.
+  final _headers = <String>{};
+
+  IrProgram program() {
+    final globals = [
+      for (final variable in topLevelVariables(source.unit))
+        if (!_isExternal(variable)) _global(variable)
+    ];
+    final functions = [for (final function in compiledFunctions(source.unit)) _function(function)];
+    return IrProgram(
+      sourceName: source.displayName,
+      includes: [..._headers, ..._cppIncludes()],
+      globals: globals,
+      functions: functions,
+    );
+  }
+
+  /// `external final TwoWire Wire;` names an existing C++ object: nothing is emitted for it.
+  static bool _isExternal(VariableDeclaration variable) =>
+      (variable.parent?.parent as TopLevelVariableDeclaration?)?.externalKeyword != null;
+
+  /// `@CppInclude('…')` headers on the `library;` directive, in source order.
+  List<String> _cppIncludes() => [
+        for (final directive in source.unit.directives.whereType<LibraryDirective>())
+          for (final annotation in directive.metadata)
+            if (annotation.elementAnnotation case final element? when interopAnnotationName(element) == 'CppInclude')
+              (annotation.arguments!.arguments.single as StringLiteral).stringValue!,
+      ];
+
+  void _usesClass(ApiClass cls) {
+    if (cls.header case final header?) _headers.add(header);
+  }
 
   int _line(SyntacticEntity node) => source.lineInfo.getLocation(node.offset).lineNumber;
 
@@ -58,13 +85,30 @@ final class _Lowerer {
           ? IrStorage.final_
           : IrStorage.mutable;
 
-  IrGlobal _global(VariableDeclaration variable) => IrGlobal(
+  IrGlobalDeclaration _global(VariableDeclaration variable) {
+    final initializer = variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'));
+    final cls = api.classOfType(variable.declaredFragment?.element.type);
+    if (cls != null) {
+      // A bound object: `final link = SoftSerial(10, 11);` → `SoftwareSerial link(10, 11);`.
+      final constructor = cls.constructor ?? (throw LoweringError('${cls.dartName} has no constructor'));
+      if (initializer is! InstanceCreationExpression) throw LoweringError('bound object ${variable.name}');
+      _usesClass(cls);
+      return IrBoundObject(
         name: variable.name.lexeme,
-        type: _type(variable.declaredFragment?.element.type, variable.name),
-        storage: _storage(variable),
-        initializer: _expression(variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'))),
+        cppClass: cls.cppName,
+        arguments: _apiArguments(
+            ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), initializer.argumentList),
         line: _line(variable.name),
       );
+    }
+    return IrGlobal(
+      name: variable.name.lexeme,
+      type: _type(variable.declaredFragment?.element.type, variable.name),
+      storage: _storage(variable),
+      initializer: _expression(initializer),
+      line: _line(variable.name),
+    );
+  }
 
   IrFunction _function(FunctionDeclaration function) {
     final expression = function.functionExpression;
@@ -277,6 +321,7 @@ final class _Lowerer {
     final method = api.resolveMethodCall(call);
     if (method != null) {
       final function = method.method;
+      _usesClass(method.cls);
       if (function.parameters.firstOrNull?.isPrintable ?? false) {
         return _printCall(method.receiver, function, call.argumentList);
       }
@@ -286,6 +331,7 @@ final class _Lowerer {
         receiver: method.receiver,
         type: function.returnType,
         cppResult: _cppResult(function),
+        parameterCppTypes: function.convertsArguments ? [for (final p in function.parameters) p.cppType!] : null,
       );
     }
     if (userFunctionOf(call) == null) throw LoweringError('unresolved call ${call.toSource()}');

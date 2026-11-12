@@ -8,6 +8,7 @@ import '../frontend/frontend.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/walk.dart';
 
+export 'binding_rules.dart';
 export 'body_rules.dart';
 export 'declaration_rules.dart';
 export 'program_rules.dart';
@@ -15,10 +16,17 @@ export 'program_rules.dart';
 /// Shared state for one validation run. Rules only ever *add* diagnostics; none of them stops the run, so the user
 /// sees every problem at once (PRD §9.5 step 2).
 final class ValidationContext {
-  ValidationContext(this.source, this.api, this.target);
+  ValidationContext(this.source, this.api, this.target, {Set<String>? unodarNames})
+      : unodarNames = unodarNames ?? api.reservedNames;
 
   final ResolvedSource source;
+
+  /// The API with this program's own bindings.
   final ApiRegistry api;
+
+  /// The names `package:unodar` occupies (core rows and its bindings), which user declarations may not reuse
+  /// (E014). Unlike [api]'s names, they exclude the program's own bindings.
+  final Set<String> unodarNames;
   final Target target;
   final ConstantEvaluator constants = const ConstantEvaluator();
   final List<Diagnostic> diagnostics = [];

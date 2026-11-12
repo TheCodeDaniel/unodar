@@ -162,9 +162,9 @@ void loop() {}
 ```
 
 ```text
-input.dart:3:1: error[E005]: a class is not supported in this version. Only top-level functions and variables may be declared.
-  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
-input.dart:5:1: error[E005]: a late variable ('ledPin') is not supported in this version. Only top-level functions and variables may be declared.
+input.dart:3:1: error[E005]: a class without @CppClass is not supported in this version. Only top-level functions, variables, and binding classes may be declared.
+  = help: Remove this declaration, or annotate it with `@CppClass('CppName')` if it describes a C++ class; see docs/SUBSET.md.
+input.dart:5:1: error[E005]: a late variable ('ledPin') is not supported in this version. Only top-level functions, variables, and binding classes may be declared.
   = help: Remove `late` and give the variable a constant initializer.
 ```
 

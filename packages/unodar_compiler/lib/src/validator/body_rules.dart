@@ -153,9 +153,11 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
       }
       return e002('the `${operator.lexeme}` operator', bitwiseHelp);
     case InstanceCreationExpression(:final staticType):
-      return staticType != null && sizedTypeOf(staticType) != null
+      // A binding constructor is allowed where E018 says (a top-level `final` initializer).
+      return staticType != null && (sizedTypeOf(staticType) != null || bindingClassOf(staticType) != null)
           ? null
-          : e002('a constructor call', 'Only Uint8(…), Uint16(…), and Int16(…) can be constructed in this version.');
+          : e002('a constructor call',
+              'Only Uint8(…), Uint16(…), Int16(…), and binding classes can be constructed in this version.');
     case FunctionExpression():
       return Diagnostics.closure;
     case FunctionReference():
@@ -236,6 +238,8 @@ final class ExpressionTypeRule implements ValidationRule {
         final type = expression.staticType;
         // An unresolved name has no real type; the analyzer (E007) or ApiCallRule (E003) reports it.
         if (type is InvalidType) return false;
+        // Bound objects and binding constructors: E018 decides where they may appear.
+        if (bindingClassOf(type) != null) return false;
         if (type == null || irTypeOf(type) == null) {
           if (type != null) {
             context.report(
@@ -265,6 +269,8 @@ final class ApiCallRule implements ValidationRule {
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
       if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null) continue;
+      // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
+      if (call.target != null && bindingClassOf(call.target!.staticType) != null) continue;
       final target = call.target;
       final name = target == null ? call.methodName.name : '${target.toSource()}.${call.methodName.name}';
       context.report(Diagnostics.unknownFunction(name, context.api.functionNames, context.at(call.methodName)));
@@ -287,37 +293,49 @@ final class ArgumentRule implements ValidationRule {
     for (final call in allCalls(unit)) {
       final function = context.api.resolveApiCall(call);
       if (function == null) continue;
-      final positional = function.positionalParameters;
       final name = call.target == null ? function.dartName : '${call.target!.toSource()}.${function.dartName}';
-      var index = 0;
-      for (final argument in call.argumentList.arguments) {
-        final ApiParameter parameter;
-        if (argument is NamedArgument) {
-          final named = function.namedParameter(argument.name.lexeme);
-          if (named == null) {
-            context.report(Diagnostics.namedArgument(argument.name.lexeme, name, context.at(argument)));
+      _check(function, name, call.argumentList, context);
+    }
+    // Constructor arguments of bound objects (`SoftSerial(300, 11)`).
+    for (final creation in allRootExpressions(unit).expand(subexpressions).whereType<InstanceCreationExpression>()) {
+      final cls = context.api.classOfType(creation.staticType);
+      final constructor = cls?.constructor;
+      if (cls == null || constructor == null) continue;
+      _check(ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), cls.dartName,
+          creation.argumentList, context);
+    }
+  }
+
+  void _check(ApiFunction function, String name, ArgumentList list, ValidationContext context) {
+    final positional = function.positionalParameters;
+    var index = 0;
+    for (final argument in list.arguments) {
+      final ApiParameter parameter;
+      if (argument is NamedArgument) {
+        final named = function.namedParameter(argument.name.lexeme);
+        if (named == null) {
+          context.report(Diagnostics.namedArgument(argument.name.lexeme, name, context.at(argument)));
+          continue;
+        }
+        if (function.parameters.first.isPrintable) {
+          final value = list.arguments.firstWhere((a) => a is! NamedArgument).argumentExpression;
+          final type = value is StringLiteral ? 'String' : value.staticType?.getDisplayString();
+          if (type != 'double') {
+            context.report(Diagnostics.digitsWithoutDouble(type ?? 'unknown', context.at(argument)));
             continue;
           }
-          if (function.parameters.first.isPrintable) {
-            final value = call.argumentList.arguments.firstWhere((a) => a is! NamedArgument).argumentExpression;
-            final type = value is StringLiteral ? 'String' : value.staticType?.getDisplayString();
-            if (type != 'double') {
-              context.report(Diagnostics.digitsWithoutDouble(type ?? 'unknown', context.at(argument)));
-              continue;
-            }
-          }
-          parameter = named;
-        } else {
-          if (index >= positional.length) continue; // An analyzer error (too many arguments) already.
-          parameter = positional[index++];
         }
-        final (min, max) = (parameter.min, parameter.max);
-        if (min == null || max == null) continue;
-        final value = context.constants.valueOf(argument.argumentExpression);
-        if (value is int && (value < min || value > max)) {
-          context.report(Diagnostics.argumentOutOfRange(
-              '$value', parameter.name, name, parameter.cppType!, '$min to $max', context.at(argument)));
-        }
+        parameter = named;
+      } else {
+        if (index >= positional.length) continue; // An analyzer error (too many arguments) already.
+        parameter = positional[index++];
+      }
+      final (min, max) = (parameter.min, parameter.max);
+      if (min == null || max == null) continue;
+      final value = context.constants.valueOf(argument.argumentExpression);
+      if (value is int && (value < min || value > max)) {
+        context.report(Diagnostics.argumentOutOfRange(
+            '$value', parameter.name, name, parameter.cppType!, '$min to $max', context.at(argument)));
       }
     }
   }

@@ -1,2 +1,2 @@
-input.dart:2:1: error[E005]: an import of 'dart:math' is not supported in this version. Only top-level functions and variables may be declared.
+input.dart:2:1: error[E005]: an import of 'dart:math' is not supported in this version. Only top-level functions, variables, and binding classes may be declared.
   = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.

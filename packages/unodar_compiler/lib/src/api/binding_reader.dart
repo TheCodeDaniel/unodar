@@ -21,8 +21,10 @@ final class BindingReader {
   /// Supplies the C++ facts of `@CppType` names and the default C++ types of Dart types.
   final Target target;
 
-  /// The bindings declared in [library] itself (the user's file).
-  ApiBindings readLibrary(LibraryElement library) => _read(library.classes, library.topLevelVariables);
+  /// The bindings declared in [library] itself (the user's file), limited to the classes [include] accepts (the
+  /// compiler passes those without E017 problems).
+  ApiBindings readLibrary(LibraryElement library, {bool Function(ClassElement cls)? include}) =>
+      _read(library.classes.where(include ?? (_) => true), library.topLevelVariables);
 
   /// The bindings `package:unodar` exports to [library] through its imports (`Wire`, `Servo`, …).
   ApiBindings readImportedUnodar(LibraryElement library) {
@@ -84,6 +86,7 @@ final class BindingReader {
             parameters: _parameters(method),
             returnType: _irType(method.returnType, method),
             cppReturnType: _cppResultType(method),
+            convertsArguments: true,
           ),
       ],
     );
@@ -138,17 +141,23 @@ final class BindingReader {
   /// The string argument of the unodar interop annotation [annotation] on [element], or null if it has none.
   String? _string(Element element, String annotation) {
     for (final metadata in element.metadata.annotations) {
+      if (interopAnnotationName(metadata) != annotation) continue;
       final DartObject? value = metadata.computeConstantValue();
-      final type = value?.type;
-      if (type is! InterfaceType || type.element.name != annotation || !isUnodarElement(type.element)) continue;
-      return value!.getField(_annotationFields[annotation]!)?.toStringValue();
+      return value?.getField(_annotationFields[annotation]!)?.toStringValue() ??
+          (throw BindingError(element, 'unreadable @$annotation'));
     }
     return null;
   }
 }
 
 /// The field holding each interop annotation's argument (`packages/unodar/lib/src/interop.dart`).
-const _annotationFields = {'CppClass': 'name', 'CppHeader': 'header', 'CppName': 'name', 'CppType': 'type'};
+const _annotationFields = {
+  'CppClass': 'name',
+  'CppHeader': 'header',
+  'CppName': 'name',
+  'CppType': 'type',
+  'CppInclude': 'header',
+};
 
 /// A binding the reader cannot represent. The validator rejects every invalid binding first (E017), so this is a
 /// compiler bug.

@@ -31,11 +31,18 @@ extension ApiResolution on ApiRegistry {
     final cls = classNamed(type.element.name!);
     final method = cls?.method(call.methodName.name);
     if (cls == null || method == null) return null;
-    if (isUnodarElement(variable)) {
+    if (isUnodarElement(variable) || variable.isExternal) {
       final object = this.object(variable.name!);
       return object == null ? null : ResolvedMethod(object.cppName, cls, method);
     }
-    return null;
+    // A bound object declared in the user's file: its C++ name is its Dart name.
+    return ResolvedMethod(variable.name!, cls, method);
+  }
+
+  /// The registered class of a binding type, or null.
+  ApiClass? classOfType(DartType? type) {
+    final element = bindingClassOf(type);
+    return element == null ? null : classNamed(element.name!);
   }
 
   /// The API function or object method [call] invokes, or null.
@@ -77,3 +84,26 @@ bool isPrintArgument(StringLiteral literal) {
   if (method is! MethodElement || !isUnodarElement(method)) return false;
   return method.enclosingElement?.name == 'HardwareSerial' && (method.name == 'print' || method.name == 'println');
 }
+
+/// The name of the unodar interop annotation [annotation] (`CppClass`, `CppHeader`, `CppName`, `CppType`,
+/// `CppInclude`), or null if it is not one.
+String? interopAnnotationName(ElementAnnotation annotation) {
+  final element = annotation.element;
+  final cls = element is ConstructorElement ? element.enclosingElement : null;
+  if (cls is! ClassElement || !isUnodarElement(cls)) return null;
+  return const {'CppClass', 'CppHeader', 'CppName', 'CppType', 'CppInclude'}.contains(cls.name) ? cls.name : null;
+}
+
+/// Whether [element] carries the unodar interop annotation [name].
+bool hasInteropAnnotation(Element element, String name) =>
+    element.metadata.annotations.any((a) => interopAnnotationName(a) == name);
+
+/// Whether [element] is a binding class: annotated `@CppClass` (in `package:unodar` or the user's file), or unodar's
+/// `HardwareSerial`. Values of these types are C++ objects (docs/SUBSET.md "Binding C++ classes").
+bool isBindingClass(Element? element) =>
+    element is ClassElement &&
+    (hasInteropAnnotation(element, 'CppClass') || (isUnodarElement(element) && element.name == 'HardwareSerial'));
+
+/// The binding class [type] names, or null.
+ClassElement? bindingClassOf(DartType? type) =>
+    type is InterfaceType && isBindingClass(type.element) ? type.element as ClassElement : null;

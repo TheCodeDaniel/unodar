@@ -19,8 +19,8 @@ void main() {
   });
 
   group('registry', () {
-    test('codes are E001..E016, unique, and in order', () {
-      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 16; i++) 'E${'$i'.padLeft(3, '0')}']);
+    test('codes are E001..E018, unique, and in order', () {
+      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 18; i++) 'E${'$i'.padLeft(3, '0')}']);
     });
 
     test('every code has a non-empty summary for docs/DIAGNOSTICS.md', () {
@@ -47,6 +47,8 @@ void main() {
         Diagnostics.reservedName('min', 'it is already defined by the Arduino core or avr-libc', 'minValue', at),
         Diagnostics.nonConstantInitializer('a', at),
         Diagnostics.recursion('f', ['f', 'f'], at),
+        Diagnostics.bindingMember('a field', 'address', 'Remove it.', at),
+        Diagnostics.boundObjectUse('servo', at),
       ];
       expect(all.map((d) => d.code), DiagnosticCode.values, reason: 'one factory per code, in code order');
       for (final d in all) {

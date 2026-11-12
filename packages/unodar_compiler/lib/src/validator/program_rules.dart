@@ -25,14 +25,25 @@ final class InitializerRule implements ValidationRule {
       // No initializer: `int? x;` and `var x;` are E009, `late`/`external` E005, anything else an analyzer error.
       if (initializer == null) continue;
       if (subexpressions(initializer).any((e) => expressionIssue(e) != null)) continue; // Reported as E002/E012.
-      final later = subexpressions(initializer).whereType<SimpleIdentifier>().where((identifier) {
-        final reference = referenceOf(identifier);
-        return reference is GlobalReference && order.indexOf(reference.element.name ?? '') >= index;
-      }).firstOrNull;
-      if (later != null) {
-        context.report(Diagnostics.forwardReference(name, later.name, context.at(later)));
-      } else if (context.constants.evaluate(initializer) is NotConstant) {
-        context.report(Diagnostics.nonConstantInitializer(name, context.at(initializer)));
+      // A bound object (`final link = SoftSerial(10, 11);`): each constructor argument must be constant. Any other
+      // initializer of a binding type is E018.
+      final List<Expression> values;
+      if (bindingClassOf(variable.declaredFragment?.element.type) != null) {
+        if (initializer is! InstanceCreationExpression) continue;
+        values = [for (final a in initializer.argumentList.arguments) a.argumentExpression];
+      } else {
+        values = [initializer];
+      }
+      for (final value in values) {
+        final later = subexpressions(value).whereType<SimpleIdentifier>().where((identifier) {
+          final reference = referenceOf(identifier);
+          return reference is GlobalReference && order.indexOf(reference.element.name ?? '') >= index;
+        }).firstOrNull;
+        if (later != null) {
+          context.report(Diagnostics.forwardReference(name, later.name, context.at(later)));
+        } else if (context.constants.evaluate(value) is NotConstant) {
+          context.report(Diagnostics.nonConstantInitializer(name, context.at(value)));
+        }
       }
     }
   }
@@ -45,7 +56,7 @@ final class ReservedNameRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     final arduino = context.target.reservedNames;
-    final api = context.api.reservedNames;
+    final api = context.unodarNames;
     void checkName(Token name) {
       final problem = reservedNameProblem(name.lexeme, api: api, arduino: arduino);
       if (problem == null) return;
@@ -54,6 +65,14 @@ final class ReservedNameRule implements ValidationRule {
 
     for (final variable in topLevelVariables(unit)) {
       checkName(variable.name);
+    }
+    // A binding class's Dart name is not emitted, but it may not shadow a unodar binding (`Servo`).
+    for (final declaration in bindingClassDeclarations(unit)) {
+      final name = declaration.namePart.typeName;
+      if (api.contains(name.lexeme)) {
+        context.report(Diagnostics.reservedName(
+            name.lexeme, 'it is a unodar API name', '${name.lexeme}Binding', context.at(name)));
+      }
     }
     for (final function in compiledFunctions(unit)) {
       if (!isEntryPoint(function)) checkName(function.name);

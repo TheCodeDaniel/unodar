@@ -18,7 +18,9 @@ enum DiagnosticCode {
   evaluationOrder('E013', 'Evaluation order would differ in C++'),
   reservedName('E014', 'Name that collides with C++ or the Arduino core'),
   nonConstantInitializer('E015', 'Top-level initializer is not a compile-time constant'),
-  recursion('E016', 'Recursive function (direct or mutual)');
+  recursion('E016', 'Recursive function (direct or mutual)'),
+  invalidBinding('E017', 'Invalid binding class or interop annotation'),
+  boundObjectMisuse('E018', 'Bound object misuse');
 
   const DiagnosticCode(this.id, this.summary);
 

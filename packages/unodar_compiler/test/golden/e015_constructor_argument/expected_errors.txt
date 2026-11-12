@@ -1,0 +1,6 @@
+input.dart:12:25: error[E015]: the initializer of top-level variable 'link' is not a compile-time constant.
+  = help: Use only literals, unodar constants, and `const` variables declared above it; assign other values in setup().
+input.dart:13:26: error[E015]: the initializer of top-level variable 'other' is not a compile-time constant.
+  = help: Use only literals, unodar constants, and `const` variables declared above it; assign other values in setup().
+input.dart:13:34: error[E015]: the initializer of top-level variable 'other' refers to 'tx', which is declared later.
+  = help: Move the declaration of 'tx' above 'other'.

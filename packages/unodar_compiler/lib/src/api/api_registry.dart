@@ -75,6 +75,7 @@ final class ApiFunction {
     required this.parameters,
     this.returnType = IrType.void_,
     this.cppReturnType,
+    this.convertsArguments = false,
   });
 
   final String dartName;
@@ -88,6 +89,10 @@ final class ApiFunction {
   /// `int32_t(millis())`. Null when it is not known (a binding method without `@CppType`), in which case an
   /// integer result is always converted to `int32_t`.
   final String? cppReturnType;
+
+  /// Whether arguments of another C++ type are converted explicitly to each parameter's [ApiParameter.cppType]
+  /// (`uint8_t(x)`), as for binding methods (`@CppType`). The hand-written core rows pass arguments as they are.
+  final bool convertsArguments;
 
   List<ApiParameter> get positionalParameters => [
         for (final p in parameters)

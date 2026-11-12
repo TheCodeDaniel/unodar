@@ -66,7 +66,8 @@ abstract final class Diagnostics {
   static Diagnostic unsupportedDeclaration(String what, SourceLocation at, {String? suggestion}) => Diagnostic(
         code: DiagnosticCode.unsupportedDeclaration,
         location: at,
-        message: '$what is not supported in this version. Only top-level functions and variables may be declared.',
+        message: '$what is not supported in this version. Only top-level functions, variables, and binding classes '
+            'may be declared.',
         suggestion:
             suggestion ?? 'Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.',
       );
@@ -223,6 +224,98 @@ abstract final class Diagnostics {
         suggestion: "Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.",
       );
 
+  // ---------------------------------------------------------------------------------------------------------------
+  // E017: binding classes and interop annotations.
+
+  /// [kind] is e.g. `a field`, `a getter`; [help] says what to do with that kind of member.
+  static Diagnostic bindingMember(String kind, String name, String help, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: "a binding class cannot have $kind ('$name'). Only an external constructor and external methods are "
+            'allowed.',
+        suggestion: help,
+      );
+
+  /// [kind] is `method` or `constructor`; [problems] completes "it has …".
+  static Diagnostic bindingSignature(String kind, String name, String problems, String help, SourceLocation at) =>
+      Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: "unsupported binding $kind '$name': it has $problems.",
+        suggestion: help,
+      );
+
+  static Diagnostic bindingClass(String name, String problems, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: "unsupported binding class '$name': $problems.",
+        suggestion: 'A binding describes one existing C++ class as it is: no extends, implements, with, or type '
+            'parameters, and an external constructor unless the class is abstract. See "Binding C++ classes" in '
+            'docs/SUBSET.md.',
+      );
+
+  static Diagnostic misplacedAnnotation(String annotation, String allowed, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: '@$annotation is not allowed here: it applies only to $allowed.',
+        suggestion: 'Remove it, or move it to $allowed.',
+      );
+
+  static Diagnostic annotationArgument(String annotation, String problem, String help, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: 'invalid @$annotation: $problem.',
+        suggestion: help,
+      );
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // E018: bound objects.
+
+  static Diagnostic boundObjectNotFinal(String name, String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the bound object '$name' must be declared `final`.",
+        suggestion: 'Write `$example`. C++ objects are created once, as global variables.',
+      );
+
+  static Diagnostic boundObjectInitializer(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the bound object '$name' must be initialized by calling the $cls constructor.",
+        suggestion: 'Write `final $name = $cls(…);` with constant arguments.',
+      );
+
+  static Diagnostic abstractBoundObject(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the bound object '$name' cannot be created: $cls is abstract and is only reached through existing "
+            'C++ objects.',
+        suggestion: "Call the existing object's methods directly, or name it with `external final $cls $name;`.",
+      );
+
+  /// [position] is `a local variable`, `a parameter`, or `a return value`.
+  static Diagnostic bindingTypePosition(String position, String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "$position of the binding type '$type' is not supported. Bound objects can only be top-level "
+            '`final` variables.',
+        suggestion: 'Use the top-level object directly instead of passing it around.',
+      );
+
+  static Diagnostic boundObjectUse(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the bound object '$name' can only be used to call its methods.",
+        suggestion: 'Call a method on it, e.g. `$name.begin();`; it cannot be stored, compared, or passed.',
+      );
+
+  static Diagnostic bindingConstructorPosition(String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: 'a $cls object can only be created as the initializer of a top-level `final` variable.',
+        suggestion: 'Declare it at the top level, e.g. `final ${lowerFirst(cls)} = $cls(…);`, and use that.',
+      );
+
   static String _article(String word) => word.startsWith('uint') || !'aeiou'.contains(word[0]) ? 'a' : 'an';
 }
 
@@ -233,3 +326,6 @@ String englishList(List<String> items) => switch (items) {
       [final a, final b] => '$a and $b',
       [...final init, final last] => '${init.join(', ')}, and $last',
     };
+
+/// `SoftSerial` → `softSerial`.
+String lowerFirst(String name) => name.isEmpty ? name : name[0].toLowerCase() + name.substring(1);

@@ -1,0 +1,16 @@
+input.dart:5:12: error[E017]: unsupported binding constructor 'Bmp280': it has optional positional parameters.
+  = help: Make each parameter required, or named with a constant default value, e.g. `{int address = 0x76}`.
+input.dart:6:19: error[E017]: unsupported binding method 'readTemperature': it has optional positional parameters.
+  = help: Make each parameter required, or named with a constant default value, e.g. `{int retries = 1}`.
+input.dart:7:19: error[E017]: unsupported binding method 'name': it has an unsupported return type 'String'.
+  = help: Use the supported types (int, double, bool, Uint8, Uint16, Int16) and an accepted @CppType; see "Binding C++ classes" in docs/SUBSET.md.
+input.dart:8:17: error[E017]: unsupported binding method 'setLabel': it has an unsupported parameter type 'String' ('label') and an unsupported parameter type 'int?' ('id').
+  = help: Use the supported types (int, double, bool, Uint8, Uint16, Int16) and an accepted @CppType; see "Binding C++ classes" in docs/SUBSET.md.
+input.dart:9:17: error[E017]: unsupported binding method 'setMode': it has a @CppType that is not accepted ('int64_t' on 'mode').
+  = help: Use the supported types (int, double, bool, Uint8, Uint16, Int16) and an accepted @CppType; see "Binding C++ classes" in docs/SUBSET.md.
+input.dart:10:17: error[E017]: unsupported binding method 'setScale': it has a @CppType that does not fit the Dart type ('float' on 'scale') and a @CppType that does not fit the Dart type ('uint8_t' on 'gain').
+  = help: Use the supported types (int, double, bool, Uint8, Uint16, Int16) and an accepted @CppType; see "Binding C++ classes" in docs/SUBSET.md.
+input.dart:12:16: error[E017]: unsupported binding method 'status': it has a @CppType that does not fit the Dart type ('bool' on the result).
+  = help: Use the supported types (int, double, bool, Uint8, Uint16, Int16) and an accepted @CppType; see "Binding C++ classes" in docs/SUBSET.md.
+input.dart:13:14: error[E017]: unsupported binding method 'convert': it has type parameters and an unsupported return type 'T'.
+  = help: Use the supported types (int, double, bool, Uint8, Uint16, Int16) and an accepted @CppType; see "Binding C++ classes" in docs/SUBSET.md.

@@ -59,4 +59,7 @@ const sizeBudgets = <String, SizeBudget>{
   // mostly Serial's 64-byte receive and transmit buffers.
   'serial_print': SizeBudget(baselineFlash: 4154, baselineRam: 204, maxFlash: 5450, maxRam: 215),
   'named_arguments': SizeBudget(baselineFlash: 3624, baselineRam: 200, maxFlash: 4750, maxRam: 211),
+  // user_binding: two SoftwareSerial objects (64-byte shared receive buffer, per-object state) plus Serial, which
+  // the `usb` binding reaches; RAM 348 B of 2048 B.
+  'user_binding': SizeBudget(baselineFlash: 5038, baselineRam: 348, maxFlash: 6550, maxRam: 359),
 };
