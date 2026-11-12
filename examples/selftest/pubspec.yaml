@@ -1,0 +1,11 @@
+name: unodar_example_pulse
+description: Pulses the Uno's built-in LED in a rhythm. Shows the Phase 2 language core (functions, loops, if/else).
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  unodar:
+    path: ../../packages/unodar
