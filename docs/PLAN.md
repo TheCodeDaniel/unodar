@@ -6,7 +6,7 @@ scope.
 Spec: PRD §8 row 3, the maintainer's Phase 3 brief, `docs/SUBSET.md`, `docs/DIAGNOSTICS.md` (E017–E020), and the
 2026-11-12 entries in `docs/DECISIONS.md` (including the four maintainer decisions).
 Exit gate: every new golden passes, compiles for `arduino:avr:uno` (Servo installed), and has a size budget; every
-rejection has a negative golden; no generated output uses the heap; the runtime fidelity harness passes in simavr
+rejection has a negative golden; no generated output uses the heap; the runtime fidelity harness passes in avr8js
 with its negative control failing; `SUBSET.md`/`DIAGNOSTICS.md` are accurate; the examples build.
 
 ## Steps (one or more small commits each, golden test first)
@@ -20,7 +20,7 @@ with its negative control failing; `SUBSET.md`/`DIAGNOSTICS.md` are accurate; th
 | 5 | Validator relaxation, one construct per commit, each with positive and negative goldens: `core_io` → `serial_print` (strings) → `named_arguments` → `user_binding` (SoftwareSerial, constructor arguments, `@CppName`) → `wire` → `servo` → `cpp_escape_hatch` (`@CppInclude`); E013 tightening | Goldens; `arduino_compile_test` |
 | 6 | Servo: `tool/check_arduino.sh` installs-or-fails, the test gate checks it, CI installs `Servo@1.3.0` | Gate test with the library missing |
 | 7 | No-heap check over every positive golden's output | New test in `arduino_compile_test` or its own file |
-| 8 | Runtime fidelity harness: unodar fixture with unfoldable inputs (`analogRead`, `millis`, `micros`) and identities that hold for every input, run in simavr; a negative control re-inserts a naive C translation and must print FAIL; CI installs simavr | `runtime_fidelity_test` (tagged `arduino`) |
+| 8 | Runtime fidelity harness: unodar fixture with unfoldable inputs (`analogRead`, `millis`, `micros`) and identities that hold for every input, plus subtraction across the INT32_MAX/INT32_MIN boundary with operands only known at runtime (`volatile`), run by the avr8js runner in `tool/avr_runner/` (pinned version, lockfile; fixed cycle count, USART capture, PASS/FAIL lines); a negative control built without `-fwrapv` must print FAIL; CI installs Node with `actions/setup-node` | `runtime_fidelity_test` (tagged `arduino`) |
 | 9 | Size budgets for the new goldens (dedicated commit with measurements) | `size_budgets.dart` |
 | 10 | `examples/` sketch for Phase 3, built by `tool/check_arduino.sh` | CLI build + arduino-cli compile |
 | 11 | Optional: drop the `L` suffix where the E010 evaluation proves a constant operation fits a 16-bit `int` (deliberate golden updates, own commit) | Goldens |
