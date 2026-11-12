@@ -14,10 +14,18 @@ if ! arduino-cli core list | grep -q 'arduino:avr'; then
   exit 2
 fi
 
+# Signed overflow must wrap (docs/SUBSET.md "Building"). Kept identical to UnoTarget.buildProperties by
+# test/unit/build_properties_test.dart.
+build_properties=(
+  --build-property compiler.c.extra_flags=-fwrapv
+  --build-property compiler.cpp.extra_flags=-fwrapv
+  --build-property compiler.c.elf.extra_flags=-fwrapv
+)
+
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
 for example in blink pulse; do
   ino="$(dart run packages/unodar_compiler/bin/unodar.dart build "examples/$example/main.dart" -o "$out/$example")"
   echo "generated: $ino"
-  arduino-cli compile --fqbn arduino:avr:uno "$(dirname "$ino")"
+  arduino-cli compile --fqbn arduino:avr:uno "${build_properties[@]}" "$(dirname "$ino")"
 done

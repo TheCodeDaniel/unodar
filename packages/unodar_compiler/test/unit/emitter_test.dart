@@ -15,6 +15,8 @@ final class Int32Target implements Target {
   @override
   List<String> get includes => const ['Arduino.h'];
   @override
+  List<String> get buildProperties => _uno.buildProperties;
+  @override
   int get nativeIntBits => 32;
   @override
   String get int32LiteralSuffix => 'L';

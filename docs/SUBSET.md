@@ -161,8 +161,9 @@ with a signed value as *unsigned*: in plain C++, `Uint16(1) < -1` is true.
 
 The same holds for the results of Arduino functions: `analogRead` returns a 16-bit C++ `int`, so
 `analogRead(A0) * 100` is emitted as `int32_t(analogRead(A0)) * 100`. `millis()` and `micros()` return C++
-`unsigned long`; unodar keeps their low 31 bits, `int32_t(millis() & 0x7FFFFFFF)`, so the value is never negative,
-and subtracting two readings can never overflow.
+`unsigned long` and are emitted as `int32_t(millis())`, so they compare and subtract as Dart `int`s. Because
+sketches are built with `-fwrapv` (see [Building](#building)), the usual timer check `now - last >= interval` stays
+correct when the counter wraps.
 
 ### Constant expressions are checked
 
@@ -228,8 +229,8 @@ the board would silently overwrite its global variables. Rewrite recursion as a 
 | `analogRead(pin)` | `uint8_t pin` | `int`: 0 to 1023 (C++ `int`) |
 | `analogWrite(pin, value)` | `uint8_t pin, int val` | `void`. Duty cycle 0 to 255 on PWM pins. |
 | `delay(ms)` | `unsigned long ms` | `void` |
-| `millis()` | | `int`: milliseconds since reset, 0 to 2147483647, then back to 0 (`int32_t(millis() & 0x7FFFFFFF)`) |
-| `micros()` | | `int`: microseconds since reset, likewise (`int32_t(micros() & 0x7FFFFFFF)`) |
+| `millis()` | | `int`: milliseconds since reset (C++ `unsigned long`, emitted as `int32_t(millis())`) |
+| `micros()` | | `int`: microseconds since reset (likewise `int32_t(micros())`) |
 
 | Constant | Value on the Uno | Use |
 |---|---|---|
@@ -346,7 +347,7 @@ Servo 1.3.0). `tool/check_arduino.sh` and the `arduino`-tagged tests fail with t
 | Dart (`Servo`) | C++ |
 |---|---|
 | `final servo = Servo();` | `Servo servo;` |
-| `attach(pin, {min = 544, max = 2400})` → `int` | `servo.attach(int, int, int)`; pulse widths in µs |
+| `attach(pin, {min = 544, max = 2400})` → `int` | `servo.attach(int, int, int)`; pulse widths in µs. The library stores them in 4 µs steps as `int8_t` offsets, so keep `min` within 33…1059 and `max` within 1889…2915. |
 | `write(angle)`, `writeMicroseconds(us)` | `int` parameters |
 | `read()` → `int`, `readMicroseconds()` → `int` | |
 | `attached()` → `bool`, `detach()` | |
@@ -389,6 +390,23 @@ top-level variables and bound objects in source order; then the functions in sou
 precedes every variable, function, and statement. Output is deterministic: the same input gives byte-identical
 output on any machine.
 
+## Building
+
+Unodar sketches must be built with `-fwrapv`, which makes signed `int32_t` overflow wrap instead of being
+undefined behaviour. The AVR core links with LTO, so the flag is needed when compiling and when linking:
+
+```sh
+arduino-cli compile --fqbn arduino:avr:uno \
+  --build-property compiler.c.extra_flags=-fwrapv \
+  --build-property compiler.cpp.extra_flags=-fwrapv \
+  --build-property compiler.c.elf.extra_flags=-fwrapv \
+  out/main
+```
+
+`tool/check_arduino.sh` and the test suite pass these properties; the `unodar` CLI will pass them itself from
+Phase 7 (`unodar flash`/`run`). Building without them still compiles, but overflow (including `millis()` wrap
+handling) is then undefined behaviour.
+
 ## Known deviations from Dart
 
 These are the only places where generated C++ can behave differently from the same Dart program. They are runtime
@@ -396,13 +414,13 @@ conditions that cannot be detected at compile time; constant cases are rejected 
 
 | Situation | Dart | Generated C++ |
 |---|---|---|
-| `int` overflow at runtime (a result outside -2147483648…2147483647, e.g. `a * b`, `a + b`, `-a` for large values) | Exact 64-bit result | **Undefined behaviour** (C++ signed overflow). In practice it usually wraps, but the compiler may assume it never happens. Keep values in range. |
+| `int` overflow at runtime (a result outside -2147483648…2147483647, e.g. `a * b`, `a + b`, `-a` for large values) | Exact 64-bit result | **Wraps** (two's complement, modulo 2^32): `2147483647 + 1` is `-2147483648`. This is defined behaviour because unodar sketches are built with `-fwrapv` ([Building](#building)); without that flag it would be C++ undefined behaviour. Keep values in range where the exact result matters. |
 | `x ~/ -1` at runtime when `x` is -2147483648 | 2147483648 (Dart's `int` is 64-bit) | **Undefined behaviour**: the quotient does not fit `int32_t`. On AVR it typically gives -2147483648. |
 | `x % -1` at runtime when `x` is -2147483648 | 0 | **Undefined behaviour**: C++'s `%`, which `unodar_mod` starts from, overflows for this pair. Every other pair, including the divisor -2147483648, is exact. |
 | Integer `~/` or `%` by a variable that is zero | Throws `IntegerDivisionByZeroException` | **Undefined**; on AVR the program continues with a meaningless result. No check is inserted. |
 | `double` precision and range | 64-bit (≈15–17 digits, max ≈1.8e308) | 32-bit `float` (≈6–7 digits, max ≈3.4e38). An `int` mixed with a `double`, or divided with `/`, converts to `float` and keeps only 24 bits of precision (exact up to 16777216). |
 | A non-constant value passed to an Arduino function or a binding parameter outside its C++ parameter type | (external) | Converted to the C++ parameter type by C++ rules, e.g. `delay(-1)` waits about 49 days, a pin of 300 becomes 44. |
-| `millis()` after about 24.8 days, `micros()` after about 35.8 minutes of uptime | (external) | The value **wraps to 0** after 2147483647 (unodar keeps the low 31 bits of Arduino's `unsigned long`). It is never negative and `now - start` never overflows, but across the wrap `now - start` is **negative**: a check like `if (now - start >= 1000)` then stays false until `now` catches up with `start` (about 24.8 days for `millis()`, 35.8 minutes for `micros()`). For an elapsed time that is correct across the wrap, write `(now - start) % 2147483648`. |
+| `millis()` after about 24.8 days, `micros()` after about 35.8 minutes of uptime | (external) | The value passes 2147483647 and continues at -2147483648, wrapping like an `int32_t` (Arduino's `unsigned long` counter, converted). **Elapsed time stays correct**: `now - last` wraps too (`-fwrapv`), so `if (now - last >= interval)` works across the wrap for any interval below 2147483648. Comparing two readings directly (`now > last`) does not. |
 | `Serial.print` of a `double` | (external; Dart's `toString()` would print `1.5`) | Arduino's fixed-point format: `digits` decimals (default 2), so `1.50`; `nan`, `inf`, and `ovf` (above about 4.3e9) for special values. |
 | Bound objects | (external) | Constructed before `setup()` runs (C++ static initialization), not lazily on first use like a Dart top-level `final`. |
 

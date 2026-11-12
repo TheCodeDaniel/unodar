@@ -19,7 +19,8 @@ for every error code. The roadmap is in [`docs/PRD.md`](docs/PRD.md).
 dart pub get
 dart run packages/unodar_compiler/bin/unodar.dart build examples/blink/main.dart -o out
 # -> out/main/main.ino; compile it with:
-arduino-cli compile --fqbn arduino:avr:uno out/main
+arduino-cli compile --fqbn arduino:avr:uno --build-property compiler.c.extra_flags=-fwrapv \
+  --build-property compiler.cpp.extra_flags=-fwrapv --build-property compiler.c.elf.extra_flags=-fwrapv out/main
 ```
 
 ## Layout

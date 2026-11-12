@@ -65,12 +65,14 @@ external int analogRead(int pin);
 /// Compiles to `analogWrite(pin, value)`.
 external void analogWrite(int pin, int value);
 
-/// Milliseconds since the board started, 0 to 2147483647, then back to 0 (after about 24.8 days).
+/// Milliseconds since the board started. Compiles to `int32_t(millis())`.
 ///
-/// Compiles to `int32_t(millis() & 0x7FFFFFFF)`: the value is never negative, so subtracting two readings never
-/// overflows. See "Known deviations from Dart" in docs/SUBSET.md for timing across the wrap.
+/// After about 24.8 days the value passes 2147483647 and continues at -2147483648. Elapsed time stays correct
+/// across that wrap: `if (now - last >= interval)` works, because subtraction wraps too (sketches are built with
+/// `-fwrapv`). Comparing two readings directly (`now > last`) does not. See docs/SUBSET.md.
 external int millis();
 
-/// Microseconds since the board started, 0 to 2147483647, then back to 0 (after about 35.8 minutes). The Uno counts
-/// in steps of 4 µs. Compiles to `int32_t(micros() & 0x7FFFFFFF)`.
+/// Microseconds since the board started, in steps of 4 µs on the Uno. Compiles to `int32_t(micros())`.
+///
+/// Wraps like [millis], after about 35.8 minutes; `now - last >= interval` stays correct across the wrap.
 external int micros();

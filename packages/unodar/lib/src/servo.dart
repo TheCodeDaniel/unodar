@@ -8,8 +8,9 @@ import 'interop.dart';
 final class Servo {
   external Servo();
 
-  /// Attaches the servo to [pin]. [min] and [max] are the pulse widths in µs for 0° and 180°. Returns the servo's
-  /// channel, or 255 on failure.
+  /// Attaches the servo to [pin]. [min] and [max] are the pulse widths in µs for 0° and 180°; the library stores
+  /// them as 4 µs steps in an `int8_t`, so keep [min] within 33…1059 and [max] within 1889…2915. Returns the
+  /// servo's channel, or 255 on failure. `attach(pin)` is the same as C++ `attach(pin)`.
   @CppType('uint8_t')
   external int attach(@CppType('int') int pin, {@CppType('int') int min = 544, @CppType('int') int max = 2400});
 

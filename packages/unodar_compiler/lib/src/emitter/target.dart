@@ -15,6 +15,9 @@ abstract interface class Target {
   /// Headers every sketch includes, emitted as `#include <...>` in order.
   List<String> get includes;
 
+  /// `arduino-cli compile --build-property` values every sketch must be built with (docs/SUBSET.md "Building").
+  List<String> get buildProperties;
+
   /// Width of C++ `int` on this board. Arithmetic on operands narrower than 32 bits is promoted only to `int`, so on
   /// a 16-bit-`int` board the emitter must widen it to keep Dart's (32-bit, in unodar) results.
   int get nativeIntBits;
@@ -41,6 +44,16 @@ final class UnoTarget implements Target {
 
   @override
   List<String> get includes => const ['Arduino.h'];
+
+  /// `-fwrapv` makes signed overflow wrap (defined) instead of undefined behaviour. The AVR core generates code at
+  /// link time (`-flto`), so the flag goes to the C and C++ compile steps and to the link step. Property names are
+  /// those of `arduino:avr` 1.8.8 `platform.txt`, where they are empty by default.
+  @override
+  List<String> get buildProperties => const [
+        'compiler.c.extra_flags=-fwrapv',
+        'compiler.cpp.extra_flags=-fwrapv',
+        'compiler.c.elf.extra_flags=-fwrapv',
+      ];
 
   @override
   int get nativeIntBits => 16;

@@ -60,6 +60,7 @@ Future<ArduinoBuild> compileSketch(String name, String cpp) async {
     'compile',
     '--fqbn',
     const UnoTarget().fqbn,
+    for (final property in const UnoTarget().buildProperties) ...['--build-property', property],
     '--format',
     'json',
     dir.path,
