@@ -38,10 +38,33 @@ List<Statement> childStatements(Statement statement) => switch (statement) {
       _ => const [],
     };
 
-/// Every statement of every compiled function, in source order.
-Iterable<Statement> allStatements(CompilationUnit unit) sync* {
+/// The body of every compiled function, then of every widget callback (a callback is compiled like a `void`
+/// function without parameters).
+Iterable<FunctionBody> compiledBodies(CompilationUnit unit) sync* {
   for (final function in compiledFunctions(unit)) {
-    yield* statementsIn(function.functionExpression.body);
+    yield function.functionExpression.body;
+  }
+  for (final callback in widgetCallbacks(unit)) {
+    yield callback.body;
+  }
+}
+
+/// The expression of an `=>` body whose value is discarded, so that it is statement-level: a `void f() => …;`
+/// function or a widget callback. Null for a block body or a value-returning `=>` function.
+Expression? statementLevelArrow(FunctionBody body) {
+  if (body is! ExpressionFunctionBody) return null;
+  return switch (body.parent) {
+    FunctionExpression(parent: final FunctionDeclaration function) when isVoidArrow(function) => body.expression,
+    FunctionExpression(parent: FunctionDeclaration()) => null,
+    FunctionExpression() => body.expression, // A widget callback.
+    _ => null,
+  };
+}
+
+/// Every statement of every compiled function and callback, in source order per body.
+Iterable<Statement> allStatements(CompilationUnit unit) sync* {
+  for (final body in compiledBodies(unit)) {
+    yield* statementsIn(body);
   }
 }
 
@@ -62,9 +85,8 @@ List<Expression> statementLevelExpressions(Statement statement) => switch (state
 
 /// Every statement-level expression in the program.
 Iterable<Expression> allStatementLevelExpressions(CompilationUnit unit) sync* {
-  for (final function in compiledFunctions(unit)) {
-    final body = function.functionExpression.body;
-    if (isVoidArrow(function)) yield (body as ExpressionFunctionBody).expression;
+  for (final body in compiledBodies(unit)) {
+    if (statementLevelArrow(body) case final expression?) yield expression;
     for (final statement in statementsIn(body)) {
       yield* statementLevelExpressions(statement);
     }
@@ -119,10 +141,13 @@ List<Expression> rootsOf(Statement statement) => switch (statement) {
     };
 
 /// Root expressions of one function body.
-Iterable<Expression> rootsOfFunction(FunctionDeclaration function) sync* {
-  final body = function.functionExpression.body;
+Iterable<Expression> rootsOfFunction(FunctionDeclaration function) => rootsOfBody(function.functionExpression.body);
+
+/// Root expressions of one function or callback body.
+Iterable<Expression> rootsOfBody(FunctionBody body) sync* {
   if (body is ExpressionFunctionBody) {
-    yield* isVoidArrow(function) ? rootsOfStatementLevel(body.expression) : [body.expression];
+    final arrow = statementLevelArrow(body);
+    yield* arrow != null ? rootsOfStatementLevel(arrow) : [body.expression];
   }
   for (final statement in statementsIn(body)) {
     yield* rootsOf(statement);
@@ -138,8 +163,8 @@ Iterable<Expression> allRootExpressions(CompilationUnit unit) sync* {
     if (initializer != null) yield initializer;
   }
   yield* deviceRoots(unit);
-  for (final function in compiledFunctions(unit)) {
-    yield* rootsOfFunction(function);
+  for (final body in compiledBodies(unit)) {
+    yield* rootsOfBody(body);
   }
 }
 

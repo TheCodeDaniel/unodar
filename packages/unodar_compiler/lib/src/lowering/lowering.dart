@@ -58,10 +58,23 @@ final class _Lowerer {
       for (final child in children)
         if (identical(child.element, child.creation)) _widgetObject(child.name, child.creation),
     ];
+    final names = {for (final (name, creation) in acceptedWidgets(source.unit)) creation: name};
+    final bodies = <(int, IrFunction Function())>[
+      for (final function in compiledFunctions(source.unit)) (function.offset, () => _function(function)),
+      for (final callback in widgetCallbacks(source.unit))
+        (
+          callback.offset,
+          () => _callback(callbackFunctionName(names[widgetOfCallback(callback)]!, callback), callback)
+        ),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
     final functions = [
-      for (final function in compiledFunctions(source.unit)) _function(function),
+      for (final (_, lower) in bodies) lower(),
       if (device != null) ..._entryPoints(mainFunction(source.unit)!, children),
     ];
+    final functionNames = <String>{};
+    for (final function in functions) {
+      if (!functionNames.add(function.name)) throw LoweringError('two functions named ${function.name}');
+    }
     return IrProgram(
       sourceName: source.displayName,
       includes: [..._headers, ..._cppIncludes()],
@@ -79,8 +92,22 @@ final class _Lowerer {
       name: name,
       cppClass: cls.cppName,
       arguments: _apiArguments(
-          ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), creation.argumentList),
+          ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), cppArgumentsOf(creation)),
       line: _line(creation),
+    );
+  }
+
+  /// A widget callback as a plain `void` function without parameters (docs/SUBSET.md "Callbacks").
+  IrFunction _callback(String name, FunctionExpression closure) {
+    final body = closure.body;
+    return IrFunction(
+      name: name,
+      line: _line(closure),
+      body: switch (body) {
+        BlockFunctionBody(:final block) => _statements(block.statements),
+        ExpressionFunctionBody(:final expression) => [_statementLevel(expression)],
+        _ => throw LoweringError('unsupported callback body ${closure.toSource()}'),
+      },
     );
   }
 
@@ -108,8 +135,21 @@ final class _Lowerer {
               line: _line(child.element)),
       ]),
       IrFunction(name: 'loop', line: line, isEntryPoint: true, body: [
+        // `if (button.pressed()) { unodar_button_onPressed(); }`
         for (final child in children)
-          if (widget(child).poll != null) throw LoweringError('polled widgets arrive with Button and Every'),
+          if (widget(child).poll case final poll?)
+            IrIf(
+              IrCall(poll, const [], receiver: child.name, type: IrType.bool_),
+              [
+                IrExpressionStatement(
+                    IrCall(
+                        callbackFunctionName(child.name,
+                            callbackOf(child.creation) ?? (throw LoweringError('no callback for ${child.name}'))),
+                        const []),
+                    line: _line(child.element)),
+              ],
+              line: _line(child.element),
+            ),
       ]),
     ];
   }
@@ -153,8 +193,8 @@ final class _Lowerer {
       return IrBoundObject(
         name: variable.name.lexeme,
         cppClass: cls.cppName,
-        arguments: _apiArguments(
-            ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), initializer.argumentList),
+        arguments: _apiArguments(ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor),
+            initializer.argumentList.arguments),
         line: _line(variable.name),
       );
     }
@@ -374,7 +414,7 @@ final class _Lowerer {
     if (apiFunction != null) {
       return IrCall(
         apiFunction.cppName,
-        _apiArguments(apiFunction, call.argumentList),
+        _apiArguments(apiFunction, call.argumentList.arguments),
         type: apiFunction.returnType,
         cppResult: _cppResult(apiFunction),
       );
@@ -389,7 +429,7 @@ final class _Lowerer {
       }
       return IrCall(
         function.cppName,
-        _apiArguments(function, call.argumentList),
+        _apiArguments(function, call.argumentList.arguments),
         receiver: method.receiver,
         type: function.returnType,
         cppResult: _cppResult(function),
@@ -406,13 +446,13 @@ final class _Lowerer {
 
   /// The arguments of an API call in C++ parameter order: positional ones, then each named parameter's argument or,
   /// if omitted, its declared default.
-  List<IrExpression> _apiArguments(ApiFunction function, ArgumentList list) {
+  List<IrExpression> _apiArguments(ApiFunction function, List<Argument> arguments) {
     final positional = [
-      for (final a in list.arguments)
+      for (final a in arguments)
         if (a is! NamedArgument) a.argumentExpression
     ];
     final named = {
-      for (final a in list.arguments)
+      for (final a in arguments)
         if (a is NamedArgument) a.name.lexeme: a.argumentExpression
     };
     if (positional.length != function.positionalParameters.length) {

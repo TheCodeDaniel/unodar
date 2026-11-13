@@ -176,14 +176,21 @@ final class DeclaredTypeRule implements ValidationRule {
       for (final parameter in expression.parameters?.parameters ?? const <FormalParameter>[]) {
         if (parameter.type case final type? when parameter.functionTypedSuffix == null) _annotation(type, context);
       }
-      for (final statement in statementsIn(expression.body)) {
-        switch (statement) {
-          case VariableDeclarationStatement(:final variables):
-            _variables(variables, context);
-          case ForStatement(forLoopParts: ForPartsWithDeclarations(:final variables)):
-            _variables(variables, context);
-          default:
-        }
+      _locals(expression.body, context);
+    }
+    for (final callback in widgetCallbacks(unit)) {
+      _locals(callback.body, context);
+    }
+  }
+
+  void _locals(FunctionBody body, ValidationContext context) {
+    for (final statement in statementsIn(body)) {
+      switch (statement) {
+        case VariableDeclarationStatement(:final variables):
+          _variables(variables, context);
+        case ForStatement(forLoopParts: ForPartsWithDeclarations(:final variables)):
+          _variables(variables, context);
+        default:
       }
     }
   }

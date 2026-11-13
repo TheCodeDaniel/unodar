@@ -35,6 +35,7 @@ final class Validator {
     MainRule(),
     WidgetProgramRule(),
     WidgetRule(),
+    CallbackRule(),
   ];
 
   final ApiRegistry api;

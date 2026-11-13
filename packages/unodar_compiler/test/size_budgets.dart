@@ -91,4 +91,7 @@ const sizeBudgets = <String, SizeBudget>{
   // buffers (186 B of 2048 B). The two measure the same: a constant baud, a 13-byte flash string vs. an int print.
   'widget_serial': SizeBudget(baselineFlash: 1734, baselineRam: 186, maxFlash: 2300, maxRam: 197),
   'widget_serial_baud': SizeBudget(baselineFlash: 1734, baselineRam: 186, maxFlash: 2300, maxRam: 197),
+  // widget_button: two Buttons (7 B each: pin, two flags, a uint32_t timestamp), a Led, a counter, Serial; the
+  // debounce logic and two callbacks.
+  'widget_button': SizeBudget(baselineFlash: 2662, baselineRam: 208, maxFlash: 3500, maxRam: 219),
 };

@@ -20,9 +20,8 @@ final class StatementRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    for (final function in compiledFunctions(unit)) {
-      final body = function.functionExpression.body;
-      if (isVoidArrow(function)) _statementLevel((body as ExpressionFunctionBody).expression, context);
+    for (final body in compiledBodies(unit)) {
+      if (statementLevelArrow(body) case final expression?) _statementLevel(expression, context);
       for (final statement in statementsIn(body)) {
         _statement(statement, context);
       }
@@ -123,6 +122,8 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
       return null;
     case SimpleIdentifier():
       return switch (referenceOf(expression)) {
+        FunctionValueReference() when _isWidgetArgument(expression) => (at) =>
+            Diagnostics.callbackReference(expression.name, at),
         FunctionValueReference() => (at) => Diagnostics.functionReference(expression.name, at),
         null => e002("the name '${expression.name}'", genericHelp),
         _ => null,
@@ -168,6 +169,8 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
           ? null
           : e002('a constructor call',
               'Only Uint8(…), Uint16(…), Int16(…), and binding classes can be constructed in this version.');
+    case FunctionExpression() when widgetOfCallback(expression) != null:
+      return null; // A widget callback: its body is compiled like a function body (CallbackRule checks its shape).
     case FunctionExpression():
       return Diagnostics.closure;
     case FunctionReference():
@@ -199,6 +202,14 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     default:
       return e002(describeExpression(expression), genericHelp);
   }
+}
+
+/// Whether [expression] is an argument of a widget constructor (`onPressed: toggle`).
+bool _isWidgetArgument(Expression expression) {
+  var list = expression.parent;
+  if (list is NamedArgument) list = list.parent;
+  final creation = list is ArgumentList ? list.parent : null;
+  return creation is InstanceCreationExpression && widgetCreation(creation) != null;
 }
 
 /// The binary operators of the subset (`%` and `~/` additionally need integer operands).
@@ -233,8 +244,10 @@ final class ExpressionTypeRule implements ValidationRule {
     final roots = [
       for (final variable in topLevelVariables(unit))
         if (variable.initializer case final initializer?) initializer,
+      ...deviceRoots(unit),
       for (final function in compiledFunctions(unit))
         if (!genericFunctions.contains(function)) ...rootsOfFunction(function),
+      for (final callback in widgetCallbacks(unit)) ...rootsOfBody(callback.body),
     ];
     for (final root in roots) {
       walkExpression(root, (expression) {
@@ -254,6 +267,8 @@ final class ExpressionTypeRule implements ValidationRule {
         if (bindingClassOf(type) != null) return false;
         // A widget constructor: E021/E022 decide where it may appear; its arguments are ordinary expressions.
         if (expression is InstanceCreationExpression && widgetClassOf(type) != null) return true;
+        // A widget callback: its body is checked as a root of its own.
+        if (expression is FunctionExpression) return false;
         if (type == null || irTypeOf(type) == null) {
           if (type != null) {
             context.report(
@@ -322,14 +337,17 @@ final class ArgumentRule implements ValidationRule {
       final constructor = cls?.constructor;
       if (cls == null || constructor == null) continue;
       _check(ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), cls.dartName,
-          creation.argumentList, context);
+          creation.argumentList, context,
+          skip: widgetCreation(creation) == null ? null : isCallbackArgument);
     }
   }
 
-  void _check(ApiFunction function, String name, ArgumentList list, ValidationContext context) {
+  void _check(ApiFunction function, String name, ArgumentList list, ValidationContext context,
+      {bool Function(Argument argument)? skip}) {
     final positional = function.positionalParameters;
     var index = 0;
     for (final argument in list.arguments) {
+      if (skip != null && skip(argument)) continue; // A widget callback is not a C++ argument.
       final ApiParameter parameter;
       if (argument is NamedArgument) {
         final named = function.namedParameter(argument.name.lexeme);
@@ -405,10 +423,8 @@ final class EscapeHatchRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     final statements = <MethodInvocation>{
-      for (final function in compiledFunctions(unit))
-        if (isVoidArrow(function)) ...[
-          if ((function.functionExpression.body as ExpressionFunctionBody).expression case final MethodInvocation c) c,
-        ],
+      for (final body in compiledBodies(unit))
+        if (statementLevelArrow(body) case final MethodInvocation c) c,
       for (final statement in allStatements(unit))
         if (statement case ExpressionStatement(expression: final MethodInvocation c)) c,
     };

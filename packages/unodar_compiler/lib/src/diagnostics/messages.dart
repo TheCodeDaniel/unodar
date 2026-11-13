@@ -186,6 +186,21 @@ abstract final class Diagnostics {
         suggestion: 'Call the function instead, e.g. `$name()`.',
       );
 
+  static Diagnostic callbackReference(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.functionValue,
+        location: at,
+        message: "a function reference ('$name') cannot be a widget callback.",
+        suggestion: 'Write a closure that calls it: `() { $name(); }`.',
+      );
+
+  /// [problem] is `it is async`, `it is a generator`.
+  static Diagnostic callbackShape(String problem, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.functionValue,
+        location: at,
+        message: 'unsupported widget callback: $problem.',
+        suggestion: 'Write a plain closure without parameters, `() { … }`; it runs to the end inside loop().',
+      );
+
   static Diagnostic localFunction(String name, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.functionValue,
         location: at,

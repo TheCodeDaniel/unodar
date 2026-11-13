@@ -277,8 +277,10 @@ final class ApiRegistry {
             ApiFunction('off', cppName: 'off', parameters: []),
             ApiFunction('toggle', cppName: 'toggle', parameters: []),
           ]),
+          // `onPressed` is a callback, not a C++ constructor argument.
+          ApiClass('Button', cppName: 'unodar::Button', constructor: [ApiParameter.widgetPin('pin')], methods: []),
         ],
-        widgets: const [ApiWidget('Led')],
+        widgets: const [ApiWidget('Led'), ApiWidget('Button', poll: 'pressed', callback: 'onPressed')],
         // Not callable or constructible as API rows, but taken by the widget API and its C++ namespace (E014).
         otherNames: const {'runDevice', 'Device', 'Uno', 'Board', 'Widget', 'unodar'},
       );

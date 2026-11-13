@@ -172,3 +172,61 @@ List<WidgetChild> widgetChildren(InstanceCreationExpression device, CompilationU
   }
   return children;
 }
+
+/// The widget constructor call that [closure] is an argument of, or null. Such a closure is a widget callback
+/// (`onPressed: () { … }`); any other closure is E012.
+InstanceCreationExpression? widgetOfCallback(FunctionExpression closure) {
+  var list = closure.parent;
+  if (list is NamedArgument) list = list.parent;
+  final creation = list is ArgumentList ? list.parent : null;
+  return creation is InstanceCreationExpression ? widgetCreation(creation) : null;
+}
+
+/// Whether [argument] of a widget constructor is a callback: its parameter has a function type (`onPressed`,
+/// `Every`'s callback). Callbacks are not C++ constructor arguments.
+bool isCallbackArgument(Argument argument) => argument.correspondingParameter?.type is FunctionType;
+
+/// The arguments of a widget constructor that are passed to C++ (all but the callbacks), in source order.
+List<Argument> cppArgumentsOf(InstanceCreationExpression creation) => [
+      for (final argument in creation.argumentList.arguments)
+        if (!isCallbackArgument(argument)) argument,
+    ];
+
+/// The callback closure of a widget constructor, or null.
+FunctionExpression? callbackOf(InstanceCreationExpression creation) => [
+      for (final argument in creation.argumentList.arguments)
+        if (isCallbackArgument(argument) && argument.argumentExpression is FunctionExpression)
+          argument.argumentExpression as FunctionExpression,
+    ].firstOrNull;
+
+/// The name of the callback parameter [closure] is passed to (`onPressed`, `callback`).
+String callbackParameterName(FunctionExpression closure) {
+  final argument = closure.parent is NamedArgument ? closure.parent! as Argument : closure as Argument;
+  return argument.correspondingParameter?.name ?? 'callback';
+}
+
+/// The C++ function a callback becomes: `unodar_button_onPressed` for a top-level `button`,
+/// `unodar_every_0_callback` for the first `Every` written in `children`.
+String callbackFunctionName(String objectName, FunctionExpression closure) {
+  final prefix = objectName.startsWith('unodar_') ? objectName : 'unodar_$objectName';
+  return '${prefix}_${callbackParameterName(closure)}';
+}
+
+/// The widgets of a widget program whose declaration is accepted (a top-level `final`, or written in
+/// `Device.children`), with their C++ object names, in source order. Empty for any other program.
+List<(String, InstanceCreationExpression)> acceptedWidgets(CompilationUnit unit) {
+  final device = deviceOf(unit);
+  if (device == null) return const [];
+  final inline = {for (final child in widgetChildren(device, unit)) child.creation: child.name};
+  return [
+    for (final variable in topLevelVariables(unit))
+      if (topLevelWidget(variable) case final creation?) (variable.name.lexeme, creation),
+    for (final creation in inlineWidgets(unit)) (inline[creation]!, creation),
+  ]..sort((a, b) => a.$2.offset.compareTo(b.$2.offset));
+}
+
+/// The callback closures of the accepted widgets, in source order. Their bodies are compiled like function bodies.
+List<FunctionExpression> widgetCallbacks(CompilationUnit unit) => [
+      for (final (_, creation) in acceptedWidgets(unit))
+        if (callbackOf(creation) case final callback?) callback,
+    ];

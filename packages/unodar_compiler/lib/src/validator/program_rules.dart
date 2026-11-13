@@ -87,7 +87,9 @@ final class ReservedNameRule implements ValidationRule {
       for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
         if (parameter.name case final name?) checkName(name);
       }
-      for (final statement in statementsIn(function.functionExpression.body)) {
+    }
+    for (final body in compiledBodies(unit)) {
+      for (final statement in statementsIn(body)) {
         final list = switch (statement) {
           VariableDeclarationStatement(:final variables) => variables,
           ForStatement(forLoopParts: ForPartsWithDeclarations(:final variables)) => variables,

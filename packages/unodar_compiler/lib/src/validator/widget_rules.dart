@@ -121,7 +121,7 @@ final class WidgetRule implements ValidationRule {
   }
 
   void _constantArguments(InstanceCreationExpression creation, String widget, ValidationContext context) {
-    for (final argument in creation.argumentList.arguments) {
+    for (final argument in cppArgumentsOf(creation)) {
       final value = argument.argumentExpression;
       // Unsupported expressions are reported by ExpressionRule (E002/E012) instead.
       if (subexpressions(value).any((e) => expressionIssue(e) != null)) continue;
@@ -138,3 +138,25 @@ Iterable<InstanceCreationExpression> widgetCreations(CompilationUnit unit) => al
     .expand(subexpressions)
     .whereType<InstanceCreationExpression>()
     .where((c) => widgetCreation(c) != null);
+
+/// A widget callback is a closure without parameters that is not async or a generator (E012). Its body is checked
+/// like a function body by the other rules.
+final class CallbackRule implements ValidationRule {
+  const CallbackRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    for (final callback in widgetCallbacks(unit)) {
+      final body = callback.body;
+      final problems = [
+        if (callback.parameters?.parameters.isNotEmpty ?? false) 'it takes parameters',
+        if (callback.typeParameters != null) 'it has type parameters',
+        if (body.isAsynchronous) 'it is async',
+        if (body.isGenerator) 'it is a generator',
+      ];
+      if (problems.isNotEmpty) {
+        context.report(Diagnostics.callbackShape(englishList(problems), context.at(callback)));
+      }
+    }
+  }
+}
