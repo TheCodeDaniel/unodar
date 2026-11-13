@@ -10,6 +10,7 @@
 /// * Sized integers: [Uint8], [Uint16], [Int16].
 /// * Bindings: [Wire] (I²C) and [Servo].
 /// * Interop: [CppClass], [CppHeader], [CppName], [CppType], [CppInclude], and the escape hatch [cpp].
+/// * Widgets: [runDevice], [Device], [Uno], [Led], [Button], [Every].
 ///
 /// See docs/SUBSET.md for the supported Dart subset.
 library;
@@ -19,4 +20,5 @@ export 'src/interop.dart';
 export 'src/serial.dart';
 export 'src/servo.dart';
 export 'src/sized_ints.dart';
+export 'src/widgets.dart';
 export 'src/wire.dart';
