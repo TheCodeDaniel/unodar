@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/type.dart';
 
+import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
 import '../semantics/elements.dart';
@@ -58,11 +59,17 @@ final class TopLevelDeclarationRule implements ValidationRule {
           if (variables.isLate) {
             unsupported("a late variable ('$names')",
                 suggestion: 'Remove `late` and give the variable a constant initializer.');
-          } else if (externalKeyword != null) {
-            unsupported("an external variable ('$names')");
+          } else if (externalKeyword != null &&
+              !variables.variables.every((v) => bindingClassOf(v.declaredFragment?.element.type) != null)) {
+            unsupported("an external variable ('$names') whose type is not a binding class");
           }
+        case ClassDeclaration(:final declaredFragment)
+            when declaredFragment != null && hasInteropAnnotation(declaredFragment.element, 'CppClass'):
+          break; // A binding class: BindingClassRule checks it (E017).
         case ClassDeclaration():
-          unsupported('a class');
+          unsupported('a class without @CppClass',
+              suggestion: "Remove this declaration, or annotate it with `@CppClass('CppName')` if it describes a C++ "
+                  'class; see docs/SUBSET.md.');
         case EnumDeclaration():
           unsupported('an enum');
         case MixinDeclaration():
@@ -178,6 +185,7 @@ final class DeclaredTypeRule implements ValidationRule {
 
   void _variables(VariableDeclarationList list, ValidationContext context) {
     final annotation = list.type;
+    if (isBindingType(annotation?.type)) return; // E018 decides where a binding type may appear.
     if (annotation != null) {
       _annotation(annotation, context);
       return;
@@ -193,7 +201,7 @@ final class DeclaredTypeRule implements ValidationRule {
 
   void _annotation(TypeAnnotation annotation, ValidationContext context, {bool allowVoid = false}) {
     final type = annotation.type;
-    if (type == null) return;
+    if (type == null || isBindingType(type)) return;
     final irType = irTypeOf(type);
     if (irType != null && (allowVoid || irType != IrType.void_)) return;
     context.report(typeDiagnostic(type, context.at(annotation)));

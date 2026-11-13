@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/element/type.dart';
 
+import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
@@ -152,9 +153,11 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
       }
       return e002('the `${operator.lexeme}` operator', bitwiseHelp);
     case InstanceCreationExpression(:final staticType):
-      return staticType != null && sizedTypeOf(staticType) != null
+      // A binding constructor is allowed where E018 says (a top-level `final` initializer).
+      return staticType != null && (sizedTypeOf(staticType) != null || bindingClassOf(staticType) != null)
           ? null
-          : e002('a constructor call', 'Only Uint8(…), Uint16(…), and Int16(…) can be constructed in this version.');
+          : e002('a constructor call',
+              'Only Uint8(…), Uint16(…), Int16(…), and binding classes can be constructed in this version.');
     case FunctionExpression():
       return Diagnostics.closure;
     case FunctionReference():
@@ -164,8 +167,22 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     case PrefixedIdentifier() || PropertyAccess():
       return e002("a property access ('${expression.toSource()}')",
           'Properties and methods of values are not supported in this version.');
+    case StringLiteral() when isCppArgument(expression):
+      return null; // E019/E020 check cpp()'s argument.
     case StringLiteral():
-      return e002('a string literal', 'Strings arrive with Serial in Phase 3.');
+      if (!isPrintArgument(expression)) {
+        return e002('a string literal here',
+            'A string literal can only be the value printed by `Serial.print` or `Serial.println`.');
+      }
+      final value = expression.stringValue;
+      if (value == null) {
+        return e002('string interpolation',
+            "Print the parts with separate calls, e.g. `Serial.print('x = '); Serial.println(x);`.");
+      }
+      if (value.contains('\x00')) {
+        return e002('a NUL character in a string', 'Remove it: C++ would end the string there.');
+      }
+      return null;
     case IsExpression() || AsExpression():
       return e002(expression is IsExpression ? 'a type test (`is`)' : 'a cast (`as`)',
           'Declare the variable with the type you need instead.');
@@ -212,10 +229,19 @@ final class ExpressionTypeRule implements ValidationRule {
     for (final root in roots) {
       walkExpression(root, (expression) {
         if (expressionIssue(expression) != null) return false;
-        if (expression is MethodInvocation && expression.target != null) return false;
+        // A print argument; any other string literal is reported by ExpressionRule.
+        if (expression is StringLiteral) return false;
+        // Method calls on numbers (`x.abs()`) are E003; methods of API objects are checked like functions.
+        if (expression is MethodInvocation &&
+            expression.target != null &&
+            context.api.resolveMethodCall(expression) == null) {
+          return false;
+        }
         final type = expression.staticType;
         // An unresolved name has no real type; the analyzer (E007) or ApiCallRule (E003) reports it.
         if (type is InvalidType) return false;
+        // Bound objects and binding constructors: E018 decides where they may appear.
+        if (bindingClassOf(type) != null) return false;
         if (type == null || irTypeOf(type) == null) {
           if (type != null) {
             context.report(
@@ -244,10 +270,15 @@ final class ApiCallRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
-      if (context.api.resolveCall(call) != null || userFunctionOf(call) != null) continue;
+      if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null || isCppCall(call)) continue;
+      // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
+      if (call.target != null && bindingClassOf(call.target!.staticType) != null) continue;
       final target = call.target;
       final name = target == null ? call.methodName.name : '${target.toSource()}.${call.methodName.name}';
-      context.report(Diagnostics.unknownFunction(name, context.api.functionNames, context.at(call.methodName)));
+      final source = call.toSource();
+      final example =
+          target == null && !source.contains("'") && !source.contains('"') && !source.contains('\n') ? source : null;
+      context.report(Diagnostics.unknownFunction(name, example, context.at(call.methodName)));
     }
   }
 }
@@ -256,30 +287,62 @@ final class ApiCallRule implements ValidationRule {
 Iterable<MethodInvocation> allCalls(CompilationUnit unit) =>
     allRootExpressions(unit).expand(subexpressions).whereType<MethodInvocation>();
 
-/// Arguments to unodar API functions: constants must fit the Arduino parameter type; no named arguments (E004).
-/// Arguments of calls that already got E003 are not checked.
+/// Arguments to API functions and methods (E004): constants must fit the C++ parameter type; a named argument must
+/// be declared (the analyzer reports an undeclared one first, E007; this is the compiler's own guard); `digits:` is
+/// only for a printed `double`. Arguments of calls that already got E003 are not checked.
 final class ArgumentRule implements ValidationRule {
   const ArgumentRule();
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
-      final function = context.api.resolveCall(call);
+      final function = context.api.resolveApiCall(call);
       if (function == null) continue;
-      final positional = function.positionalParameters;
-      var index = 0;
-      for (final argument in call.argumentList.arguments) {
-        if (argument is NamedArgument) {
-          context.report(Diagnostics.namedArgument(argument.name.lexeme, function.dartName, context.at(argument)));
+      final name = call.target == null ? function.dartName : '${call.target!.toSource()}.${function.dartName}';
+      _check(function, name, call.argumentList, context);
+    }
+    // Constructor arguments of bound objects (`SoftSerial(300, 11)`).
+    for (final creation in allRootExpressions(unit).expand(subexpressions).whereType<InstanceCreationExpression>()) {
+      final cls = context.api.classOfType(creation.staticType);
+      final constructor = cls?.constructor;
+      if (cls == null || constructor == null) continue;
+      _check(ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), cls.dartName,
+          creation.argumentList, context);
+    }
+  }
+
+  void _check(ApiFunction function, String name, ArgumentList list, ValidationContext context) {
+    final positional = function.positionalParameters;
+    var index = 0;
+    for (final argument in list.arguments) {
+      final ApiParameter parameter;
+      if (argument is NamedArgument) {
+        final named = function.namedParameter(argument.name.lexeme);
+        if (named == null) {
+          context.report(Diagnostics.namedArgument(argument.name.lexeme, name, context.at(argument)));
           continue;
         }
-        if (index >= positional.length) continue; // An analyzer error (too many arguments) already.
-        final parameter = positional[index++];
-        final value = context.constants.valueOf(argument.argumentExpression);
-        if (value is int && (value < parameter.min || value > parameter.max)) {
-          context.report(Diagnostics.argumentOutOfRange('$value', parameter.name, function.dartName, parameter.cppType,
-              '${parameter.min} to ${parameter.max}', context.at(argument)));
+        if (function.parameters.first.isPrintable) {
+          final value = list.arguments.firstWhere((a) => a is! NamedArgument).argumentExpression;
+          final type = value is StringLiteral ? 'String' : value.staticType?.getDisplayString();
+          if (type != 'double') {
+            context.report(Diagnostics.digitsWithoutDouble(type ?? 'unknown', context.at(argument)));
+            continue;
+          }
         }
+        parameter = named;
+      } else {
+        if (index >= positional.length) continue; // An analyzer error (too many arguments) already.
+        parameter = positional[index++];
+      }
+      final (min, max) = (parameter.min, parameter.max);
+      if (min == null || max == null) continue;
+      final value = context.constants.valueOf(argument.argumentExpression);
+      if (value is int && (value < min || value > max)) {
+        context.report(parameter.hasCppRange
+            ? Diagnostics.argumentOutsideCppRange('$value', parameter.name, name, '$min to $max', context.at(argument))
+            : Diagnostics.argumentOutOfRange(
+                '$value', parameter.name, name, parameter.cppType!, '$min to $max', context.at(argument)));
       }
     }
   }
@@ -310,6 +373,41 @@ final class ConstantRangeRule implements ValidationRule {
         }
         return false;
       });
+    }
+  }
+}
+
+/// `cpp('…')` is a statement of its own (or a `void` arrow body) with one string literal without interpolation
+/// (E019), and its text uses no heap allocation (E020).
+final class EscapeHatchRule implements ValidationRule {
+  const EscapeHatchRule();
+
+  /// Whole words that allocate on the heap, also inside C++ comments and strings (docs/SUBSET.md "Escape hatch").
+  static final heapWords = RegExp(r'\b(new|delete|malloc|calloc|realloc|free|String)\b');
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    final statements = <MethodInvocation>{
+      for (final function in compiledFunctions(unit))
+        if (isVoidArrow(function)) ...[
+          if ((function.functionExpression.body as ExpressionFunctionBody).expression case final MethodInvocation c) c,
+        ],
+      for (final statement in allStatements(unit))
+        if (statement case ExpressionStatement(expression: final MethodInvocation c)) c,
+    };
+    for (final call in allCalls(unit).where(isCppCall)) {
+      if (!statements.contains(call)) {
+        context.report(Diagnostics.cppPosition(context.at(call)));
+        continue;
+      }
+      final argument = call.argumentList.arguments.singleOrNull?.argumentExpression;
+      final text = argument is StringLiteral ? argument.stringValue : null;
+      if (argument == null || text == null) {
+        context.report(Diagnostics.cppArgument(context.at(argument ?? call)));
+        continue;
+      }
+      final heap = heapWords.firstMatch(text);
+      if (heap != null) context.report(Diagnostics.cppHeap(heap.group(1)!, context.at(argument)));
     }
   }
 }

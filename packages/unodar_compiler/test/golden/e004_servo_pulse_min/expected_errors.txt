@@ -1,0 +1,6 @@
+input.dart:9:19: error[E004]: argument 32 is out of range for parameter 'min' of servo.attach, which accepts 33 to 1059 (`@CppRange`).
+  = help: Pass a value from 33 to 1059; the library does not handle values outside it.
+input.dart:10:19: error[E004]: argument 1060 is out of range for parameter 'min' of servo.attach, which accepts 33 to 1059 (`@CppRange`).
+  = help: Pass a value from 33 to 1059; the library does not handle values outside it.
+input.dart:11:19: error[E004]: argument 0 is out of range for parameter 'min' of servo.attach, which accepts 33 to 1059 (`@CppRange`).
+  = help: Pass a value from 33 to 1059; the library does not handle values outside it.

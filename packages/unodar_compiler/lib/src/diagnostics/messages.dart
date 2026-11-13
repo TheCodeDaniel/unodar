@@ -24,13 +24,17 @@ abstract final class Diagnostics {
         suggestion: suggestion,
       );
 
-  static Diagnostic unknownFunction(String name, List<String> apiFunctions, SourceLocation at) => Diagnostic(
+  /// [cppExample] is the call as C++ text for the escape-hatch hint (`tone(8, 440)`), or null for a method call on
+  /// a Dart value, which has no C++ equivalent.
+  static Diagnostic unknownFunction(String name, String? cppExample, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.unknownFunction,
         location: at,
-        message: "unknown function '$name'. Only functions declared in this file and the unodar API functions "
-            '${englishList(apiFunctions)} can be called in this version.',
-        suggestion: 'Declare the function in this file, or remove this call. More Arduino functions arrive in a later '
-            'phase; see docs/SUBSET.md.',
+        message: "unknown function '$name': it is neither declared in this file nor part of the unodar API.",
+        suggestion: cppExample == null
+            ? 'Methods of numbers and other Dart values are not supported; use operators or a function declared in '
+                'this file. See docs/SUBSET.md for the unodar API.'
+            : 'Declare the function in this file, or call the Arduino function through the escape hatch, e.g. '
+                "`cpp('$cppExample;');`. See docs/SUBSET.md for the unodar API.",
       );
 
   static Diagnostic argumentOutOfRange(
@@ -49,17 +53,35 @@ abstract final class Diagnostics {
         suggestion: 'Pass a value from $range.',
       );
 
+  static Diagnostic argumentOutsideCppRange(
+          String value, String parameter, String function, String range, SourceLocation at) =>
+      Diagnostic(
+        code: DiagnosticCode.unsupportedArgument,
+        location: at,
+        message: "argument $value is out of range for parameter '$parameter' of $function, which accepts $range "
+            '(`@CppRange`).',
+        suggestion: 'Pass a value from $range; the library does not handle values outside it.',
+      );
+
   static Diagnostic namedArgument(String name, String function, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.unsupportedArgument,
         location: at,
-        message: "the named argument '$name' is not supported: $function has no named parameters in this version.",
+        message: "$function has no named parameter '$name'.",
         suggestion: 'Pass the arguments positionally, in the order of the declaration.',
+      );
+
+  static Diagnostic digitsWithoutDouble(String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedArgument,
+        location: at,
+        message: "'digits' only applies when printing a double, but this value is ${_article(type)} $type.",
+        suggestion: "Remove `digits:`. For an int, Arduino's second argument would be the number base, not decimals.",
       );
 
   static Diagnostic unsupportedDeclaration(String what, SourceLocation at, {String? suggestion}) => Diagnostic(
         code: DiagnosticCode.unsupportedDeclaration,
         location: at,
-        message: '$what is not supported in this version. Only top-level functions and variables may be declared.',
+        message: '$what is not supported in this version. Only top-level functions, variables, and binding classes '
+            'may be declared.',
         suggestion:
             suggestion ?? 'Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.',
       );
@@ -216,6 +238,124 @@ abstract final class Diagnostics {
         suggestion: "Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.",
       );
 
+  // ---------------------------------------------------------------------------------------------------------------
+  // E017: binding classes and interop annotations.
+
+  /// [kind] is e.g. `a field`, `a getter`; [help] says what to do with that kind of member.
+  static Diagnostic bindingMember(String kind, String name, String help, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: "a binding class cannot have $kind ('$name'). Only an external constructor and external methods are "
+            'allowed.',
+        suggestion: help,
+      );
+
+  /// [kind] is `method` or `constructor`; [problems] completes "it has …".
+  static Diagnostic bindingSignature(String kind, String name, String problems, String help, SourceLocation at) =>
+      Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: "unsupported binding $kind '$name': it has $problems.",
+        suggestion: help,
+      );
+
+  static Diagnostic bindingClass(String name, String problems, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: "unsupported binding class '$name': $problems.",
+        suggestion: 'A binding describes one existing C++ class as it is: no extends, implements, with, or type '
+            'parameters, and an external constructor unless the class is abstract. See "Binding C++ classes" in '
+            'docs/SUBSET.md.',
+      );
+
+  static Diagnostic misplacedAnnotation(String annotation, String allowed, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: '@$annotation is not allowed here: it applies only to $allowed.',
+        suggestion: 'Remove it, or move it to $allowed.',
+      );
+
+  static Diagnostic annotationArgument(String annotation, String problem, String help, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.invalidBinding,
+        location: at,
+        message: 'invalid @$annotation: $problem.',
+        suggestion: help,
+      );
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // E018: bound objects.
+
+  static Diagnostic boundObjectNotFinal(String name, String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the bound object '$name' must be declared `final`.",
+        suggestion: 'Write `$example`. C++ objects are created once, as global variables.',
+      );
+
+  static Diagnostic boundObjectInitializer(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the bound object '$name' must be initialized by calling the $cls constructor.",
+        suggestion: 'Write `final $name = $cls(…);` with constant arguments.',
+      );
+
+  static Diagnostic abstractBoundObject(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the bound object '$name' cannot be created: $cls is abstract and is only reached through existing "
+            'C++ objects.',
+        suggestion: "Call the existing object's methods directly, or name it with `external final $cls $name;`.",
+      );
+
+  /// [position] is `a local variable`, `a parameter`, or `a return value`.
+  static Diagnostic bindingTypePosition(String position, String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "$position of the binding type '$type' is not supported. Bound objects can only be top-level "
+            '`final` variables.',
+        suggestion: 'Use the top-level object directly instead of passing it around.',
+      );
+
+  static Diagnostic boundObjectUse(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the bound object '$name' can only be used to call its methods.",
+        suggestion: 'Call a method on it, e.g. `$name.begin();`; it cannot be stored, compared, or passed.',
+      );
+
+  static Diagnostic bindingConstructorPosition(String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: 'a $cls object can only be created as the initializer of a top-level `final` variable.',
+        suggestion: 'Declare it at the top level, e.g. `final ${lowerFirst(cls)} = $cls(…);`, and use that.',
+      );
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // E019, E020: the escape hatch.
+
+  static Diagnostic cppArgument(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.cppMisuse,
+        location: at,
+        message: 'the argument of cpp() must be a string literal without interpolation.',
+        suggestion: "Write the C++ text out in full, e.g. `cpp('pinMode(13, OUTPUT);');`.",
+      );
+
+  static Diagnostic cppPosition(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.cppMisuse,
+        location: at,
+        message: 'cpp() can only be used as a statement of its own.',
+        suggestion: 'Move it to its own line, e.g. into the loop body.',
+      );
+
+  static Diagnostic cppHeap(String word, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.cppHeap,
+        location: at,
+        message: "the C++ text uses '$word', which "
+            '${word == 'free' || word == 'delete' ? 'frees heap memory' : 'allocates on the heap'}. Generated code '
+            'must not use the heap.',
+        suggestion: "Allocate statically instead, e.g. a global array: `cpp('static char buffer[16];');`.",
+      );
+
   static String _article(String word) => word.startsWith('uint') || !'aeiou'.contains(word[0]) ? 'a' : 'an';
 }
 
@@ -226,3 +366,6 @@ String englishList(List<String> items) => switch (items) {
       [final a, final b] => '$a and $b',
       [...final init, final last] => '${init.join(', ')}, and $last',
     };
+
+/// `SoftSerial` → `softSerial`.
+String lowerFirst(String name) => name.isEmpty ? name : name[0].toLowerCase() + name.substring(1);

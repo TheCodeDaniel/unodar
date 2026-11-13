@@ -1,0 +1,10 @@
+input.dart:3:5: error[E018]: the bound object 'servo' must be declared `final`.
+  = help: Write `final servo = Servo();`. C++ objects are created once, as global variables.
+input.dart:4:14: error[E018]: the bound object 'copy' must be initialized by calling the Servo constructor.
+  = help: Write `final copy = Servo(…);` with constant arguments.
+input.dart:6:21: error[E018]: the bound object 'third' must be initialized by calling the Servo constructor.
+  = help: Write `final third = Servo(…);` with constant arguments.
+input.dart:7:18: error[E018]: the bound object 'bus' must be declared `final`.
+  = help: Write `external final TwoWire bus;`. C++ objects are created once, as global variables.
+input.dart:8:11: error[E018]: the bound object 'w' cannot be created: TwoWire is abstract and is only reached through existing C++ objects.
+  = help: Call the existing object's methods directly, or name it with `external final TwoWire w;`.

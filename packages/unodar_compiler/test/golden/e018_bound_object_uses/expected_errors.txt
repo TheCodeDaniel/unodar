@@ -1,0 +1,24 @@
+input.dart:5:1: error[E018]: a return value of the binding type 'Servo' is not supported. Bound objects can only be top-level `final` variables.
+  = help: Use the top-level object directly instead of passing it around.
+input.dart:5:17: error[E018]: the bound object 'servo' can only be used to call its methods.
+  = help: Call a method on it, e.g. `servo.begin();`; it cannot be stored, compared, or passed.
+input.dart:7:13: error[E018]: a parameter of the binding type 'Servo' is not supported. Bound objects can only be top-level `final` variables.
+  = help: Use the top-level object directly instead of passing it around.
+input.dart:12:9: error[E018]: a local variable of the binding type 'Servo' is not supported. Bound objects can only be top-level `final` variables.
+  = help: Use the top-level object directly instead of passing it around.
+input.dart:12:17: error[E018]: a Servo object can only be created as the initializer of a top-level `final` variable.
+  = help: Declare it at the top level, e.g. `final servo = Servo(…);`, and use that.
+input.dart:13:3: error[E018]: a local variable of the binding type 'Servo' is not supported. Bound objects can only be top-level `final` variables.
+  = help: Use the top-level object directly instead of passing it around.
+input.dart:13:18: error[E018]: the bound object 'servo' can only be used to call its methods.
+  = help: Call a method on it, e.g. `servo.begin();`; it cannot be stored, compared, or passed.
+input.dart:14:10: error[E018]: the bound object 'servo' can only be used to call its methods.
+  = help: Call a method on it, e.g. `servo.begin();`; it cannot be stored, compared, or passed.
+input.dart:15:7: error[E018]: the bound object 'servo' can only be used to call its methods.
+  = help: Call a method on it, e.g. `servo.begin();`; it cannot be stored, compared, or passed.
+input.dart:15:16: error[E018]: the bound object 'servo' can only be used to call its methods.
+  = help: Call a method on it, e.g. `servo.begin();`; it cannot be stored, compared, or passed.
+input.dart:19:9: error[E018]: a local variable of the binding type 'HardwareSerial' is not supported. Bound objects can only be top-level `final` variables.
+  = help: Use the top-level object directly instead of passing it around.
+input.dart:19:16: error[E018]: the bound object 'Serial' can only be used to call its methods.
+  = help: Call a method on it, e.g. `Serial.begin();`; it cannot be stored, compared, or passed.

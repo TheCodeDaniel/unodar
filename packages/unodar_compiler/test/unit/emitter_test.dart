@@ -3,6 +3,7 @@ import 'package:unodar_compiler/src/emitter/emitter.dart';
 import 'package:unodar_compiler/src/ir/ir.dart';
 
 import '../ir_builders.dart';
+import '../phase3_ir.dart';
 
 /// A 32-bit-`int` board (ESP32-like), to show that the 16-bit widening is a target decision.
 final class Int32Target implements Target {
@@ -14,6 +15,11 @@ final class Int32Target implements Target {
   String get fqbn => 'test:test:test';
   @override
   List<String> get includes => const ['Arduino.h'];
+  @override
+  List<String> get buildProperties => _uno.buildProperties;
+
+  @override
+  CppScalarType? cppScalarType(String name) => _uno.cppScalarType(name);
   @override
   int get nativeIntBits => 32;
   @override
@@ -100,7 +106,8 @@ void loop() {
     expect(target.fqbn, 'arduino:avr:uno');
     expect(target.includes, ['Arduino.h']);
     expect(target.nativeIntBits, 16);
-    expect(IrType.values.map(target.cppType), ['void', 'bool', 'int32_t', 'float', 'uint8_t', 'uint16_t', 'int16_t']);
+    expect(IrType.values.map(target.cppType),
+        ['void', 'bool', 'const __FlashStringHelper *', 'int32_t', 'float', 'uint8_t', 'uint16_t', 'int16_t']);
   });
 
   group('literals and conversions', () {
@@ -343,6 +350,191 @@ void setup() {
   }
 #line 34 "p.dart"
   return;
+}
+''');
+  });
+
+  group('call results keep 32-bit int semantics', () {
+    test('a 16-bit int result is widened like a sized value only where both operands are narrow', () {
+      expect(cpp(mul(analogRead(c('A0')), i(100))), 'analogRead(A0) * 100L');
+      expect(cpp(mul(analogRead(c('A0')), v('u', IrType.uint8))), 'int32_t(analogRead(A0)) * u');
+      expect(cpp(mul(analogRead(c('A0')), v('n'))), 'analogRead(A0) * n');
+      expect(cpp(neg(analogRead(c('A0')))), '-int32_t(analogRead(A0))');
+      expect(cpp(analogRead(c('A0'))), 'analogRead(A0)');
+    });
+    test('an unsigned long result is always converted, so it subtracts and compares as Dart int', () {
+      expect(cpp(millis), 'int32_t(millis())');
+      expect(cpp(sub(millis, v('last'))), 'int32_t(millis()) - last');
+      expect(cpp(gt(millis, neg(i(1)))), 'int32_t(millis()) > -1');
+    });
+    test('an unsigned 16-bit result (size_t) compared with a signed value is widened', () {
+      final written = method('Wire', 'write', [i(1)], type: IrType.int32, cppResult: const IrCppResult('size_t'));
+      expect(cpp(lt(written, neg(i(1)))), 'int32_t(Wire.write(1)) < -1');
+    });
+    test('an int result of unknown C++ type is converted; a long one is used as is', () {
+      expect(cpp(method('s', 'f', [], type: IrType.int32, cppResult: const IrCppResult.unknown())), 'int32_t(s.f())');
+      expect(
+          cpp(mul(method('s', 'f', [], type: IrType.int32, cppResult: const IrCppResult('long')), i(2))), 's.f() * 2');
+    });
+    test('a sized Dart result of another C++ type wraps like Uint8(x)', () {
+      expect(cpp(method('s', 'f', [], type: IrType.uint8, cppResult: const IrCppResult('int'))), 'uint8_t(s.f())');
+      expect(cpp(method('s', 'f', [], type: IrType.uint8, cppResult: const IrCppResult('uint8_t'))), 's.f()');
+    });
+    test('on a 32-bit-int target only the unsigned long conversion remains', () {
+      expect(cpp(mul(analogRead(c('A0')), i(100)), target: const Int32Target()), 'analogRead(A0) * 100');
+      expect(cpp(millis, target: const Int32Target()), 'int32_t(millis())');
+    });
+  });
+
+  group('binding arguments', () {
+    test('a value of another C++ type is converted to the @CppType; literals and same-type values are not', () {
+      expect(cpp(method('servo', 'write', [v('angle')], parameterCppTypes: ['int'])), 'servo.write(int(angle))');
+      expect(cpp(method('servo', 'write', [i(90)], parameterCppTypes: ['int'])), 'servo.write(90)');
+      expect(cpp(method('w', 'f', [neg(i(1))], parameterCppTypes: ['int'])), 'w.f(-1)');
+      expect(cpp(method('w', 'f', [v('n')], parameterCppTypes: ['int32_t'])), 'w.f(n)');
+      expect(cpp(method('w', 'f', [v('u', IrType.uint8)], parameterCppTypes: ['uint8_t'])), 'w.f(u)');
+    });
+    test('a multi-word C++ type uses static_cast', () {
+      expect(
+          cpp(method('w', 'f', [v('n')], parameterCppTypes: ['unsigned long'])), 'w.f(static_cast<unsigned long>(n))');
+    });
+    test('a call argument is compared by the type C++ returns', () {
+      expect(cpp(method('w', 'f', [analogRead(c('A0'))], parameterCppTypes: ['int'])), 'w.f(analogRead(A0))');
+      expect(cpp(method('w', 'f', [millis], parameterCppTypes: ['int'])), 'w.f(int(int32_t(millis())))');
+    });
+    test('the argument count must match the parameter types', () {
+      expect(() => cpp(method('w', 'f', [i(1)], parameterCppTypes: [])), throwsA(isA<InvalidIrError>()));
+    });
+  });
+
+  group('string literals become flash strings', () {
+    test('F() with C++ escapes', () {
+      expect(cpp(const IrStringLiteral('tick')), 'F("tick")');
+      expect(cppStringLiteral('a"b\\c'), r'"a\"b\\c"');
+      expect(cppStringLiteral('\n\r\t'), r'"\n\r\t"');
+      expect(cppStringLiteral('\x01\x7f'), r'"\001\177"');
+    });
+    test('?? cannot form a trigraph', () {
+      expect(cppStringLiteral('what??!'), r'"what\??!"');
+      expect(cppStringLiteral('a?b'), '"a?b"');
+    });
+    test('non-ASCII is sent as UTF-8 octal escapes, which cannot swallow a following digit', () {
+      expect(cppStringLiteral('é1'), r'"\303\2511"');
+      expect(cppStringLiteral('€'), r'"\342\202\254"');
+    });
+    test('a NUL is invalid IR (E002 rejects it)', () {
+      expect(() => cppStringLiteral('a\x00b'), throwsA(isA<InvalidIrError>()));
+    });
+    test('a printed bool is a conditional of two flash strings', () {
+      expect(cpp(printableBool(b('on'))), 'on ? F("true") : F("false")');
+    });
+  });
+
+  test('Phase 3 program: includes, bound objects, method calls, Serial, raw C++', () {
+    final program = phase3Program(
+      extraIncludes: ['Servo.h'],
+      extraGlobals: [const IrBoundObject(name: 'servo', cppClass: 'Servo', line: 5)],
+    );
+    final withServoCalls = IrProgram(
+      sourceName: program.sourceName,
+      includes: program.includes,
+      globals: program.globals,
+      functions: [
+        IrFunction(name: 'setup', line: 6, isEntryPoint: true, body: [
+          ...program.functions.first.body,
+          // servo.attach(9, min: 600);  (max takes its Dart default, 2400)
+          statement(
+              method('servo', 'attach', [i(9), i(600), i(2400)],
+                  type: IrType.int32,
+                  cppResult: const IrCppResult('uint8_t'),
+                  parameterCppTypes: ['int', 'int', 'int']),
+              10),
+        ]),
+        program.functions.last,
+      ],
+    );
+    expect(const CppEmitter(UnoTarget()).emit(withServoCalls), r'''
+// Generated by unodar from phase3.dart. Do not edit; change the Dart source instead.
+#include <Arduino.h>
+#include <Wire.h>
+#include <SoftwareSerial.h>
+#include <Servo.h>
+
+#line 3 "phase3.dart"
+SoftwareSerial link(10, 11);
+#line 4 "phase3.dart"
+int32_t last = 0;
+#line 5 "phase3.dart"
+Servo servo;
+
+#line 6 "phase3.dart"
+void setup() {
+#line 7 "phase3.dart"
+  Serial.begin(9600);
+#line 8 "phase3.dart"
+  Wire.begin();
+#line 9 "phase3.dart"
+  link.begin(4800);
+#line 10 "phase3.dart"
+  servo.attach(9, 600, 2400);
+}
+
+#line 11 "phase3.dart"
+void loop() {
+#line 12 "phase3.dart"
+  const int32_t level = analogRead(A0) * 100L;
+#line 13 "phase3.dart"
+  const int32_t now = int32_t(millis());
+#line 14 "phase3.dart"
+  if (now - last >= 1000) {
+#line 15 "phase3.dart"
+    last = now;
+#line 16 "phase3.dart"
+    Serial.println(level > 5000 ? F("true") : F("false"));
+#line 17 "phase3.dart"
+    Serial.println(float(level) / float(7), 3);
+#line 18 "phase3.dart"
+    Serial.print(F("tab\t\"quoted\" \??= \303\251\n"));
+#line 19 "phase3.dart"
+    Wire.write(uint8_t(level / 100));
+#line 20 "phase3.dart"
+    if (Wire.available() > 0) {
+#line 21 "phase3.dart"
+      last += Wire.read();
+    }
+#line 22 "phase3.dart"
+    const int32_t sent = int32_t(link.write(uint8_t(level)));
+#line 23 "phase3.dart"
+    Serial.println(sent * 2);
+#line 24 "phase3.dart"
+    noInterrupts();
+    interrupts();
+  }
+}
+''');
+  });
+
+  test('raw C++ keeps its own lines and indentation, without a trailing empty line', () {
+    final program = IrProgram(sourceName: 'r.dart', functions: [
+      IrFunction(name: 'loop', line: 1, isEntryPoint: true, body: const [
+        IrRawCpp('if (x) {\n  y();\n}\n', line: 2),
+        IrRawCpp('z();\n\nw();', line: 3),
+      ]),
+    ]);
+    expect(const CppEmitter(UnoTarget()).emit(program), '''
+// Generated by unodar from r.dart. Do not edit; change the Dart source instead.
+#include <Arduino.h>
+
+#line 1 "r.dart"
+void loop() {
+#line 2 "r.dart"
+  if (x) {
+    y();
+  }
+#line 3 "r.dart"
+  z();
+
+  w();
 }
 ''');
   });

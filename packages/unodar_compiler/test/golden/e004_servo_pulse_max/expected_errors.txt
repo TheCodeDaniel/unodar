@@ -1,0 +1,6 @@
+input.dart:9:19: error[E004]: argument 1888 is out of range for parameter 'max' of servo.attach, which accepts 1889 to 2915 (`@CppRange`).
+  = help: Pass a value from 1889 to 2915; the library does not handle values outside it.
+input.dart:10:19: error[E004]: argument 2916 is out of range for parameter 'max' of servo.attach, which accepts 1889 to 2915 (`@CppRange`).
+  = help: Pass a value from 1889 to 2915; the library does not handle values outside it.
+input.dart:11:29: error[E004]: argument 3000 is out of range for parameter 'max' of servo.attach, which accepts 1889 to 2915 (`@CppRange`).
+  = help: Pass a value from 1889 to 2915; the library does not handle values outside it.

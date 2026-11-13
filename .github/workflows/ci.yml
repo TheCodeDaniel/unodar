@@ -23,6 +23,8 @@ env:
   DART_SDK_VERSION: 3.13.2
   ARDUINO_CLI_VERSION: 1.5.1
   ARDUINO_AVR_CORE: arduino:avr@1.8.8
+  SERVO_LIBRARY: Servo@1.3.0
+  NODE_VERSION: 22.12.0
   UNODAR_REQUIRE_ARDUINO: '1'
 
 jobs:
@@ -62,12 +64,30 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install "$ARDUINO_AVR_CORE"
 
+      # Libraries live outside ~/.arduino15 (in ~/Arduino/libraries), so this runs every time; it is small.
+      - name: Install the Servo library
+        run: |
+          arduino-cli lib update-index
+          arduino-cli lib install "$SERVO_LIBRARY"
+
       - name: Check the toolchain
         run: |
           arduino-cli version
           arduino-cli core list
           arduino-cli core list | grep -E "^arduino:avr +${ARDUINO_AVR_CORE#arduino:avr@} " \
             || { echo "::error::$ARDUINO_AVR_CORE is not installed"; exit 1; }
+          arduino-cli lib list
+          arduino-cli lib list | grep -E "^Servo +${SERVO_LIBRARY#Servo@} " \
+            || { echo "::error::$SERVO_LIBRARY is not installed"; exit 1; }
+
+      # The runtime fidelity harness runs programs in avr8js (tool/avr_runner, pinned by package-lock.json).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install the avr8js runner
+        working-directory: tool/avr_runner
+        run: npm ci --no-audit --no-fund
 
       - run: dart pub get
 

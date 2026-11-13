@@ -10,5 +10,5 @@ input.dart:8:12: error[E009]: the type 'num' is not supported in this version. O
   = help: Use one of the supported types; see docs/SUBSET.md.
 input.dart:10:1: error[E009]: the type 'String' is not supported in this version. Only int, double, bool, Uint8, Uint16, and Int16 are supported.
   = help: Use one of the supported types; see docs/SUBSET.md.
-input.dart:10:18: error[E002]: a string literal is not supported in this version.
-  = help: Strings arrive with Serial in Phase 3.
+input.dart:10:18: error[E002]: a string literal here is not supported in this version.
+  = help: A string literal can only be the value printed by `Serial.print` or `Serial.println`.

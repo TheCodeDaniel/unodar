@@ -13,10 +13,14 @@
 /// a double); turning that into equivalent C++ (helpers, conversions, 32-bit widening) is the emitter's job.
 library;
 
-/// The value types of the Phase 2 subset (docs/SUBSET.md "Types"). The target maps them to C++ type names.
+/// The value types of the subset (docs/SUBSET.md "Types"). The target maps them to C++ type names.
 enum IrType {
   void_,
   bool_,
+
+  /// A string literal. Only an argument of `Serial.print`/`println` (C++ `F("…")`, a flash string); never the
+  /// type of a variable.
+  string,
 
   /// Dart `int`.
   int32,
@@ -50,32 +54,53 @@ enum IrStorage {
 
 /// A whole translation unit: one Dart source file → one sketch.
 final class IrProgram {
-  const IrProgram({required this.sourceName, this.globals = const [], required this.functions});
+  const IrProgram(
+      {required this.sourceName, this.includes = const [], this.globals = const [], required this.functions});
 
   /// Display name of the Dart source (basename), used in `#line` directives.
   final String sourceName;
 
-  /// Top-level variables in source order. Their initializers are constant expressions.
-  final List<IrGlobal> globals;
+  /// Headers the program needs beyond the target's (`Servo.h` for a used binding, `@CppInclude` headers), in
+  /// order. Emitted as `#include <…>` after the target's includes, each once.
+  final List<String> includes;
+
+  /// Top-level variables and bound objects, in source order.
+  final List<IrGlobalDeclaration> globals;
 
   /// Functions in source order.
   final List<IrFunction> functions;
 }
 
-final class IrGlobal {
+sealed class IrGlobalDeclaration {
+  const IrGlobalDeclaration({required this.name, required this.line});
+
+  final String name;
+  final int line;
+}
+
+/// A top-level variable. Its initializer is a constant expression.
+final class IrGlobal extends IrGlobalDeclaration {
   const IrGlobal({
-    required this.name,
+    required super.name,
     required this.type,
     required this.storage,
     required this.initializer,
-    required this.line,
+    required super.line,
   });
 
-  final String name;
   final IrType type;
   final IrStorage storage;
   final IrExpression initializer;
-  final int line;
+}
+
+/// A statically allocated object of a bound C++ class: `Servo servo;`, `SoftwareSerial link(10, 11);`. Its
+/// constructor arguments are constant expressions, in C++ parameter order.
+final class IrBoundObject extends IrGlobalDeclaration {
+  const IrBoundObject({required super.name, required this.cppClass, this.arguments = const [], required super.line});
+
+  /// The C++ class name, possibly qualified (`ns::Name`).
+  final String cppClass;
+  final List<IrExpression> arguments;
 }
 
 final class IrParameter {
@@ -211,6 +236,13 @@ final class IrContinue extends IrStatement {
   const IrContinue({required super.line});
 }
 
+/// Raw C++ from `cpp('…')`, emitted verbatim (one line of output per line of [code]).
+final class IrRawCpp extends IrStatement {
+  const IrRawCpp(this.code, {required super.line});
+
+  final String code;
+}
+
 /// A nested `{ … }` block.
 final class IrBlock extends IrStatement {
   const IrBlock(this.body, {required super.line});
@@ -276,16 +308,60 @@ final class IrVariable extends IrExpression {
   final IrType type;
 }
 
-/// A call to a C++ function (an API function or a user function), with positional arguments in C++ order.
-final class IrCall extends IrExpression {
-  const IrCall(this.function, this.arguments, {this.type = IrType.void_});
+/// A string literal, [value] being the string Dart denotes (escapes resolved). C++ `F("…")`.
+final class IrStringLiteral extends IrExpression {
+  const IrStringLiteral(this.value);
 
-  /// The C++ function name.
+  final String value;
+
+  @override
+  IrType get type => IrType.string;
+}
+
+/// A call to a C++ function (an API function or a user function) or, with a [receiver], to a method of a C++
+/// object (`Serial.begin(9600)`, `servo.attach(9, 544, 2400)`). Arguments are positional, in C++ order, with
+/// omitted named arguments already filled in with their defaults.
+final class IrCall extends IrExpression {
+  const IrCall(
+    this.function,
+    this.arguments, {
+    this.type = IrType.void_,
+    this.receiver,
+    this.cppResult,
+    this.parameterCppTypes,
+  });
+
+  /// The C++ function or method name.
   final String function;
   final List<IrExpression> arguments;
 
+  /// The Dart result type.
   @override
   final IrType type;
+
+  /// The C++ object a method is called on, or null for a function call.
+  final String? receiver;
+
+  /// The C++ result type, for API and binding calls whose C++ result may differ from the target's type for [type]
+  /// (`analogRead` returns a 16-bit `int`, `millis` an `unsigned long`). Null when the C++ result is exactly the
+  /// target's type for [type], as for user functions and `void` calls.
+  final IrCppResult? cppResult;
+
+  /// The exact C++ type of each parameter (`@CppType`), one per argument, to which the emitter converts arguments
+  /// of another C++ type explicitly (`uint8_t(x)`), which also selects the right C++ overload. Null for calls whose
+  /// arguments are passed as they are (user functions, the Arduino core functions).
+  final List<String>? parameterCppTypes;
+}
+
+/// The C++ type an API or binding call returns (see [IrCall.cppResult]).
+final class IrCppResult {
+  const IrCppResult(String this.cppType);
+
+  /// A binding method returning `int` without `@CppType`: the C++ type is not known, so the emitter always
+  /// converts the result to 32 bits.
+  const IrCppResult.unknown() : cppType = null;
+
+  final String? cppType;
 }
 
 /// Binary operators with **Dart** semantics.

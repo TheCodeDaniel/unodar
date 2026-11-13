@@ -1,0 +1,6 @@
+input.dart:10:18: error[E002]: string interpolation is not supported in this version.
+  = help: Print the parts with separate calls, e.g. `Serial.print('x = '); Serial.println(x);`.
+input.dart:11:16: error[E002]: string interpolation is not supported in this version.
+  = help: Print the parts with separate calls, e.g. `Serial.print('x = '); Serial.println(x);`.
+input.dart:12:16: error[E002]: a NUL character in a string is not supported in this version.
+  = help: Remove it: C++ would end the string there.

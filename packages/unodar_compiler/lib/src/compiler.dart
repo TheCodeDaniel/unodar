@@ -1,4 +1,5 @@
 import 'api/api_registry.dart';
+import 'api/binding_reader.dart';
 import 'diagnostics/diagnostics.dart';
 import 'emitter/emitter.dart';
 import 'frontend/frontend.dart';
@@ -62,11 +63,34 @@ final class Compiler {
     final fatal = analysisErrors.where((e) => !unresolvedCalls.contains(e.offset));
     if (fatal.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
 
-    final diagnostics = Validator(api: api, target: target).validate(source);
+    final (programApi, unodarApi) = _registryFor(source);
+    final diagnostics =
+        Validator(api: programApi, target: target, unodarNames: unodarApi.reservedNames).validate(source);
     if (diagnostics.isNotEmpty) return CompileFailure(diagnostics);
     // Defensive: never let a deferred analyzer error through just because no rule explained it.
     if (analysisErrors.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
-    final program = Lowering(api).lower(source);
+    final program = Lowering(programApi).lower(source);
     return CompileSuccess(sourceName: source.displayName, cpp: CppEmitter(target).emit(program));
+  }
+
+  /// The registry for one program: [api] plus the bindings `package:unodar` exports (Wire, Servo), and that plus the
+  /// program's own binding classes and objects. User classes with E017 problems, or whose Dart name `package:unodar`
+  /// already uses (E014), are left out; the validator reports them.
+  (ApiRegistry program, ApiRegistry unodar) _registryFor(ResolvedSource source) {
+    final library = source.unit.declaredFragment!.element;
+    final reader = BindingReader(target);
+    final unodar = api.withBindings(reader.readImportedUnodar(library));
+    final valid = {
+      for (final declaration in bindingClassDeclarations(source.unit))
+        if (bindingClassDiagnostics(declaration, source, target).isEmpty &&
+            !unodar.reservedNames.contains(declaration.namePart.typeName.lexeme))
+          declaration.declaredFragment!.element,
+    };
+    final own = reader.readLibrary(library, include: valid.contains);
+    final objects = [
+      for (final object in own.objects)
+        if (!unodar.reservedNames.contains(object.dartName)) object
+    ];
+    return (unodar.withBindings(ApiBindings(classes: own.classes, objects: objects)), unodar);
   }
 }

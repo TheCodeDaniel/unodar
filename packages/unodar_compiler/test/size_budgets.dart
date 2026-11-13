@@ -45,9 +45,41 @@ const sizeBudgets = <String, SizeBudget>{
   'if_else': SizeBudget(baselineFlash: 1112, baselineRam: 13, maxFlash: 1450, maxRam: 24),
   'locals_assignments': SizeBudget(baselineFlash: 634, baselineRam: 13, maxFlash: 850, maxRam: 24),
   'pulse': SizeBudget(baselineFlash: 1106, baselineRam: 13, maxFlash: 1450, maxRam: 24),
-  'sized_types': SizeBudget(baselineFlash: 766, baselineRam: 14, maxFlash: 1000, maxRam: 25),
+  // Re-measured 2026-11-12 (Phase 3 review): 762 B since every sketch is built with -fwrapv (d213602); the 4 B
+  // difference appeared with that change and was not analysed further. Limit unchanged (762 + 30 % rounds up to 1000).
+  'sized_types': SizeBudget(baselineFlash: 762, baselineRam: 14, maxFlash: 1000, maxRam: 25),
   // subset_features is the Phase 1 golden that never had a budget; measured now with the Phase 2 emitter, whose
   // output for it is byte-identical to Phase 1.
   'subset_features': SizeBudget(baselineFlash: 902, baselineRam: 9, maxFlash: 1200, maxRam: 20),
   'while_loop': SizeBudget(baselineFlash: 812, baselineRam: 13, maxFlash: 1100, maxRam: 24),
+
+  // Phase 3, 2026-11-12, arduino-cli 1.5.1, arduino:avr 1.8.8, Servo 1.3.0, built with -fwrapv. Same limit rule as
+  // Phase 2. First measured with their goldens (docs/DECISIONS.md) and reviewed together in step 9: every one
+  // re-measured equal to its baseline except core_io.
+  //
+  // RAM is the scarce resource on the Uno (2048 B), and it is fixed at build time: arduino-cli's `data` figure is
+  // all static allocation, mostly library buffers (docs/SUBSET.md "Libraries reserve RAM"). Per binding golden:
+  //   serial_print 204 B, named_arguments 200 B   Serial: 64-byte receive + 64-byte transmit buffers
+  //   user_binding 348 B                          two SoftwareSerial objects, their shared 64-byte buffer, Serial
+  //   wire 408 B                                  TwoWire + twi.c 32-byte buffers, Serial
+  //   servo 57 B                                  Servo's table for 12 servos
+  // The +11 B RAM margin catches any new static state the compiler starts emitting.
+  //
+  // core_io links analogRead/analogWrite (wiring_analog.c) and micros(). Its baseline moves from 1740 B to 1804 B
+  // because the E013 commit (41393d0) added `analogRead(A4) + lastToggle` and an `if` to the golden: more input,
+  // not larger output per construct. The limit follows the rule from the new baseline: 1804 + 30 % = 2345, rounded
+  // up to 2350 (was 2300).
+  'core_io': SizeBudget(baselineFlash: 1804, baselineRam: 14, maxFlash: 2350, maxRam: 25),
+  // serial_print links HardwareSerial and Print (incl. printFloat and the soft-float routines); its 204 B RAM is
+  // mostly Serial's 64-byte receive and transmit buffers.
+  'serial_print': SizeBudget(baselineFlash: 4154, baselineRam: 204, maxFlash: 5450, maxRam: 215),
+  'named_arguments': SizeBudget(baselineFlash: 3624, baselineRam: 200, maxFlash: 4750, maxRam: 211),
+  // user_binding: two SoftwareSerial objects (64-byte shared receive buffer, per-object state) plus Serial, which
+  // the `usb` binding reaches; RAM 348 B of 2048 B.
+  'user_binding': SizeBudget(baselineFlash: 5038, baselineRam: 348, maxFlash: 6550, maxRam: 359),
+  // wire: TwoWire and twi.c keep five 32-byte buffers, plus Serial's two 64-byte buffers; RAM 408 B of 2048 B.
+  'wire': SizeBudget(baselineFlash: 4536, baselineRam: 408, maxFlash: 5900, maxRam: 419),
+  // servo: Servo.cpp's timer1 ISR and its table of 12 servos; RAM 57 B of 2048 B.
+  'servo': SizeBudget(baselineFlash: 2724, baselineRam: 57, maxFlash: 3550, maxRam: 68),
+  'cpp_escape_hatch': SizeBudget(baselineFlash: 1124, baselineRam: 13, maxFlash: 1500, maxRam: 24),
 };

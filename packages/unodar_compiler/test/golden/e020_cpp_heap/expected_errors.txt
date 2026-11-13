@@ -1,0 +1,8 @@
+input.dart:6:7: error[E020]: the C++ text uses 'malloc', which allocates on the heap. Generated code must not use the heap.
+  = help: Allocate statically instead, e.g. a global array: `cpp('static char buffer[16];');`.
+input.dart:7:7: error[E020]: the C++ text uses 'new', which allocates on the heap. Generated code must not use the heap.
+  = help: Allocate statically instead, e.g. a global array: `cpp('static char buffer[16];');`.
+input.dart:8:7: error[E020]: the C++ text uses 'String', which allocates on the heap. Generated code must not use the heap.
+  = help: Allocate statically instead, e.g. a global array: `cpp('static char buffer[16];');`.
+input.dart:9:7: error[E020]: the C++ text uses 'free', which frees heap memory. Generated code must not use the heap.
+  = help: Allocate statically instead, e.g. a global array: `cpp('static char buffer[16];');`.

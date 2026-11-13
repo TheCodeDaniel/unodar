@@ -1,0 +1,12 @@
+input.dart:19:24: error[E013]: 'Wire.read()' and 'Wire.read()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = Wire.read();`.
+input.dart:20:21: error[E013]: 'link.read()' and 'link.read()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = link.read();`.
+input.dart:21:22: error[E013]: 'Wire.read()' and 'link.read()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = Wire.read();`.
+input.dart:22:23: error[E013]: 'servo.read()' and 'analogRead()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = servo.read();`.
+input.dart:23:20: error[E013]: 'Wire.read()' and 'servo.read()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = Wire.read();`.
+input.dart:24:17: error[E013]: 'Wire.read()' and 'Wire.available()' may run in either order in the generated C++, but Dart always evaluates left to right.
+  = help: Store one call's result in a local variable first, e.g. `final value = Wire.read();`.

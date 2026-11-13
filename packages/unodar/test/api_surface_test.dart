@@ -8,4 +8,20 @@ void main() {
     expect([LOW, HIGH], [0, 1]);
     expect([INPUT, OUTPUT, INPUT_PULLUP], [0, 1, 2]);
   });
+
+  test('analog pins and LED_BUILTIN mirror the Uno pins_arduino.h (variants/standard)', () {
+    expect([A0, A1, A2, A3, A4, A5], [14, 15, 16, 17, 18, 19]);
+    expect(LED_BUILTIN, 13);
+  });
+
+  test('interop annotations are const and keep their argument', () {
+    const header = CppHeader('Servo.h');
+    const cppClass = CppClass('Servo');
+    const name = CppName('write');
+    const type = CppType('uint8_t');
+    const include = CppInclude('avr/wdt.h');
+    const range = CppRange(33, 1059);
+    expect([header.header, cppClass.name, name.name, type.type, include.header, range.min, range.max],
+        ['Servo.h', 'Servo', 'write', 'uint8_t', 'avr/wdt.h', 33, 1059]);
+  });
 }

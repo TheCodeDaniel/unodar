@@ -1,0 +1,8 @@
+input.dart:16:25: error[E004]: argument 300 is out of range for parameter 'rx' of SoftSerial, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:16:30: error[E004]: argument -1 is out of range for parameter 'tx' of SoftSerial, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:23:18: error[E004]: argument 256 is out of range for parameter 'value' of link.writeByte, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:24:25: error[E004]: argument 40000 is out of range for parameter 'digits' of link.printDouble, which is an int (-32768 to 32767).
+  = help: Pass a value from -32768 to 32767.

@@ -25,14 +25,25 @@ final class InitializerRule implements ValidationRule {
       // No initializer: `int? x;` and `var x;` are E009, `late`/`external` E005, anything else an analyzer error.
       if (initializer == null) continue;
       if (subexpressions(initializer).any((e) => expressionIssue(e) != null)) continue; // Reported as E002/E012.
-      final later = subexpressions(initializer).whereType<SimpleIdentifier>().where((identifier) {
-        final reference = referenceOf(identifier);
-        return reference is GlobalReference && order.indexOf(reference.element.name ?? '') >= index;
-      }).firstOrNull;
-      if (later != null) {
-        context.report(Diagnostics.forwardReference(name, later.name, context.at(later)));
-      } else if (context.constants.evaluate(initializer) is NotConstant) {
-        context.report(Diagnostics.nonConstantInitializer(name, context.at(initializer)));
+      // A bound object (`final link = SoftSerial(10, 11);`): each constructor argument must be constant. Any other
+      // initializer of a binding type is E018.
+      final List<Expression> values;
+      if (bindingClassOf(variable.declaredFragment?.element.type) != null) {
+        if (initializer is! InstanceCreationExpression) continue;
+        values = [for (final a in initializer.argumentList.arguments) a.argumentExpression];
+      } else {
+        values = [initializer];
+      }
+      for (final value in values) {
+        final later = subexpressions(value).whereType<SimpleIdentifier>().where((identifier) {
+          final reference = referenceOf(identifier);
+          return reference is GlobalReference && order.indexOf(reference.element.name ?? '') >= index;
+        }).firstOrNull;
+        if (later != null) {
+          context.report(Diagnostics.forwardReference(name, later.name, context.at(later)));
+        } else if (context.constants.evaluate(value) is NotConstant) {
+          context.report(Diagnostics.nonConstantInitializer(name, context.at(value)));
+        }
       }
     }
   }
@@ -45,7 +56,7 @@ final class ReservedNameRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     final arduino = context.target.reservedNames;
-    final api = context.api.reservedNames;
+    final api = context.unodarNames;
     void checkName(Token name) {
       final problem = reservedNameProblem(name.lexeme, api: api, arduino: arduino);
       if (problem == null) return;
@@ -54,6 +65,14 @@ final class ReservedNameRule implements ValidationRule {
 
     for (final variable in topLevelVariables(unit)) {
       checkName(variable.name);
+    }
+    // A binding class's Dart name is not emitted, but it may not shadow a unodar binding (`Servo`).
+    for (final declaration in bindingClassDeclarations(unit)) {
+      final name = declaration.namePart.typeName;
+      if (api.contains(name.lexeme)) {
+        context.report(Diagnostics.reservedName(
+            name.lexeme, 'it is a unodar API name', '${name.lexeme}Binding', context.at(name)));
+      }
     }
     for (final function in compiledFunctions(unit)) {
       if (!isEntryPoint(function)) checkName(function.name);
@@ -105,8 +124,11 @@ String lowerCamel(String allCaps) {
 ///
 /// An *unsequenced group* is: the two operands of a binary operator other than `&&`/`||`; the arguments of one
 /// call (two or more); the target and right-hand side of `+=`/`-=` on a mutable top-level variable. Within a group,
-/// a member containing a call may not sit next to another member containing a call or reading a mutable
-/// top-level variable. Each call is reported at most once.
+/// a member containing a call of any kind (user function, API function, method) may not sit next to another member
+/// containing a call: hardware results depend on time and order (`micros() - micros()`). A member containing a
+/// call to a **user** function may also not sit next to one reading a mutable top-level variable, which the call
+/// might change; API functions and binding methods cannot change the user's variables. Each call is reported at
+/// most once.
 final class EvaluationOrderRule implements ValidationRule {
   const EvaluationOrderRule();
 
@@ -120,7 +142,7 @@ final class EvaluationOrderRule implements ValidationRule {
         for (final other in members) {
           if (identical(other, member)) continue;
           final otherCall = other.firstCall;
-          final global = other.firstMutableGlobal;
+          final global = member.firstUserCall == null ? null : other.firstMutableGlobal;
           if (otherCall != null) {
             reported
               ..add(call)
@@ -128,8 +150,9 @@ final class EvaluationOrderRule implements ValidationRule {
             final (first, second) = otherCall.offset < call.offset ? (otherCall, call) : (call, otherCall);
             context.report(Diagnostics.twoCalls(_callText(first), _callText(second), context.at(first.methodName)));
           } else if (global != null) {
-            reported.add(call);
-            context.report(Diagnostics.callNextToGlobal(_callText(call), global, context.at(call.methodName)));
+            final userCall = member.firstUserCall!;
+            reported.add(userCall);
+            context.report(Diagnostics.callNextToGlobal(_callText(userCall), global, context.at(userCall.methodName)));
           } else {
             continue;
           }
@@ -167,7 +190,9 @@ final class EvaluationOrderRule implements ValidationRule {
     }
   }
 
-  static String _callText(MethodInvocation call) => '${call.methodName.name}()';
+  /// `next()`, `Wire.read()`.
+  static String _callText(MethodInvocation call) =>
+      '${call.target == null ? '' : '${call.target!.toSource()}.'}${call.methodName.name}()';
 }
 
 bool _mutableGlobal(SimpleIdentifier identifier) => switch (referenceOf(identifier)) {
@@ -175,21 +200,25 @@ bool _mutableGlobal(SimpleIdentifier identifier) => switch (referenceOf(identifi
       _ => false,
     };
 
-/// One member of an unsequenced group: its first call and its first read of a mutable top-level variable.
+/// One member of an unsequenced group: its first call, its first call to a user function, and its first read of a
+/// mutable top-level variable.
 final class _Member {
-  _Member(this.firstCall, this.firstMutableGlobal);
+  _Member(this.firstCall, this.firstUserCall, this.firstMutableGlobal);
 
   factory _Member.of(Expression expression) {
     final all = subexpressions(expression).toList();
+    final calls = all.whereType<MethodInvocation>();
     return _Member(
-      all.whereType<MethodInvocation>().firstOrNull,
+      calls.firstOrNull,
+      calls.where((c) => userFunctionOf(c) != null).firstOrNull,
       all.whereType<SimpleIdentifier>().where(_mutableGlobal).firstOrNull?.name,
     );
   }
 
-  factory _Member.global(String name) => _Member(null, name);
+  factory _Member.global(String name) => _Member(null, null, name);
 
   final MethodInvocation? firstCall;
+  final MethodInvocation? firstUserCall;
   final String? firstMutableGlobal;
 }
 

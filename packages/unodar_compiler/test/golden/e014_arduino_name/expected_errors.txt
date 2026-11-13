@@ -18,7 +18,7 @@ input.dart:11:5: error[E014]: 'word' cannot be used as a name: it is already def
   = help: Rename it, e.g. `wordValue`.
 input.dart:12:5: error[E014]: 'byte' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `byteValue`.
-input.dart:13:5: error[E014]: 'millis' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
+input.dart:13:5: error[E014]: 'millis' cannot be used as a name: it is a unodar API name.
   = help: Rename it, e.g. `millisValue`.
 input.dart:14:8: error[E014]: 'sqrt' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
   = help: Rename it, e.g. `sqrtValue`.

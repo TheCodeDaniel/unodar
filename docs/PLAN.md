@@ -1,28 +1,38 @@
-# Phase 2 plan — language core (done, tagged v0.2.0)
+# Phase 3 plan — hardware API and interop foundation
 
-**Status: done.** Every exit-gate item below passed; the release is tagged `v0.2.0`. Phase 3 has not started.
+**Status: done (2026-11-13), v0.3.** Approved by the maintainer and built step by step on the `phase-3` branch;
+every step below is complete except the optional step 11, which was skipped (it only changes how the C++ reads:
+avr-gcc folds those constants anyway, and most goldens would change). Phase 4 (widgets) is out of scope.
 
-Spec: PRD §8 row 2, the maintainer's Phase 2 brief, `docs/SUBSET.md`. Phase 1 (0.1.0) is complete.
-Exit gate: every new golden passes and compiles for `arduino:avr:uno`; the semantic-fidelity decisions are logged
-(`DECISIONS.md`) and tested; `SUBSET.md`/`DIAGNOSTICS.md` are accurate; `examples/pulse` builds.
+Final state: 269 tests (14 in `packages/unodar`, 255 in `packages/unodar_compiler`), 88 goldens (20 positive,
+each compiled, size-budgeted, and checked heap-free), the avr8js runtime harness with its negative controls, and
+`examples/dial`.
 
-## Steps (one or more small commits each, golden test first) — all done
+Spec: PRD §8 row 3, the maintainer's Phase 3 brief, `docs/SUBSET.md`, `docs/DIAGNOSTICS.md` (E017–E020), and the
+2026-11-12 entries in `docs/DECISIONS.md` (including the four maintainer decisions).
+Exit gate: every new golden passes, compiles for `arduino:avr:uno` (Servo installed), and has a size budget; every
+rejection has a negative golden; no generated output uses the heap; the runtime fidelity harness passes in avr8js
+with its negative control failing; `SUBSET.md`/`DIAGNOSTICS.md` are accurate; the examples build.
+
+## Steps (one or more small commits each, golden test first)
 
 | # | Step | Test written first |
 |---|---|---|
-| 1 | Docs: SUBSET, DIAGNOSTICS (E009–E016), DECISIONS, this plan | `docs_test` stays green |
-| 2 | `packages/unodar`: `Uint8`, `Uint16`, `Int16` extension types | Dart unit tests of the wrapping semantics |
-| 3 | IR + emitter: typed expressions/statements, globals, params/returns, precedence-aware printing, 16-bit widening, `unodar_mod`, prototypes | `emitter_test` on hand-built IR; blink output byte-identical |
-| 4 | Diagnostics registry E009–E016, Phase 2 wording for E002–E005 | Phase 1 goldens updated deliberately |
-| 5 | Validator relaxation, one construct per commit: top-level vars → expressions/operators + constant evaluator → locals/assignments → `if` → `while` → `for`/`break`/`continue` → user functions/`return` → recursion check (E016) → evaluation order → API arguments | A positive golden and a negative golden per construct |
-| 6 | Fidelity harness: `const` vectors, Dart values from the analyzer, `static_assert` under avr-gcc | `fidelity_test` (tagged `arduino`) |
-| 7 | arduino-cli compile of **every** positive golden; missing budget = failure | `arduino_compile_test` |
-| 8 | Size budgets for the new goldens (dedicated commit with measurements) | `size_budgets.dart` |
-| 9 | `examples/pulse` + `tool/check_arduino.sh` builds both examples | CLI build + arduino-cli compile |
-| 10 | Final docs pass; `dart analyze && dart format --set-exit-if-changed . && dart test` | — |
+| 1 | Docs: SUBSET, DIAGNOSTICS (E017–E020), DECISIONS, this plan | `docs_test` stays green |
+| 2 | `packages/unodar`: `digitalRead`, `analogRead`, `analogWrite`, `millis`, `micros`, `A0`–`A5`, `LED_BUILTIN`; `Serial`; annotations `CppHeader`, `CppClass`, `CppName`, `CppType`, `CppInclude`; `cpp()`; the Wire and Servo bindings | `api_surface_test` (values mirror `pins_arduino.h`) |
+| 3 | Registry: return types, C++ result types, objects and methods, named parameters with defaults; the binding reader (annotations → registry rows) | Unit tests on the registry and the reader |
+| 4 | IR + emitter: string literal (`F()`), method call, bound global (with constructor arguments), raw C++ statement, program includes; result widening | `emitter_test` on hand-built IR; existing goldens byte-identical |
+| 5 | Validator relaxation, one construct per commit, each with positive and negative goldens: `core_io` → `serial_print` (strings) → `named_arguments` → `user_binding` (SoftwareSerial, constructor arguments, `@CppName`) → `wire` → `servo` → `cpp_escape_hatch` (`@CppInclude`); E013 tightening | Goldens; `arduino_compile_test` |
+| 6 | Servo: `tool/check_arduino.sh` fails with the install command, the test gate checks it, CI installs `Servo@1.3.0` (done before the Servo golden, see DECISIONS) | Gate test with the library missing (`toolchain_gate_test`) |
+| 7 | No-heap check over every positive golden's output | New test in `arduino_compile_test` or its own file |
+| 8 | Runtime fidelity harness: unodar fixture with unfoldable inputs (`analogRead`, `millis`, `micros`) and identities that hold for every input, plus subtraction across the INT32_MAX/INT32_MIN boundary with operands only known at runtime (`volatile`), run by the avr8js runner in `tool/avr_runner/` (pinned version, lockfile; fixed cycle count, USART capture, PASS/FAIL lines); a negative control built without `-fwrapv` must print FAIL; CI installs Node with `actions/setup-node` | `runtime_fidelity_test` (tagged `arduino`) |
+| 9 | Size budgets for the new goldens (dedicated commit with measurements) | `size_budgets.dart` |
+| 10 | `examples/` sketch for Phase 3, built by `tool/check_arduino.sh` | CLI build + arduino-cli compile |
+| 11 | **Skipped** (optional). Drop the `L` suffix where the E010 evaluation proves a constant operation fits a 16-bit `int` (deliberate golden updates, own commit) | Goldens |
+| 12 | Final docs pass (README status, PRD status line); `dart analyze && dart format --set-exit-if-changed . && dart test`; end report | — |
 
 ## Extension hooks kept
-- The IR stays the seam: the emitter never sees the AST.
-- Board facts (native `int` width, reserved names, C++ type names) live on `Target`.
-- Every new code is in the single registry; the API table now carries C++ parameter types and named parameters.
-- Each validator rule owns one construct, so Phase 3+ relaxes them individually.
+- The IR stays the seam: bindings, strings, and raw C++ become IR nodes; the emitter never sees the AST.
+- The registry stays the single API table; bindings are data read from annotations, not code paths per library.
+- C++ type facts (widths, ranges for `@CppType`, promotions) live on `Target`, ready for ESP32 (Phase 9).
+- Bound objects are plain globals, which Phase 4 widgets can own the same way.
