@@ -11,6 +11,7 @@ library;
 
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/compiler.dart';
 
@@ -101,6 +102,54 @@ void main() {
       });
     });
 
+    group('runner pin I/O (hand-written sketch)', () {
+      late String hex;
+      setUpAll(() async {
+        if (gate.skip != false) return;
+        final build =
+            await compileSketch('pins', File(fromPackage('test', 'runtime', 'pins', 'pins.ino')).readAsStringSync());
+        expect(build.success, isTrue, reason: build.rawOutput);
+        // The build folder is removed by the tearDown of setUpAll, so keep the image.
+        hex = File(build.hexPath).readAsStringSync();
+      });
+
+      Future<({String serial, List<String> pinLog})> run(List<String> pins) async {
+        final file = File(p.join(Directory.systemTemp.createTempSync('unodar_hex_').path, 'pins.hex'))
+          ..writeAsStringSync(hex);
+        addTearDown(() => file.parent.deleteSync(recursive: true));
+        return simulate(file.path, pins: pins);
+      }
+
+      /// The simulated time in ms of each `<pin> <state>` change in [log].
+      List<double> changes(List<String> log, String pin, String state) => [
+            for (final line in log)
+              if (line.endsWith(' $pin $state')) double.parse(line.split(' ').first)
+          ];
+
+      test('an undriven pin reads HIGH with the pull-up and LOW without; a driven pin reads its level', () async {
+        gate.check();
+        final result = await run(['D3=high@50']);
+        expect(result.serial, startsWith('boot D2=1 D3=0 A1=0\r\nD2=1 at 0\r\n'));
+        expect(result.serial, contains('end D3=1 A1=0\r\nDONE'));
+        expect(changes(result.pinLog, 'D2', 'input-pullup'), hasLength(1));
+        expect(changes(result.pinLog, 'D13', 'low'), hasLength(1), reason: 'pinMode(13, OUTPUT) with PORT low');
+      });
+
+      test('a scheduled press and release reach the program and the output log at the scheduled time', () async {
+        gate.check();
+        final result = await run(['D2=low@100', 'D2=open@200']);
+        final reports = RegExp(r'D2=(\d) at (\d+)').allMatches(result.serial).map((m) => (m[1], int.parse(m[2]!)));
+        expect([for (final (level, _) in reports) level], ['1', '0', '1']);
+        // millis() counts whole 1.024 ms timer overflows, so it can trail the simulated time by up to a millisecond
+        // (and steps by 2 now and then): allow one millisecond either way.
+        expect([for (final (_, ms) in reports) ms], [0, inInclusiveRange(99, 101), inInclusiveRange(199, 201)]);
+        final high = changes(result.pinLog, 'D13', 'high');
+        final low = changes(result.pinLog, 'D13', 'low');
+        expect(high, [lessThan(1), allOf(greaterThanOrEqualTo(200), lessThan(200.1))]);
+        expect(low, [lessThan(1), allOf(greaterThanOrEqualTo(100), lessThan(100.1))]);
+      });
+    });
+
     group('widget runtime (runtime/unodar_widgets.h, hand-written sketch)', () {
       final sketch = File(fromPackage('test', 'runtime', 'widgets', 'widgets.ino')).readAsStringSync();
       final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
@@ -112,10 +161,10 @@ void main() {
         return results(await runInSimulator(build.hexPath));
       }
 
-      test('debounce, held at boot, Every count, drift, catch-up and the 2^32 wrap all pass', () async {
+      test('debounce, held at boot, Every count, drift, catch-up, the 2^32 wrap and the pins all pass', () async {
         gate.check();
         final lines = await run(header);
-        expect(lines, hasLength(9));
+        expect(lines, hasLength(11));
         expect(lines.where((l) => l.startsWith('FAIL')), isEmpty, reason: lines.join('\n'));
       });
 

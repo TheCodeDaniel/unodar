@@ -140,10 +140,35 @@ static void everyChecks() {
   check(F("Every ticks on schedule across the millis() wrap"), wrapTicks == 10 && tickAfterWrap);
 }
 
+// The pin side, through the runner's GPIO ports: an output pin reads back its own level, and an input nobody drives
+// reads HIGH when its pull-up is on.
+static void pinChecks() {
+  unodar::Led led(13);
+  led.begin();
+  const bool startsOff = digitalRead(13) == LOW;
+  led.on();
+  const bool on = digitalRead(13) == HIGH;
+  led.toggle();
+  const bool toggledOff = digitalRead(13) == LOW;
+  led.toggle();
+  const bool toggledOn = digitalRead(13) == HIGH;
+  led.off();
+  check(F("Led starts off; on, toggle, toggle, off drive the pin"),
+        startsOff && on && toggledOff && toggledOn && digitalRead(13) == LOW);
+
+  unodar::Button released(7);
+  released.begin();
+  bool anyPress = false;
+  for (int i = 0; i < 100; i++) anyPress = released.pressed() || anyPress;
+  check(F("an unconnected button reads HIGH through the pull-up and is never pressed"),
+        digitalRead(7) == HIGH && !anyPress);
+}
+
 void setup() {
   Serial.begin(115200);
   buttonChecks();
   everyChecks();
+  pinChecks();
   Serial.println(F("DONE"));
 }
 

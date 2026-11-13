@@ -148,16 +148,33 @@ String? missingRunner() {
 
 /// Runs [hexPath] in avr8js until it prints [until] (or the runner's cycle limit), with ADC channel voltages
 /// [adc] (`{0: 5.0}` sets A0 to 5 V). Returns what the program sent on the serial port.
-Future<String> runInSimulator(String hexPath, {Map<int, double> adc = const {}, String until = 'DONE'}) async {
+Future<String> runInSimulator(String hexPath, {Map<int, double> adc = const {}, String until = 'DONE'}) async =>
+    (await simulate(hexPath, adc: adc, until: until)).serial;
+
+/// Like [runInSimulator], and also drives input pins and records every pin's state changes.
+///
+/// [pins] are the runner's `--pin` values, e.g. `D2=low@100` (drive D2 LOW from 100 ms of simulated time on) and
+/// `D2=open@180` (release it). [cycles] overrides the runner's limit (default two simulated seconds). The result's
+/// `pinLog` holds the runner's `<ms> <pin> <state>` lines.
+Future<({String serial, List<String> pinLog})> simulate(String hexPath,
+    {Map<int, double> adc = const {}, List<String> pins = const [], String until = 'DONE', int? cycles}) async {
+  final dir = Directory.systemTemp.createTempSync('unodar_avr_');
+  addTearDown(() => dir.deleteSync(recursive: true));
+  final logPath = p.join(dir.path, 'pins.log');
   final run = await Process.run('node', [
     avrRunner,
     hexPath,
     '--until',
     until,
+    if (cycles != null) ...['--cycles', '$cycles'],
     for (final MapEntry(:key, :value) in adc.entries) ...['--adc', 'A$key=$value'],
+    for (final pin in pins) ...['--pin', pin],
+    '--pin-log',
+    logPath,
   ]);
   if (run.exitCode != 0) fail('avr_runner exited with ${run.exitCode}:\n${run.stdout}\n${run.stderr}');
-  return run.stdout as String;
+  final log = File(logPath).readAsLinesSync();
+  return (serial: run.stdout as String, pinLog: log);
 }
 
 /// [arduinoGate] for tests that also run programs in avr8js.
