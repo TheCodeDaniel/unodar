@@ -93,6 +93,31 @@ List<InstanceCreationExpression> inlineWidgets(CompilationUnit unit) {
   ];
 }
 
+/// The parts of a widget program's `main()` that are compiled, as root expressions: the widgets written in
+/// `children`, then the `serialBaud:` value.
+Iterable<Expression> deviceRoots(CompilationUnit unit) sync* {
+  yield* inlineWidgets(unit);
+  final device = deviceOf(unit);
+  if (device != null) {
+    if (namedArgument(device, 'serialBaud') case final baud?) yield baud;
+  }
+}
+
+/// The default of `Device`'s `serialBaud` parameter, from its Dart declaration (the single source of truth).
+int serialBaudDefault(InstanceCreationExpression device) {
+  final parameter = device.constructorName.element?.formalParameters.where((p) => p.name == 'serialBaud').single;
+  return parameter?.computeConstantValue()?.toIntValue() ?? (throw StateError('Device has no serialBaud default'));
+}
+
+/// Whether [call] is `Serial.begin(…)` (`HardwareSerial.begin` from `package:unodar`).
+bool isSerialBegin(MethodInvocation call) {
+  final method = call.methodName.element;
+  return method is MethodElement &&
+      isUnodarElement(method) &&
+      method.enclosingElement?.name == 'HardwareSerial' &&
+      method.name == 'begin';
+}
+
 /// The top-level variable declaration [identifier] refers to in [unit], or null.
 VariableDeclaration? topLevelDeclarationOf(SimpleIdentifier identifier, CompilationUnit unit) {
   final reference = referenceOf(identifier);

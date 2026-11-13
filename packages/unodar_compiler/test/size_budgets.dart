@@ -87,4 +87,8 @@ const sizeBudgets = <String, SizeBudget>{
   // are constant-initialized globals from unodar_widgets.h; step 8 reviews these and records RAM per widget.
   // widget_led: three Led objects (2 B each) and their begin() calls; smaller than blink, which links delay().
   'widget_led': SizeBudget(baselineFlash: 808, baselineRam: 15, maxFlash: 1100, maxRam: 26),
+  // widget_serial, widget_serial_baud: Serial opened by the generated setup(); RAM is mostly Serial's two 64-byte
+  // buffers (186 B of 2048 B). The two measure the same: a constant baud, a 13-byte flash string vs. an int print.
+  'widget_serial': SizeBudget(baselineFlash: 1734, baselineRam: 186, maxFlash: 2300, maxRam: 197),
+  'widget_serial_baud': SizeBudget(baselineFlash: 1734, baselineRam: 186, maxFlash: 2300, maxRam: 197),
 };

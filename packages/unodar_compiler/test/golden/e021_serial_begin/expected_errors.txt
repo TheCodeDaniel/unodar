@@ -1,0 +1,4 @@
+input.dart:7:3: error[E021]: a widget program cannot call Serial.begin(): the generated setup() opens Serial before anything else runs.
+  = help: Remove it, and set the speed with `Device(serialBaud: 115200, …)` if 9600 baud does not fit.
+input.dart:11:59: error[E021]: serialBaud must be a compile-time constant.
+  = help: Use a literal or a `const`, e.g. `serialBaud: 115200`.

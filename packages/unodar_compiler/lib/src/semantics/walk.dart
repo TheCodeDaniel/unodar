@@ -129,15 +129,15 @@ Iterable<Expression> rootsOfFunction(FunctionDeclaration function) sync* {
   }
 }
 
-/// Every root expression in the program: top-level initializers first, then the widgets written directly in a
-/// widget program's `Device(children: [...])` (the only part of `main()` that is compiled), then each function in
+/// Every root expression in the program: top-level initializers first, then the parts of a widget program's
+/// `main()` that are compiled (the widgets written in `Device.children` and `serialBaud:`), then each function in
 /// source order.
 Iterable<Expression> allRootExpressions(CompilationUnit unit) sync* {
   for (final variable in topLevelVariables(unit)) {
     final initializer = variable.initializer;
     if (initializer != null) yield initializer;
   }
-  yield* inlineWidgets(unit);
+  yield* deviceRoots(unit);
   for (final function in compiledFunctions(unit)) {
     yield* rootsOfFunction(function);
   }

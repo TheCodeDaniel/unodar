@@ -472,7 +472,8 @@ void loop() {
   `children` is a list literal of widgets, without spreads or collection `if`/`for` (E021).
 - The generated `setup()` calls `Serial.begin(serialBaud)` first, but only if the program uses `Serial`, so
   callbacks can print straight away. `Serial.begin` itself is rejected in a widget program (E021): set
-  `serialBaud:` instead.
+  `serialBaud:` instead, a compile-time constant (E021; negative values are E004). The default, 9600, is read from
+  the Dart declaration of `Device`.
 - Other top-level declarations work as in any sketch: variables, functions (callable from callbacks), bindings and
   bound objects, `@CppInclude`.
 

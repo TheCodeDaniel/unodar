@@ -46,6 +46,21 @@ final class WidgetProgramRule implements ValidationRule {
       return;
     }
 
+    for (final call in allCalls(unit).where(isSerialBegin)) {
+      context.report(Diagnostics.serialBeginInWidgetProgram(context.at(call)));
+    }
+    if (namedArgument(device, 'serialBaud') case final baud?
+        when !subexpressions(baud).any((e) => expressionIssue(e) != null)) {
+      final value = context.constants.valueOf(baud);
+      if (context.constants.evaluate(baud) is NotConstant) {
+        context.report(Diagnostics.serialBaudNotConstant(context.at(baud)));
+      } else if (value is int && value < 0) {
+        // Serial.begin's `unsigned long baud`, as for an explicit Serial.begin (E004).
+        context.report(Diagnostics.argumentOutOfRange(
+            '$value', 'serialBaud', 'Device', 'unsigned long', '0 to 4294967295', context.at(baud)));
+      }
+    }
+
     final board = namedArgument(device, 'board');
     if (board != null && !(board is InstanceCreationExpression && isUnodarClass(board.staticType, 'Uno'))) {
       context.report(Diagnostics.deviceBoard(context.at(board)));

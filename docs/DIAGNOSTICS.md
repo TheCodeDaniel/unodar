@@ -144,7 +144,7 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
 
 (Golden tests: `test/golden/e004_argument_out_of_range`, `e004_more_ranges`, `e004_core_io_ranges`,
 `e004_serial_digits`, `e004_binding_ranges`, `e004_wire_ranges`, `e004_servo_ranges`, `e004_servo_pulse_min`,
-`e004_servo_pulse_max`, `e004_widget_pins`.)
+`e004_servo_pulse_max`, `e004_widget_pins`, `e004_serial_baud`.)
 
 ## E005: Unsupported top-level declaration
 
@@ -622,8 +622,9 @@ input.dart:6:7: error[E020]: the C++ text uses 'malloc', which allocates on the 
 
 A widget program has `main()` and no `setup()`/`loop()`; a sketch with `setup()`/`loop()` has no widgets. Also
 rejected: `runDevice` anywhere but `main()`; a `Device` whose `board` is not `Uno()` or whose `children` is not a
-list literal of widgets (no spreads, collection `if`/`for`, or other values); and `Serial.begin` in a widget program,
-because the generated `setup()` opens the port (set the speed with `Device(serialBaud: …)`).
+list literal of widgets (no spreads, collection `if`/`for`, or other values); a `serialBaud:` that is not a
+compile-time constant (a negative one is E004); and `Serial.begin` in a widget program, because the generated
+`setup()` opens the port (set the speed with `Device(serialBaud: …)`).
 
 ```dart
 import 'package:unodar/unodar.dart';

@@ -1,0 +1,2 @@
+input.dart:7:59: error[E004]: argument -9600 is out of range for parameter 'serialBaud' of Device, which is an unsigned long (0 to 4294967295).
+  = help: Pass a value from 0 to 4294967295.

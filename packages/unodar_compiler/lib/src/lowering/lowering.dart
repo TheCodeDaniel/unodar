@@ -45,6 +45,9 @@ final class _Lowerer {
   /// Headers of the binding classes the program uses, in order of first use.
   final _headers = <String>{};
 
+  /// Whether any lowered code calls a `Serial` method (a widget program then opens the port in `setup()`).
+  var _usesSerial = false;
+
   IrProgram program() {
     final device = deviceOf(source.unit);
     final children = device == null ? const <WidgetChild>[] : widgetChildren(device, source.unit);
@@ -88,8 +91,18 @@ final class _Lowerer {
     final line = _line(main.firstTokenAfterCommentAndMetadata);
     ApiWidget widget(WidgetChild child) =>
         api.widgetOfType(child.creation.staticType) ?? (throw LoweringError('unregistered widget ${child.name}'));
+    final device = deviceOfMain(main)!;
+    final baud = namedArgument(device, 'serialBaud');
+    final serial = api.object('Serial')!;
+    final begin = api.classOf(serial).method('begin')!;
     return [
       IrFunction(name: 'setup', line: line, isEntryPoint: true, body: [
+        // Opens Serial first, so that callbacks can print straight away (docs/SUBSET.md "The program").
+        if (_usesSerial)
+          IrExpressionStatement(
+              IrCall(begin.cppName, [baud == null ? IrIntLiteral(serialBaudDefault(device)) : _expression(baud)],
+                  receiver: serial.cppName),
+              line: baud == null ? line : _line(baud)),
         for (final child in children)
           IrExpressionStatement(IrCall(widget(child).setup, const [], receiver: child.name),
               line: _line(child.element)),
@@ -370,6 +383,7 @@ final class _Lowerer {
     if (method != null) {
       final function = method.method;
       _usesClass(method.cls);
+      if (method.cls.dartName == 'HardwareSerial') _usesSerial = true;
       if (function.parameters.firstOrNull?.isPrintable ?? false) {
         return _printCall(method.receiver, function, call.argumentList);
       }

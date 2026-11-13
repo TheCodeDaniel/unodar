@@ -416,6 +416,21 @@ abstract final class Diagnostics {
         suggestion: 'List every widget on its own, e.g. `children: [led, Led(pin: 3)]`.',
       );
 
+  static Diagnostic serialBeginInWidgetProgram(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: 'a widget program cannot call Serial.begin(): the generated setup() opens Serial before anything '
+            'else runs.',
+        suggestion: 'Remove it, and set the speed with `Device(serialBaud: 115200, …)` if 9600 baud does not fit.',
+      );
+
+  static Diagnostic serialBaudNotConstant(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: 'serialBaud must be a compile-time constant.',
+        suggestion: 'Use a literal or a `const`, e.g. `serialBaud: 115200`.',
+      );
+
   // E022: widget rules.
 
   static Diagnostic widgetPlacement(String widget, SourceLocation at) => Diagnostic(
