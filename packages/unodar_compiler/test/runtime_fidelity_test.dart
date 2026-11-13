@@ -195,6 +195,56 @@ void main() {
       });
     });
 
+    group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
+      // The widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13, Every(500 ms) prints `tick`.
+      final source = fromPackage('test', 'runtime', 'button_led', 'input.dart');
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+
+      // Two presses with contact bounce, a bouncing release, and a 20 ms glitch, over 2.6 simulated seconds.
+      const inputs = [
+        'D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@307', 'D2=low@310', // press 1, stable from 310 ms
+        'D2=open@800', 'D2=low@802', 'D2=open@805', // release with bounce
+        'D2=low@1200', 'D2=open@1203', 'D2=low@1206', // press 2, stable from 1206 ms
+        'D2=open@1600', // release
+        'D2=low@2000', 'D2=open@2020', // a 20 ms glitch: not a press
+      ];
+      const cycles = 2600 * 16000; // 2.6 s at 16 MHz
+
+      Future<({String serial, List<String> pinLog})> run(String headerText) async {
+        final result = await Compiler().compile(source);
+        if (result is! CompileSuccess) fail('the goal program did not compile with unodar: $result');
+        final build = await compileSketch('button_led', result.cpp, files: {'unodar_widgets.h': headerText});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return simulate(build.hexPath, pins: inputs, until: null, cycles: cycles);
+      }
+
+      List<double> changes(List<String> log, String pin, String state) => [
+            for (final line in log)
+              if (line.endsWith(' $pin $state')) double.parse(line.split(' ').first)
+          ];
+
+      test('each bouncing press toggles pin 13 exactly once, 50 ms after it settles; Every ticks 5 times', () async {
+        gate.check();
+        final result = await run(header);
+        printOnFailure(result.pinLog.join('\n'));
+        // On at press 1 (stable 310 ms + 50 ms debounce), off at press 2 (1206 + 50). The debounce is measured in
+        // millis(), which counts whole 1.024 ms timer overflows at both ends, so allow a millisecond either way.
+        expect(changes(result.pinLog, 'D13', 'high'), [allOf(greaterThanOrEqualTo(359), lessThan(362))]);
+        expect(changes(result.pinLog, 'D13', 'low'), [lessThan(1), allOf(greaterThanOrEqualTo(1255), lessThan(1258))]);
+        // First tick one interval after setup(), then every 500 ms: 500, 1000, 1500, 2000, 2500.
+        expect('tick\r\n'.allMatches(result.serial), hasLength(5), reason: result.serial);
+        expect(result.serial, 'tick\r\n' * 5);
+      });
+
+      test('negative control: without debouncing, the bounces toggle the LED many times', () async {
+        gate.check();
+        expect(header, contains('kDebounceMs = 50'));
+        final result = await run(header.replaceAll('kDebounceMs = 50', 'kDebounceMs = 0'));
+        expect(changes(result.pinLog, 'D13', 'high').length, greaterThan(1), reason: result.pinLog.join('\n'));
+      });
+    });
+
     test('examples/dial reports the potentiometer reading over Serial', () async {
       gate.check();
       final result = await Compiler().compile(fromPackage('..', '..', 'examples', 'dial', 'main.dart'));
