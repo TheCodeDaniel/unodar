@@ -39,10 +39,23 @@ extension ApiResolution on ApiRegistry {
     return ResolvedMethod(variable.name!, cls, method);
   }
 
-  /// The registered class of a binding type, or null.
+  /// The registered class of a binding type or of a widget type (`Led`), or null. Both become static C++ objects
+  /// constructed with constant arguments.
   ApiClass? classOfType(DartType? type) {
-    final element = bindingClassOf(type);
+    final element = bindingClassOf(type) ?? _widgetClassOf(type);
     return element == null ? null : classNamed(element.name!);
+  }
+
+  /// The registered widget row of a widget type, or null (a widget class whose row has not landed yet).
+  ApiWidget? widgetOfType(DartType? type) {
+    final element = _widgetClassOf(type);
+    return element == null ? null : widget(element.name!);
+  }
+
+  static ClassElement? _widgetClassOf(DartType? type) {
+    if (type is! InterfaceType || !isUnodarElement(type.element)) return null;
+    final isWidget = type.element.allSupertypes.any((t) => t.element.name == 'Widget' && isUnodarElement(t.element));
+    return isWidget ? type.element as ClassElement : null;
   }
 
   /// The API function or object method [call] invokes, or null.

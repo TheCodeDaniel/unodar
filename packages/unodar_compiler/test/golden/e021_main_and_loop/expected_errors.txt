@@ -1,0 +1,4 @@
+input.dart:7:6: error[E021]: a widget program cannot also declare 'setup()': main() and runDevice() generate setup() and loop().
+  = help: Remove it and put the code in widget callbacks, e.g. `Every(Duration(milliseconds: 100), () { … })`.
+input.dart:11:6: error[E021]: a widget program cannot also declare 'loop()': main() and runDevice() generate setup() and loop().
+  = help: Remove it and put the code in widget callbacks, e.g. `Every(Duration(milliseconds: 100), () { … })`.

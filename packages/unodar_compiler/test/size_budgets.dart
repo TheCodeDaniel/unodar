@@ -82,4 +82,9 @@ const sizeBudgets = <String, SizeBudget>{
   // servo: Servo.cpp's timer1 ISR and its table of 12 servos; RAM 57 B of 2048 B.
   'servo': SizeBudget(baselineFlash: 2724, baselineRam: 57, maxFlash: 3550, maxRam: 68),
   'cpp_escape_hatch': SizeBudget(baselineFlash: 1124, baselineRam: 13, maxFlash: 1500, maxRam: 24),
+
+  // Phase 4 first measurements, 2026-11-13, arduino-cli 1.5.1, arduino:avr 1.8.8, same limit rule. Widget objects
+  // are constant-initialized globals from unodar_widgets.h; step 8 reviews these and records RAM per widget.
+  // widget_led: three Led objects (2 B each) and their begin() calls; smaller than blink, which links delay().
+  'widget_led': SizeBudget(baselineFlash: 808, baselineRam: 15, maxFlash: 1100, maxRam: 26),
 };

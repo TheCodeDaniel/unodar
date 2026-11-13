@@ -19,8 +19,8 @@ void main() {
   });
 
   group('registry', () {
-    test('codes are E001..E020, unique, and in order', () {
-      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 20; i++) 'E${'$i'.padLeft(3, '0')}']);
+    test('codes are E001..E022, unique, and in order', () {
+      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 22; i++) 'E${'$i'.padLeft(3, '0')}']);
     });
 
     test('every code has a non-empty summary for docs/DIAGNOSTICS.md', () {
@@ -38,7 +38,7 @@ void main() {
         Diagnostics.unsupportedDeclaration('a class', at),
         Diagnostics.invalidEntrySignature('setup', 'it returns int', at),
         Diagnostics.analysisError("The argument type 'String' can't be assigned to 'int'.", at),
-        Diagnostics.reservedMain(at),
+        Diagnostics.unsupportedMain(at),
         Diagnostics.unsupportedType('num', at),
         Diagnostics.constantOverflow(3600000000, at),
         Diagnostics.unsupportedSignature('f', 'it has type parameters', at),
@@ -51,6 +51,8 @@ void main() {
         Diagnostics.boundObjectUse('servo', at),
         Diagnostics.cppPosition(at),
         Diagnostics.cppHeap('malloc', at),
+        Diagnostics.widgetProgramEntryPoint('loop', at),
+        Diagnostics.widgetArgumentNotConstant('the pin of Led', at),
       ];
       expect(all.map((d) => d.code), DiagnosticCode.values, reason: 'one factory per code, in code order');
       for (final d in all) {
@@ -63,7 +65,7 @@ void main() {
   test('sortDiagnostics orders by line, column, then code for deterministic output', () {
     SourceLocation loc(int line, int col) => SourceLocation(file: 'a.dart', line: line, column: col);
     final sorted = sortDiagnostics([
-      Diagnostics.reservedMain(loc(9, 1)),
+      Diagnostics.unsupportedMain(loc(9, 1)),
       Diagnostics.unknownFunction('tone', api, loc(2, 5)),
       Diagnostics.namedArgument('x', 'delay', loc(2, 5)),
       Diagnostics.unknownFunction('tone', api, loc(2, 1)),

@@ -10,7 +10,7 @@ enum DiagnosticCode {
   unsupportedDeclaration('E005', 'Unsupported top-level declaration (classes, enums, typedefs, getters, late)'),
   invalidEntrySignature('E006', 'Invalid `setup`/`loop` signature (must be `void`, no parameters)'),
   analysisError('E007', 'Dart analysis error in the source file (type error, syntax error, unresolved import)'),
-  reservedMain('E008', '`main()` is reserved (widget API arrives in a later phase)'),
+  unsupportedMain('E008', '`main()` other than a single `runDevice(Device(…))` call'),
   unsupportedType('E009', 'Unsupported type (nullable, num, dynamic, String, …) or bool/number comparison'),
   constantOutOfRange('E010', 'Constant out of range: int32 overflow, float range, or division by zero'),
   unsupportedSignature('E011', 'Unsupported function signature (optional/named/default parameters, generics, async)'),
@@ -22,7 +22,9 @@ enum DiagnosticCode {
   invalidBinding('E017', 'Invalid binding class or interop annotation'),
   boundObjectMisuse('E018', 'Bound object misuse'),
   cppMisuse('E019', '`cpp()` misuse'),
-  cppHeap('E020', 'Heap allocation in `cpp()`');
+  cppHeap('E020', 'Heap allocation in `cpp()`'),
+  widgetProgram('E021', 'Widget program shape (main() with setup/loop, widgets without runDevice, Device arguments)'),
+  widgetRule('E022', 'Widget rules (placement, constant arguments, pins, children, declaration order, handles)');
 
   const DiagnosticCode(this.id, this.summary);
 

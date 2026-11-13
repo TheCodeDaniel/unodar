@@ -10,6 +10,7 @@ import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
+import '../semantics/widgets.dart';
 import 'describe.dart';
 import 'rules.dart';
 
@@ -115,6 +116,8 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
   Diagnostic Function(SourceLocation) e002(String what, String help) =>
       (at) => Diagnostics.unsupportedStatement(what, help, at);
   switch (expression) {
+    case MethodInvocation() when isRunDeviceCall(expression):
+      return (at) => Diagnostics.deviceOutsideMain('runDevice()', at);
     case IntegerLiteral() || DoubleLiteral() || BooleanLiteral():
     case ParenthesizedExpression() || ConditionalExpression() || MethodInvocation():
       return null;
@@ -152,6 +155,13 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
         return e002('the `??` operator', 'Nullable values are not supported, so `??` is never needed.');
       }
       return e002('the `${operator.lexeme}` operator', bitwiseHelp);
+    // A widget is allowed where E022 says (top-level `final`, or in Device.children); Device and Uno only in main().
+    case InstanceCreationExpression(:final staticType) when widgetClassOf(staticType) != null:
+      return null;
+    case InstanceCreationExpression(:final staticType)
+        when isUnodarClass(staticType, 'Device') || isUnodarClass(staticType, 'Uno'):
+      final name = isUnodarClass(staticType, 'Device') ? 'Device(…)' : 'Uno()';
+      return (at) => Diagnostics.deviceOutsideMain(name, at);
     case InstanceCreationExpression(:final staticType):
       // A binding constructor is allowed where E018 says (a top-level `final` initializer).
       return staticType != null && (sizedTypeOf(staticType) != null || bindingClassOf(staticType) != null)
@@ -242,6 +252,8 @@ final class ExpressionTypeRule implements ValidationRule {
         if (type is InvalidType) return false;
         // Bound objects and binding constructors: E018 decides where they may appear.
         if (bindingClassOf(type) != null) return false;
+        // A widget constructor: E021/E022 decide where it may appear; its arguments are ordinary expressions.
+        if (expression is InstanceCreationExpression && widgetClassOf(type) != null) return true;
         if (type == null || irTypeOf(type) == null) {
           if (type != null) {
             context.report(
@@ -271,6 +283,9 @@ final class ApiCallRule implements ValidationRule {
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
       if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null || isCppCall(call)) continue;
+      if (isRunDeviceCall(call)) continue; // E021, from ExpressionRule.
+      // A method of a misplaced widget (a local): reported at its declaration (E022).
+      if (call.target != null && widgetClassOf(call.target!.staticType) != null) continue;
       // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
       if (call.target != null && bindingClassOf(call.target!.staticType) != null) continue;
       final target = call.target;
@@ -338,7 +353,9 @@ final class ArgumentRule implements ValidationRule {
       final (min, max) = (parameter.min, parameter.max);
       if (min == null || max == null) continue;
       final value = context.constants.valueOf(argument.argumentExpression);
-      if (value is int && (value < min || value > max)) {
+      if (value is int && (value < min || value > max) && parameter.isPin) {
+        context.report(Diagnostics.pinOutOfRange('$value', name, context.at(argument)));
+      } else if (value is int && (value < min || value > max)) {
         context.report(parameter.hasCppRange
             ? Diagnostics.argumentOutsideCppRange('$value', parameter.name, name, '$min to $max', context.at(argument))
             : Diagnostics.argumentOutOfRange(

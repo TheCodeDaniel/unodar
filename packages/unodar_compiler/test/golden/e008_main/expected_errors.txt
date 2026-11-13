@@ -1,2 +1,2 @@
-input.dart:3:6: error[E008]: 'main()' is reserved for the widget API (runDevice), which arrives in a later phase.
-  = help: Remove main() and put your code in `void setup()` and `void loop()` instead.
+input.dart:5:6: error[E008]: unsupported main(): it may only contain a single `runDevice(Device(…))` call.
+  = help: Describe the device with widgets, e.g. `void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, or write `setup()` and `loop()` instead.

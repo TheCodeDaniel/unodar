@@ -31,6 +31,10 @@ final class Validator {
     // Whole program.
     EvaluationOrderRule(),
     RecursionRule(),
+    // Widget programs.
+    MainRule(),
+    WidgetProgramRule(),
+    WidgetRule(),
   ];
 
   final ApiRegistry api;

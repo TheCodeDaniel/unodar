@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 
 import 'elements.dart';
+import 'widgets.dart';
 
 /// Traversal of the user's program in the shape the subset understands. Every validator rule and the lowering
 /// walk the same positions, so a construct is either seen by all of them or by none.
@@ -128,12 +129,15 @@ Iterable<Expression> rootsOfFunction(FunctionDeclaration function) sync* {
   }
 }
 
-/// Every root expression in the program: top-level initializers first, then each function in source order.
+/// Every root expression in the program: top-level initializers first, then the widgets written directly in a
+/// widget program's `Device(children: [...])` (the only part of `main()` that is compiled), then each function in
+/// source order.
 Iterable<Expression> allRootExpressions(CompilationUnit unit) sync* {
   for (final variable in topLevelVariables(unit)) {
     final initializer = variable.initializer;
     if (initializer != null) yield initializer;
   }
+  yield* inlineWidgets(unit);
   for (final function in compiledFunctions(unit)) {
     yield* rootsOfFunction(function);
   }

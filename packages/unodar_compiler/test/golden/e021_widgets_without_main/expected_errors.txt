@@ -1,0 +1,4 @@
+input.dart:4:13: error[E021]: the widget 'Led' can only be used in a widget program, which has `void main() => runDevice(…)` instead of setup() and loop().
+  = help: Describe the device in main(), e.g. `void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, and remove setup() and loop(); or use pinMode() and digitalWrite() directly.
+input.dart:7:3: error[E021]: runDevice() can only be written in main(), as `runDevice(Device(board: Uno(), children: […]))`.
+  = help: Move it into `void main() => runDevice(Device(…));`; the compiler reads main() statically.

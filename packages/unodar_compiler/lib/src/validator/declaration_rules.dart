@@ -7,6 +7,7 @@ import '../ir/ir.dart';
 import '../semantics/elements.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
+import '../semantics/widgets.dart';
 import 'rules.dart';
 
 /// Only `import 'package:unodar/unodar.dart';` (unprefixed) is allowed. `library;` is harmless and allowed.
@@ -33,8 +34,8 @@ final class DirectiveRule implements ValidationRule {
   }
 }
 
-/// Top-level functions and variables are allowed; `main` is reserved (E008); everything else is E005; both entry
-/// points must exist (E001).
+/// Top-level functions and variables are allowed; `main` is checked by [MainRule]; everything else is E005; both
+/// entry points must exist in a file without `main` (E001).
 final class TopLevelDeclarationRule implements ValidationRule {
   const TopLevelDeclarationRule();
 
@@ -47,7 +48,7 @@ final class TopLevelDeclarationRule implements ValidationRule {
           context.report(Diagnostics.unsupportedDeclaration(what, context.at(start), suggestion: suggestion));
       switch (declaration) {
         case FunctionDeclaration(:final name) when name.lexeme == 'main':
-          context.report(Diagnostics.reservedMain(context.at(name)));
+          break; // MainRule (E008, E021).
         case FunctionDeclaration(:final name, isGetter: true):
           unsupported("a top-level getter ('${name.lexeme}')");
         case FunctionDeclaration(:final name, isSetter: true):
@@ -82,6 +83,8 @@ final class TopLevelDeclarationRule implements ValidationRule {
           unsupported('this declaration');
       }
     }
+    // A file with main() is a widget program (or an unsupported main, E008): setup() and loop() are generated.
+    if (mainFunction(unit) != null) return;
     for (final name in entryPointNames) {
       if (!declared.contains(name)) {
         context.report(Diagnostics.missingEntryPoint(name, context.source.locationOf(0)));
@@ -161,6 +164,8 @@ final class DeclaredTypeRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final declaration in unit.declarations.whereType<TopLevelVariableDeclaration>()) {
+      // `final Led led = Led(pin: 13);`: E022 decides where a widget may be declared.
+      if (widgetClassOf(declaration.variables.type?.type) != null) continue;
       _variables(declaration.variables, context);
     }
     for (final function in compiledFunctions(unit)) {

@@ -1,0 +1,2 @@
+input.dart:4:6: error[E008]: unsupported main(): it may only contain a single `runDevice(Device(…))` call.
+  = help: Describe the device with widgets, e.g. `void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, or write `setup()` and `loop()` instead.

@@ -1,0 +1,6 @@
+input.dart:4:17: error[E022]: the pin of Led must be a compile-time constant.
+  = help: Use a literal or a `const`, e.g. `const int ledPin = 13;`.
+input.dart:5:25: error[E022]: the pin of Led must be a compile-time constant.
+  = help: Use a literal or a `const`, e.g. `const int ledPin = 13;`.
+input.dart:7:80: error[E022]: the pin of Led must be a compile-time constant.
+  = help: Use a literal or a `const`, e.g. `const int ledPin = 13;`.

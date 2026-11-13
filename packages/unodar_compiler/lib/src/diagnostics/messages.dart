@@ -100,11 +100,13 @@ abstract final class Diagnostics {
         suggestion: 'Fix the Dart error first; `dart analyze` on this file shows the same problem.',
       );
 
-  static Diagnostic reservedMain(SourceLocation at) => Diagnostic(
-        code: DiagnosticCode.reservedMain,
+  static Diagnostic unsupportedMain(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedMain,
         location: at,
-        message: "'main()' is reserved for the widget API (runDevice), which arrives in a later phase.",
-        suggestion: 'Remove main() and put your code in `void setup()` and `void loop()` instead.',
+        message: 'unsupported main(): it may only contain a single `runDevice(Device(…))` call.',
+        suggestion: 'Describe the device with widgets, e.g. '
+            '`void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, or write `setup()` and '
+            '`loop()` instead.',
       );
 
   static Diagnostic nullableType(String type, String nonNullable, SourceLocation at) => Diagnostic(
@@ -354,6 +356,89 @@ abstract final class Diagnostics {
             '${word == 'free' || word == 'delete' ? 'frees heap memory' : 'allocates on the heap'}. Generated code '
             'must not use the heap.',
         suggestion: "Allocate statically instead, e.g. a global array: `cpp('static char buffer[16];');`.",
+      );
+
+  static Diagnostic pinOutOfRange(String value, String widget, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedArgument,
+        location: at,
+        message: 'pin $value is out of range for $widget: the Uno has pins 0 to 19 (D0–D13, and A0–A5 as 14–19).',
+        suggestion: 'Pass a pin from 0 to 19, e.g. `13` or `A0`.',
+      );
+
+  // E021: widget program shape.
+
+  static Diagnostic widgetProgramEntryPoint(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: "a widget program cannot also declare '$name()': main() and runDevice() generate setup() and loop().",
+        suggestion: 'Remove it and put the code in widget callbacks, e.g. '
+            '`Every(Duration(milliseconds: 100), () { … })`.',
+      );
+
+  /// [what] is `the widget 'Led'`, `Device(…)`, `runDevice()`, ….
+  static Diagnostic widgetOutsideWidgetProgram(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: '$what can only be used in a widget program, which has `void main() => runDevice(…)` instead of '
+            'setup() and loop().',
+        suggestion: 'Describe the device in main(), e.g. '
+            '`void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, and remove setup() and '
+            'loop(); or use pinMode() and digitalWrite() directly.',
+      );
+
+  /// [what] is `runDevice()`, `Device(…)`, or `Uno()`.
+  static Diagnostic deviceOutsideMain(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: '$what can only be written in main(), as `runDevice(Device(board: Uno(), children: […]))`.',
+        suggestion: 'Move it into `void main() => runDevice(Device(…));`; the compiler reads main() statically.',
+      );
+
+  static Diagnostic deviceBoard(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: 'the board must be written as `Uno()`, the only board in this version.',
+        suggestion: 'Write `board: Uno()`.',
+      );
+
+  static Diagnostic deviceChildrenNotLiteral(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: 'children must be a list literal written in place, e.g. `children: [led, button]`.',
+        suggestion: 'List the widgets directly inside `Device(children: [...])`; the compiler reads it statically.',
+      );
+
+  /// [what] is `a spread (...)`, `a collection if`, `a collection for`, or a description of the element.
+  static Diagnostic deviceChildElement(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: '$what is not supported in children: each element is a top-level widget or a widget constructor.',
+        suggestion: 'List every widget on its own, e.g. `children: [led, Led(pin: 3)]`.',
+      );
+
+  // E022: widget rules.
+
+  static Diagnostic widgetPlacement(String widget, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'a widget ($widget) can only be a top-level `final` or be written directly in Device.children.',
+        suggestion: 'Declare it at the top level, e.g. `final ${lowerFirst(widget)} = $widget(…);`, and list it in '
+            'children.',
+      );
+
+  static Diagnostic widgetNotFinal(String name, String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the widget '$name' must be declared `final`.",
+        suggestion: 'Write `$example`. Each widget is one C++ object, created once.',
+      );
+
+  /// [what] is `the pin of Led`.
+  static Diagnostic widgetArgumentNotConstant(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: '$what must be a compile-time constant.',
+        suggestion: 'Use a literal or a `const`, e.g. `const int ledPin = 13;`.',
       );
 
   static String _article(String word) => word.startsWith('uint') || !'aeiou'.contains(word[0]) ? 'a' : 'an';

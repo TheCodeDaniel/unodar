@@ -66,6 +66,25 @@ void loop() {}
     }
   });
 
+  test('every widget row matches its Dart class (constructor parameters, methods) and is a unodar:: class', () {
+    for (final name in ['Led']) {
+      final widget = registry.widget(name);
+      expect(widget, isNotNull, reason: name);
+      final cls = registry.classNamed(widget!.className)!;
+      final declaration = unodar[name] as ClassElement;
+      expect(cls.cppName, 'unodar::$name');
+      expect(declaration.methods.map((m) => m.name), cls.methods.map((m) => m.dartName), reason: name);
+      final constructor = declaration.constructors.single;
+      expect(constructor.isExternal, isTrue, reason: name);
+      expect([
+        for (final p in constructor.formalParameters) (p.name, p.isNamed)
+      ], [
+        for (final p in cls.constructor!) (p.name, p.isNamed)
+      ], reason: name);
+    }
+    expect(registry.reservedNames, containsAll(['Led', 'runDevice', 'Device', 'Uno', 'unodar']));
+  });
+
   test('every registered constant is a const in package:unodar', () {
     for (final name in registry.constantNames) {
       final getter = unodar[name];

@@ -1,0 +1,4 @@
+input.dart:4:5: error[E022]: the widget 'blinker' must be declared `final`.
+  = help: Write `final blinker = Led(pin: 3);`. Each widget is one C++ object, created once.
+input.dart:8:17: error[E022]: a widget (Led) can only be a top-level `final` or be written directly in Device.children.
+  = help: Declare it at the top level, e.g. `final led = Led(…);`, and list it in children.

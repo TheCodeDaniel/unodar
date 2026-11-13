@@ -115,6 +115,8 @@ An argument the unodar API function cannot accept:
   values are converted at runtime instead (see "Known deviations from Dart" in `docs/SUBSET.md`);
 - `digits:` given to `Serial.print`/`println` with a value that is not a `double` (for an `int`, Arduino's second
   argument would mean the number base);
+- a widget pin outside 0 to 19, the Uno's pins (D0–D13, and A0–A5 as 14–19), reported as "pin 20 is out of range
+  for Led: …";
 - a named argument the function does not declare. The analyzer already reports such a call as E007; E004 is the
   compiler's own guard behind it.
 
@@ -142,7 +144,7 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
 
 (Golden tests: `test/golden/e004_argument_out_of_range`, `e004_more_ranges`, `e004_core_io_ranges`,
 `e004_serial_digits`, `e004_binding_ranges`, `e004_wire_ranges`, `e004_servo_ranges`, `e004_servo_pulse_min`,
-`e004_servo_pulse_max`.)
+`e004_servo_pulse_max`, `e004_widget_pins`.)
 
 ## E005: Unsupported top-level declaration
 
@@ -228,17 +230,18 @@ then in a loop, use `setup()` and `loop()` instead.
 ```dart
 import 'package:unodar/unodar.dart';
 
-void main() {}
-
-void setup() {}
-
-void loop() {}
+void main() {
+  pinMode(13, OUTPUT);
+}
 ```
 
 ```text
-input.dart:3:6: error[E008]: 'main()' is reserved for the widget API (runDevice), which arrives in a later phase.
-  = help: Remove main() and put your code in `void setup()` and `void loop()` instead.
+input.dart:3:6: error[E008]: unsupported main(): it may only contain a single `runDevice(Device(…))` call.
+  = help: Describe the device with widgets, e.g. `void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, or write `setup()` and `loop()` instead.
 ```
+
+A file whose `main()` is rejected is neither a widget program nor a plain sketch, so its `setup()`/`loop()` and its
+widgets are not checked further until `main()` is fixed.
 
 (Golden tests: `test/golden/e008_main`, `e008_main_shapes`.)
 
@@ -430,7 +433,7 @@ input.dart:8:7: error[E014]: 'and' cannot be used as a name: it is a C++ keyword
 Every top-level variable needs an initializer made only of literals, unodar constants, `const` variables declared
 **above** it, `Uint8(…)`/`Uint16(…)`/`Int16(…)` of constants, and supported operators. The constructor arguments of
 a bound object (`final link = SoftSerial(10, 11);`) follow the same rule; widget arguments are checked by E022
-instead. C++ initializes globals before
+instead, except for declaration order (a widget's arguments are emitted in its C++ declaration). C++ initializes globals before
 `setup()` runs and needs declarations before use, while Dart initializes them lazily, so anything else could run
 in a different order. Compute other values in `setup()`.
 
@@ -455,7 +458,8 @@ input.dart:6:15: error[E015]: the initializer of top-level variable 'b' refers t
   = help: Move the declaration of 'c' above 'b'.
 ```
 
-(Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`.)
+(Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
+`e015_widget_forward_reference`.)
 
 ## E016: Recursive function
 
@@ -637,7 +641,7 @@ input.dart:7:6: error[E021]: a widget program cannot also declare 'loop()': main
 ```
 
 (Golden tests: `test/golden/e021_main_and_loop`, `e021_widgets_without_main`, `e021_device_arguments`,
-`e021_serial_begin`.)
+`e021_device_children`, `e021_serial_begin`.)
 
 ## E022: Widget rules
 
@@ -654,21 +658,13 @@ import 'package:unodar/unodar.dart';
 
 int ledPin = 13;
 final led = Led(pin: ledPin);
-final alarm = Led(pin: 2);
-final button = Button(pin: 2, onPressed: () {
-  alarm.on();
-});
 
-void main() => runDevice(Device(board: Uno(), children: [led, button]));
+void main() => runDevice(Device(board: Uno(), children: [led]));
 ```
 
 ```text
 input.dart:4:17: error[E022]: the pin of Led must be a compile-time constant.
   = help: Use a literal or a `const`, e.g. `const int ledPin = 13;`.
-input.dart:5:7: error[E022]: the widget 'alarm' is not listed in Device.children, so it would never be set up or polled.
-  = help: Add `alarm` to `children: [...]` in main().
-input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
-  = help: Give each widget its own pin.
 ```
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,

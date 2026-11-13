@@ -10,6 +10,7 @@ import '../ir/ir.dart';
 import '../semantics/elements.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
+import '../semantics/widgets.dart';
 
 /// Thrown when lowering meets a construct the validator should have rejected. Always a compiler bug (exit code 2),
 /// never a user error: it means a validator rule and the lowering disagree about the subset.
@@ -45,17 +46,59 @@ final class _Lowerer {
   final _headers = <String>{};
 
   IrProgram program() {
+    final device = deviceOf(source.unit);
+    final children = device == null ? const <WidgetChild>[] : widgetChildren(device, source.unit);
     final globals = [
       for (final variable in topLevelVariables(source.unit))
-        if (!_isExternal(variable)) _global(variable)
+        if (!_isExternal(variable)) _global(variable),
+      // Widgets written in Device.children, after the top-level variables, in list order.
+      for (final child in children)
+        if (identical(child.element, child.creation)) _widgetObject(child.name, child.creation),
     ];
-    final functions = [for (final function in compiledFunctions(source.unit)) _function(function)];
+    final functions = [
+      for (final function in compiledFunctions(source.unit)) _function(function),
+      if (device != null) ..._entryPoints(mainFunction(source.unit)!, children),
+    ];
     return IrProgram(
       sourceName: source.displayName,
       includes: [..._headers, ..._cppIncludes()],
+      localIncludes: [if (device != null) 'unodar_widgets.h'],
       globals: globals,
       functions: functions,
     );
+  }
+
+  /// A widget's C++ object: `unodar::Led led(13);`. Its arguments are constants (E022), in C++ parameter order.
+  IrBoundObject _widgetObject(String name, InstanceCreationExpression creation) {
+    final cls = api.classOfType(creation.staticType) ?? (throw LoweringError('unregistered widget $creation'));
+    final constructor = cls.constructor ?? (throw LoweringError('${cls.dartName} has no constructor'));
+    return IrBoundObject(
+      name: name,
+      cppClass: cls.cppName,
+      arguments: _apiArguments(
+          ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), creation.argumentList),
+      line: _line(creation),
+    );
+  }
+
+  /// The generated `setup()` and `loop()` of a widget program (docs/SUBSET.md "Widgets: runDevice"): `setup()`
+  /// starts every widget, `loop()` polls every widget that has something to poll, both in `children` order. Their
+  /// `#line` is `main()`'s; each call's is the line of its entry in `children`.
+  List<IrFunction> _entryPoints(FunctionDeclaration main, List<WidgetChild> children) {
+    final line = _line(main.firstTokenAfterCommentAndMetadata);
+    ApiWidget widget(WidgetChild child) =>
+        api.widgetOfType(child.creation.staticType) ?? (throw LoweringError('unregistered widget ${child.name}'));
+    return [
+      IrFunction(name: 'setup', line: line, isEntryPoint: true, body: [
+        for (final child in children)
+          IrExpressionStatement(IrCall(widget(child).setup, const [], receiver: child.name),
+              line: _line(child.element)),
+      ]),
+      IrFunction(name: 'loop', line: line, isEntryPoint: true, body: [
+        for (final child in children)
+          if (widget(child).poll != null) throw LoweringError('polled widgets arrive with Button and Every'),
+      ]),
+    ];
   }
 
   /// `external final TwoWire Wire;` names an existing C++ object: nothing is emitted for it.
@@ -87,6 +130,7 @@ final class _Lowerer {
 
   IrGlobalDeclaration _global(VariableDeclaration variable) {
     final initializer = variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'));
+    if (widgetCreation(initializer) case final creation?) return _widgetObject(variable.name.lexeme, creation);
     final cls = api.classOfType(variable.declaredFragment?.element.type);
     if (cls != null) {
       // A bound object: `final link = SoftSerial(10, 11);` → `SoftwareSerial link(10, 11);`.

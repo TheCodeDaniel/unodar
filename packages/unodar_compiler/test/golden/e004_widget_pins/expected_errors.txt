@@ -1,0 +1,4 @@
+input.dart:4:17: error[E004]: pin 20 is out of range for Led: the Uno has pins 0 to 19 (D0–D13, and A0–A5 as 14–19).
+  = help: Pass a pin from 0 to 19, e.g. `13` or `A0`.
+input.dart:6:67: error[E004]: pin -1 is out of range for Led: the Uno has pins 0 to 19 (D0–D13, and A0–A5 as 14–19).
+  = help: Pass a pin from 0 to 19, e.g. `13` or `A0`.
