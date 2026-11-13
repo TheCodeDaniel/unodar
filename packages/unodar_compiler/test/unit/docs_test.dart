@@ -10,7 +10,8 @@ import '../test_paths.dart';
 /// Keeps the docs honest (PRD §9.9 criterion 4):
 /// * every registered code has a `## Exxx:` section in docs/DIAGNOSTICS.md with an example diagnostic;
 /// * every example there is real: its Dart block is compiled and must print exactly the text block under it;
-/// * the complete program at the top of docs/SUBSET.md compiles.
+/// * the complete program at the top of docs/SUBSET.md compiles;
+/// * the widget example in docs/SUBSET.md compiles to exactly the C++ shown under it (minus `#line`).
 void main() {
   final diagnosticsDoc = File(fromPackage('..', '..', 'docs', 'DIAGNOSTICS.md')).readAsStringSync();
   final subsetDoc = File(fromPackage('..', '..', 'docs', 'SUBSET.md')).readAsStringSync();
@@ -55,6 +56,15 @@ void main() {
       expect('${result.diagnostics.map((d) => d.format()).join('\n')}\n', text);
     });
   }
+
+  test('the widget example in docs/SUBSET.md compiles to the C++ shown there (without #line)', () async {
+    final section = subsetDoc.substring(subsetDoc.indexOf('## Widgets: `runDevice`'));
+    final result = await compileSnippet('subset_widgets', block(section, 'dart')!);
+    if (result is! CompileSuccess) fail('the widget example did not compile: $result');
+    final lines = result.cpp.split('\n').where((l) => !l.startsWith('#line ')).skip(1); // Skip the header comment.
+    expect(lines.join('\n'), block(section, 'cpp'));
+    expect(result.files.keys, ['unodar_widgets.h']);
+  });
 
   test('the complete program in docs/SUBSET.md compiles', () async {
     final dart = block(subsetDoc, 'dart');
