@@ -199,7 +199,7 @@ void main() {
       gate.check();
       final result = await Compiler().compile(fromPackage('..', '..', 'examples', 'dial', 'main.dart'));
       if (result is! CompileSuccess) fail('examples/dial did not compile with unodar: $result');
-      final build = await compileSketch('dial', result.cpp);
+      final build = await compileSketch('dial', result.cpp, files: result.files);
       printOnFailure(build.rawOutput);
       expect(build.success, isTrue);
       // 2.5 V on A0 reads 512: the servo angle is 512 * 180 ~/ 1023 = 90, and 512 * 5.0 / 1023 prints as 2.502.
