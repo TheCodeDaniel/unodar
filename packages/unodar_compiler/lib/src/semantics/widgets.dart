@@ -3,6 +3,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_resolution.dart';
+import 'constant_evaluator.dart';
 import 'elements.dart';
 
 /// The static widget tree (docs/SUBSET.md "Widgets: runDevice"), read from `main()` without running it.
@@ -230,3 +231,70 @@ List<FunctionExpression> widgetCallbacks(CompilationUnit unit) => [
       for (final (_, creation) in acceptedWidgets(unit))
         if (callbackOf(creation) case final callback?) callback,
     ];
+
+/// Whether [expression] is a `Duration(…)` constructor call (`dart:core`, unnamed constructor, `const` or not).
+bool isDurationCreation(Expression expression) =>
+    expression is InstanceCreationExpression &&
+    expression.constructorName.name == null &&
+    isDurationType(expression.staticType);
+
+/// Whether [type] is `dart:core`'s `Duration`.
+bool isDurationType(DartType? type) =>
+    type is InterfaceType && type.element.name == 'Duration' && type.element.library.isDartCore;
+
+/// Whether [expression] is a `Duration(…)` written as an argument of a widget constructor (`Every`'s interval).
+bool isWidgetInterval(Expression expression) {
+  if (!isDurationCreation(expression)) return false;
+  final list = expression.parent;
+  final creation = list is ArgumentList ? list.parent : null;
+  return creation is InstanceCreationExpression && widgetCreation(creation) != null;
+}
+
+/// The interval of a `Duration(…)` in milliseconds, or why it is not a valid widget interval.
+sealed class Interval {
+  const Interval();
+}
+
+final class IntervalMilliseconds extends Interval {
+  const IntervalMilliseconds(this.milliseconds);
+
+  final int milliseconds;
+}
+
+/// An argument that is not a compile-time constant.
+final class IntervalNotConstant extends Interval {
+  const IntervalNotConstant(this.argument);
+
+  final Expression argument;
+}
+
+/// Constant, but not a whole number of milliseconds from 1 to 2147483647. [microseconds] is the exact total.
+final class IntervalOutOfRange extends Interval {
+  const IntervalOutOfRange(this.microseconds);
+
+  final int microseconds;
+}
+
+/// The largest interval, in milliseconds: `Every` compares `uint32_t` times, and the value is a Dart `int`
+/// (int32_t) constant.
+const maxIntervalMilliseconds = 2147483647;
+
+/// Evaluates `Duration(days:, hours:, minutes:, seconds:, milliseconds:, microseconds:)` with Dart semantics.
+Interval intervalOf(InstanceCreationExpression duration, ConstantEvaluator constants) {
+  const microsecondsPer = {
+    'days': 86400000000,
+    'hours': 3600000000,
+    'minutes': 60000000,
+    'seconds': 1000000,
+    'milliseconds': 1000,
+    'microseconds': 1,
+  };
+  var total = 0;
+  for (final argument in duration.argumentList.arguments.whereType<NamedArgument>()) {
+    final value = constants.valueOf(argument.argumentExpression);
+    if (value is! int) return IntervalNotConstant(argument.argumentExpression);
+    total += value * microsecondsPer[argument.name.lexeme]!;
+  }
+  if (total % 1000 != 0 || total < 1000 || total > maxIntervalMilliseconds * 1000) return IntervalOutOfRange(total);
+  return IntervalMilliseconds(total ~/ 1000);
+}

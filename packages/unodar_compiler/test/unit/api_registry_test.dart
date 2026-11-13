@@ -68,7 +68,7 @@ void loop() {}
   });
 
   test('every widget row matches its Dart class (constructor parameters, methods) and is a unodar:: class', () {
-    for (final name in ['Led', 'Button']) {
+    for (final name in ['Led', 'Button', 'Every']) {
       final widget = registry.widget(name);
       expect(widget, isNotNull, reason: name);
       final cls = registry.classNamed(widget!.className)!;

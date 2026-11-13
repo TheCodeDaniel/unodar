@@ -471,6 +471,31 @@ abstract final class Diagnostics {
         suggestion: 'Use a literal or a `const`, e.g. `const int ledPin = 13;`.',
       );
 
+  static Diagnostic intervalNotDuration(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'the interval of Every must be written in place as `Duration(…)`.',
+        suggestion: 'Write it in the call, e.g. `Every(Duration(milliseconds: 500), () { … })`.',
+      );
+
+  static Diagnostic intervalNotConstant(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'the interval of Every must be a compile-time constant.',
+        suggestion: 'Use literals or `const` ints, e.g. `Duration(milliseconds: blinkMs)` with '
+            '`const int blinkMs = 500;`.',
+      );
+
+  /// [microseconds] is the interval's exact length.
+  static Diagnostic intervalOutOfRange(int microseconds, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message:
+            'the interval of Every is ${microseconds % 1000 == 0 ? '${microseconds ~/ 1000} ms' : '$microseconds µs'}'
+            ', but it must be a whole number of milliseconds from 1 to 2147483647 (about 24.8 days).',
+        suggestion: 'Use whole milliseconds in that range, e.g. `Duration(milliseconds: 500)`.',
+      );
+
   static String _article(String word) => word.startsWith('uint') || !'aeiou'.contains(word[0]) ? 'a' : 'an';
 }
 

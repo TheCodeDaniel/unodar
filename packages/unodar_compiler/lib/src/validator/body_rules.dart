@@ -156,6 +156,9 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
         return e002('the `??` operator', 'Nullable values are not supported, so `??` is never needed.');
       }
       return e002('the `${operator.lexeme}` operator', bitwiseHelp);
+    // `Every`'s interval: E022 checks its arguments.
+    case InstanceCreationExpression() when isWidgetInterval(expression):
+      return null;
     // A widget is allowed where E022 says (top-level `final`, or in Device.children); Device and Uno only in main().
     case InstanceCreationExpression(:final staticType) when widgetClassOf(staticType) != null:
       return null;
@@ -267,6 +270,8 @@ final class ExpressionTypeRule implements ValidationRule {
         if (bindingClassOf(type) != null) return false;
         // A widget constructor: E021/E022 decide where it may appear; its arguments are ordinary expressions.
         if (expression is InstanceCreationExpression && widgetClassOf(type) != null) return true;
+        // `Every`'s interval: a Duration whose int arguments are checked like any other expression.
+        if (isWidgetInterval(expression)) return true;
         // A widget callback: its body is checked as a root of its own.
         if (expression is FunctionExpression) return false;
         if (type == null || irTypeOf(type) == null) {

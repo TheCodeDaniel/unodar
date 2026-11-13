@@ -94,4 +94,6 @@ const sizeBudgets = <String, SizeBudget>{
   // widget_button: two Buttons (7 B each: pin, two flags, a uint32_t timestamp), a Led, a counter, Serial; the
   // debounce logic and two callbacks.
   'widget_button': SizeBudget(baselineFlash: 2662, baselineRam: 208, maxFlash: 3500, maxRam: 219),
+  // widget_every: three Every objects (8 B each: interval and last tick), a Led, a counter, Serial.
+  'widget_every': SizeBudget(baselineFlash: 2392, baselineRam: 218, maxFlash: 3150, maxRam: 229),
 };

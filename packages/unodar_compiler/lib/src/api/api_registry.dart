@@ -279,8 +279,17 @@ final class ApiRegistry {
           ]),
           // `onPressed` is a callback, not a C++ constructor argument.
           ApiClass('Button', cppName: 'unodar::Button', constructor: [ApiParameter.widgetPin('pin')], methods: []),
+          // The interval is a Duration in Dart, passed as whole milliseconds (E022 checks the range).
+          ApiClass('Every',
+              cppName: 'unodar::Every',
+              constructor: [ApiParameter('interval', type: IrType.int32, cppType: 'uint32_t')],
+              methods: []),
         ],
-        widgets: const [ApiWidget('Led'), ApiWidget('Button', poll: 'pressed', callback: 'onPressed')],
+        widgets: const [
+          ApiWidget('Led'),
+          ApiWidget('Button', poll: 'pressed', callback: 'onPressed'),
+          ApiWidget('Every', poll: 'due', callback: 'callback'),
+        ],
         // Not callable or constructible as API rows, but taken by the widget API and its C++ namespace (E014).
         otherNames: const {'runDevice', 'Device', 'Uno', 'Board', 'Widget', 'unodar'},
       );

@@ -7,6 +7,7 @@ import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../frontend/frontend.dart';
 import '../ir/ir.dart';
+import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
@@ -370,6 +371,12 @@ final class _Lowerer {
         );
       case MethodInvocation():
         return _call(expression);
+      // `Every`'s interval, validated (E022): its length in milliseconds.
+      case InstanceCreationExpression() when isWidgetInterval(expression):
+        return switch (intervalOf(expression, const ConstantEvaluator())) {
+          IntervalMilliseconds(:final milliseconds) => IrIntLiteral(milliseconds),
+          _ => throw LoweringError('invalid interval ${expression.toSource()}'),
+        };
       case InstanceCreationExpression(:final argumentList):
         final type =
             sizedTypeOf(expression.staticType!) ?? (throw LoweringError('constructor ${expression.toSource()}'));

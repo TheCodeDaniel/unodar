@@ -123,12 +123,34 @@ final class WidgetRule implements ValidationRule {
   void _constantArguments(InstanceCreationExpression creation, String widget, ValidationContext context) {
     for (final argument in cppArgumentsOf(creation)) {
       final value = argument.argumentExpression;
+      if (isDurationType(value.staticType)) {
+        _interval(value, context);
+        continue;
+      }
       // Unsupported expressions are reported by ExpressionRule (E002/E012) instead.
       if (subexpressions(value).any((e) => expressionIssue(e) != null)) continue;
       if (context.constants.evaluate(value) is! NotConstant) continue;
       final parameter = argument is NamedArgument ? argument.name.lexeme : 'argument';
       context.report(Diagnostics.widgetArgumentNotConstant('the $parameter of $widget', context.at(argument)));
     }
+  }
+}
+
+void _interval(Expression value, ValidationContext context) {
+  if (subexpressions(value).any((e) => expressionIssue(e) != null)) return; // E002 (e.g. `Duration.zero`).
+  if (!isDurationCreation(value)) {
+    context.report(Diagnostics.intervalNotDuration(context.at(value)));
+    return;
+  }
+  // Constant arguments that do not fit int32 are E010 already.
+  final arguments = (value as InstanceCreationExpression).argumentList.arguments;
+  if (arguments.any((a) => context.constants.evaluate(a.argumentExpression) is ConstantProblem)) return;
+  switch (intervalOf(value, context.constants)) {
+    case IntervalNotConstant(:final argument):
+      context.report(Diagnostics.intervalNotConstant(context.at(argument)));
+    case IntervalOutOfRange(:final microseconds):
+      context.report(Diagnostics.intervalOutOfRange(microseconds, context.at(value)));
+    case IntervalMilliseconds():
   }
 }
 
