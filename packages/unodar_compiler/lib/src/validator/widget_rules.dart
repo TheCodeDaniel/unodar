@@ -1,8 +1,10 @@
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 
 import '../diagnostics/diagnostics.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/types.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
 import 'rules.dart';
@@ -178,6 +180,142 @@ final class CallbackRule implements ValidationRule {
       ];
       if (problems.isNotEmpty) {
         context.report(Diagnostics.callbackShape(englishList(problems), context.at(callback)));
+      }
+    }
+  }
+}
+
+/// Each pin belongs to one widget (E022). Widgets are compared in source order; the later one is reported.
+final class WidgetPinRule implements ValidationRule {
+  const WidgetPinRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    final owners = <int, String>{};
+    for (final (name, creation) in acceptedWidgets(unit)) {
+      final pin = namedArgument(creation, 'pin');
+      final value = pin == null ? null : context.constants.valueOf(pin);
+      if (value is! int) continue;
+      final line = context.at(creation).line;
+      final owner = name.startsWith('unodar_')
+          ? 'the ${widgetClassOf(creation.staticType)!.name} on line $line'
+          : "'$name' (line $line)";
+      final previous = owners[value];
+      if (previous != null) {
+        context.report(
+            Diagnostics.duplicatePin(value, previous, context.at(pin!.parent is NamedArgument ? pin.parent! : pin)));
+      } else {
+        owners[value] = owner;
+      }
+    }
+  }
+}
+
+/// Every top-level widget is listed in `Device.children` exactly once (E022).
+final class WidgetChildrenRule implements ValidationRule {
+  const WidgetChildrenRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    final device = deviceOf(unit);
+    if (device == null) return;
+    final listed = <VariableDeclaration>{};
+    for (final element in childrenElements(device) ?? const <CollectionElement>[]) {
+      if (element is! SimpleIdentifier) continue;
+      final variable = topLevelDeclarationOf(element, unit);
+      if (variable == null || topLevelWidget(variable) == null) continue;
+      if (!listed.add(variable)) context.report(Diagnostics.widgetListedTwice(element.name, context.at(element)));
+    }
+    if (childrenElements(device) == null) return; // E021: the list is not readable.
+    for (final variable in topLevelVariables(unit)) {
+      if (topLevelWidget(variable) != null && !listed.contains(variable)) {
+        context.report(Diagnostics.widgetNotInChildren(variable.name.lexeme, context.at(variable.name)));
+      }
+    }
+  }
+}
+
+/// A top-level widget's callback may only use top-level widgets declared above it (E022), like the order rule for
+/// top-level initializers (E015). Widgets written in `children` may use every widget.
+final class WidgetOrderRule implements ValidationRule {
+  const WidgetOrderRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    if (deviceOf(unit) == null) return;
+    final widgets = [
+      for (final variable in topLevelVariables(unit))
+        if (topLevelWidget(variable) != null) variable,
+    ];
+    final index = {for (final (i, v) in widgets.indexed) v.declaredFragment!.element: i};
+    for (final (i, variable) in widgets.indexed) {
+      final callback = callbackOf(topLevelWidget(variable)!);
+      if (callback == null) continue;
+      final reported = <Object>{};
+      callback.body.accept(_IdentifierVisitor((identifier) {
+        final reference = referenceOf(identifier);
+        if (reference is! GlobalReference) return;
+        final used = index[reference.element];
+        if (used != null && used > i && reported.add(reference.element)) {
+          context.report(
+              Diagnostics.widgetUsedBeforeDeclaration(variable.name.lexeme, identifier.name, context.at(identifier)));
+        }
+      }));
+    }
+  }
+}
+
+final class _IdentifierVisitor extends RecursiveAstVisitor<void> {
+  _IdentifierVisitor(this.onIdentifier);
+
+  final void Function(SimpleIdentifier identifier) onIdentifier;
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) => onIdentifier(node);
+}
+
+/// A widget handle is only the receiver of a method call or an entry of `children` (E022); widget types appear
+/// nowhere else (parameters, locals, return values).
+final class WidgetHandleRule implements ValidationRule {
+  const WidgetHandleRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    for (final root in allRootExpressions(unit)) {
+      walkExpression(root, (expression) {
+        if (expression is SimpleIdentifier && widgetClassOf(expression.staticType) != null) {
+          if (referenceOf(expression) is GlobalReference) {
+            context.report(Diagnostics.widgetHandleUse(expression.name, context.at(expression)));
+          }
+          return false;
+        }
+        return expressionIssue(expression) == null;
+      });
+    }
+    for (final function in compiledFunctions(unit)) {
+      if (function.returnType case final type? when widgetClassOf(type.type) != null) {
+        context.report(Diagnostics.widgetTypePosition('a return value', type.toSource(), context.at(type)));
+      }
+      for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
+        final type = parameter.declaredFragment?.element.type;
+        if (widgetClassOf(type) == null) continue;
+        context.report(Diagnostics.widgetTypePosition('a parameter', displayType(type!), context.at(parameter)));
+      }
+    }
+    for (final body in compiledBodies(unit)) {
+      for (final statement in statementsIn(body)) {
+        final list = switch (statement) {
+          VariableDeclarationStatement(:final variables) => variables,
+          ForStatement(forLoopParts: ForPartsWithDeclarations(:final variables)) => variables,
+          _ => null,
+        };
+        for (final variable in list?.variables ?? const <VariableDeclaration>[]) {
+          final type = variable.declaredFragment?.element.type;
+          // A widget constructor in a local is reported once, as a misplaced widget.
+          if (widgetClassOf(type) == null || widgetCreation(variable.initializer) != null) continue;
+          context.report(Diagnostics.widgetTypePosition(
+              'a local variable', displayType(type!), context.at(list!.type ?? variable.name)));
+        }
       }
     }
   }

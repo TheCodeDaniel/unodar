@@ -268,6 +268,8 @@ final class ExpressionTypeRule implements ValidationRule {
         if (type is InvalidType) return false;
         // Bound objects and binding constructors: E018 decides where they may appear.
         if (bindingClassOf(type) != null) return false;
+        // A widget handle used as a value: E022.
+        if (expression is SimpleIdentifier && widgetClassOf(type) != null) return false;
         // A widget constructor: E021/E022 decide where it may appear; its arguments are ordinary expressions.
         if (expression is InstanceCreationExpression && widgetClassOf(type) != null) return true;
         // `Every`'s interval: a Duration whose int arguments are checked like any other expression.

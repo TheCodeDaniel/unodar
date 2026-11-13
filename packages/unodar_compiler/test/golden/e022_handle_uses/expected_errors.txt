@@ -1,0 +1,12 @@
+input.dart:5:15: error[E022]: the widget 'led' can only be used to call its methods or be listed in Device.children.
+  = help: Call a method on it directly, e.g. `led.toggle()`, instead of storing, comparing, or passing it.
+input.dart:7:10: error[E022]: a parameter of the widget type 'Led' is not supported. Widgets can only be top-level `final`s.
+  = help: Use the top-level widget directly instead of passing it around.
+input.dart:19:23: error[E022]: a local variable of the widget type 'Led' is not supported. Widgets can only be top-level `final`s.
+  = help: Use the top-level widget directly instead of passing it around.
+input.dart:19:30: error[E022]: the widget 'led' can only be used to call its methods or be listed in Device.children.
+  = help: Call a method on it directly, e.g. `led.toggle()`, instead of storing, comparing, or passing it.
+input.dart:20:32: error[E022]: the widget 'led' can only be used to call its methods or be listed in Device.children.
+  = help: Call a method on it directly, e.g. `led.toggle()`, instead of storing, comparing, or passing it.
+input.dart:20:39: error[E022]: the widget 'led' can only be used to call its methods or be listed in Device.children.
+  = help: Call a method on it directly, e.g. `led.toggle()`, instead of storing, comparing, or passing it.

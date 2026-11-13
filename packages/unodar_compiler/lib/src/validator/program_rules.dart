@@ -26,6 +26,10 @@ final class InitializerRule implements ValidationRule {
       // No initializer: `int? x;` and `var x;` are E009, `late`/`external` E005, anything else an analyzer error.
       if (initializer == null) continue;
       if (subexpressions(initializer).any((e) => expressionIssue(e) != null)) continue; // Reported as E002/E012.
+      // A widget handle used as a value is E022.
+      if (subexpressions(initializer).any((e) => e is SimpleIdentifier && widgetClassOf(e.staticType) != null)) {
+        continue;
+      }
       // A bound object (`final link = SoftSerial(10, 11);`): each constructor argument must be constant. Any other
       // initializer of a binding type is E018.
       final List<Expression> values;

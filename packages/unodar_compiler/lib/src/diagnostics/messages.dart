@@ -471,6 +471,51 @@ abstract final class Diagnostics {
         suggestion: 'Use a literal or a `const`, e.g. `const int ledPin = 13;`.',
       );
 
+  /// [owner] is `'alarm' (line 5)` or `the Led on line 12`.
+  static Diagnostic duplicatePin(int pin, String owner, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'pin $pin is already used by $owner.',
+        suggestion: 'Give each widget its own pin.',
+      );
+
+  static Diagnostic widgetNotInChildren(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the widget '$name' is not listed in Device.children, so it would never be set up or polled.",
+        suggestion: 'Add `$name` to `children: [...]` in main().',
+      );
+
+  static Diagnostic widgetListedTwice(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the widget '$name' is listed in Device.children more than once.",
+        suggestion: 'List each widget once; the children order is the order of setup and polling.',
+      );
+
+  static Diagnostic widgetUsedBeforeDeclaration(String owner, String used, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the callback of '$owner' uses the widget '$used', which is declared below it.",
+        suggestion: "Move the declaration of '$used' above '$owner'.",
+      );
+
+  static Diagnostic widgetHandleUse(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the widget '$name' can only be used to call its methods or be listed in Device.children.",
+        suggestion:
+            'Call a method on it directly, e.g. `$name.toggle()`, instead of storing, comparing, or passing it.',
+      );
+
+  /// [position] is `a parameter`, `a local variable`, `a return value`.
+  static Diagnostic widgetTypePosition(String position, String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "$position of the widget type '$type' is not supported. Widgets can only be top-level `final`s.",
+        suggestion: 'Use the top-level widget directly instead of passing it around.',
+      );
+
   static Diagnostic intervalNotDuration(SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,

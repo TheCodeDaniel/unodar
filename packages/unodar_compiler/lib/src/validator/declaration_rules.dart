@@ -198,6 +198,7 @@ final class DeclaredTypeRule implements ValidationRule {
   void _variables(VariableDeclarationList list, ValidationContext context) {
     final annotation = list.type;
     if (isBindingType(annotation?.type)) return; // E018 decides where a binding type may appear.
+    if (widgetClassOf(annotation?.type) != null) return; // E022 decides where a widget type may appear.
     if (annotation != null) {
       _annotation(annotation, context);
       return;
@@ -213,7 +214,7 @@ final class DeclaredTypeRule implements ValidationRule {
 
   void _annotation(TypeAnnotation annotation, ValidationContext context, {bool allowVoid = false}) {
     final type = annotation.type;
-    if (type == null || isBindingType(type)) return;
+    if (type == null || isBindingType(type) || widgetClassOf(type) != null) return;
     final irType = irTypeOf(type);
     if (irType != null && (allowVoid || irType != IrType.void_)) return;
     context.report(typeDiagnostic(type, context.at(annotation)));

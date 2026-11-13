@@ -36,6 +36,10 @@ final class Validator {
     WidgetProgramRule(),
     WidgetRule(),
     CallbackRule(),
+    WidgetPinRule(),
+    WidgetChildrenRule(),
+    WidgetOrderRule(),
+    WidgetHandleRule(),
   ];
 
   final ApiRegistry api;

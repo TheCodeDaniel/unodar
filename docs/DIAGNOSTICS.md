@@ -659,13 +659,21 @@ import 'package:unodar/unodar.dart';
 
 int ledPin = 13;
 final led = Led(pin: ledPin);
+final alarm = Led(pin: 2);
+final button = Button(pin: 2, onPressed: () {
+  alarm.on();
+});
 
-void main() => runDevice(Device(board: Uno(), children: [led]));
+void main() => runDevice(Device(board: Uno(), children: [led, button]));
 ```
 
 ```text
 input.dart:4:17: error[E022]: the pin of Led must be a compile-time constant.
   = help: Use a literal or a `const`, e.g. `const int ledPin = 13;`.
+input.dart:5:7: error[E022]: the widget 'alarm' is not listed in Device.children, so it would never be set up or polled.
+  = help: Add `alarm` to `children: [...]` in main().
+input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
+  = help: Give each widget its own pin.
 ```
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
