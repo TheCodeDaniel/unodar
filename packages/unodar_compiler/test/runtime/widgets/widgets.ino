@@ -12,6 +12,12 @@ constexpr unodar::Led constantLed(13);
 constexpr unodar::Button constantButton(2);
 constexpr unodar::Every constantEvery(2147483647);
 
+// RAM per widget object on the Uno (docs/SUBSET.md, size budgets): pin + state; pin + two flags + a uint32_t
+// timestamp; interval + last tick.
+static_assert(sizeof(unodar::Led) == 2, "Led is 2 bytes");
+static_assert(sizeof(unodar::Button) == 7, "Button is 7 bytes");
+static_assert(sizeof(unodar::Every) == 8, "Every is 8 bytes");
+
 volatile uint32_t start = 1000;
 volatile uint32_t nearWrap = 0xFFFFFF00UL;  // 256 ms before millis() wraps to 0
 
