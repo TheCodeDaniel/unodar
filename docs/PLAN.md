@@ -1,7 +1,13 @@
 # Phase 4 plan — static widget tree
 
-**Status: approved by the maintainer (2026-11-13), in progress on the `phase-4` branch.** Phase 3 is done (v0.3.0).
-Phase 5 (Signals) is out of scope.
+**Status: done (2026-11-13), on the `phase-4` branch, awaiting maintainer review and the v0.4.0 tag.** Approved by
+the maintainer and built step by step. Step 6 ran in the order a, f, b, c, d, e (Serial auto-begin before
+callbacks; see DECISIONS). Phase 5 (Signals) is out of scope.
+
+Final state: 325 tests (16 in `packages/unodar`, 309 in `packages/unodar_compiler`), 112 goldens (25 positive,
+each compiled with arduino-cli, size-budgeted, and checked heap-free), the widget runtime header tested on its own
+in avr8js with negative controls, the goal program run in avr8js (debounced presses, tick count) with a negative
+control, and `examples/button_led`.
 
 Spec: PRD §7, §8 row 4, §10, `docs/SUBSET.md` "Widgets: `runDevice`", `docs/DIAGNOSTICS.md` (E008, E012, E021–E023)
 and the 2026-11-13 entries in `docs/DECISIONS.md` (maintainer decisions on Button, Every, `delay()`, and PRD §13.2).
