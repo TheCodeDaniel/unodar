@@ -90,13 +90,18 @@ final class ArduinoBuild {
   }
 }
 
-/// Writes [cpp] as `<name>/<name>.ino` in a temporary sketch folder and compiles it for the Uno, with
-/// [buildProperties] (default: the target's, i.e. -fwrapv; the runtime harness's negative control passes none).
-Future<ArduinoBuild> compileSketch(String name, String cpp, {List<String>? buildProperties}) async {
+/// Writes [cpp] as `<name>/<name>.ino` in a temporary sketch folder, plus [files] (file name to contents, e.g. the
+/// widget runtime header) next to it, and compiles it for the Uno, with [buildProperties] (default: the target's,
+/// i.e. -fwrapv; the runtime harness's negative control passes none).
+Future<ArduinoBuild> compileSketch(String name, String cpp,
+    {Map<String, String> files = const {}, List<String>? buildProperties}) async {
   final sketch = Directory.systemTemp.createTempSync('unodar_arduino_').path;
   addTearDown(() => Directory(sketch).deleteSync(recursive: true));
   final dir = Directory(p.join(sketch, name))..createSync();
   File(p.join(dir.path, '$name.ino')).writeAsStringSync(cpp);
+  for (final MapEntry(key: fileName, value: contents) in files.entries) {
+    File(p.join(dir.path, fileName)).writeAsStringSync(contents);
+  }
 
   final run = await Process.run('arduino-cli', [
     'compile',

@@ -101,6 +101,51 @@ void main() {
       });
     });
 
+    group('widget runtime (runtime/unodar_widgets.h, hand-written sketch)', () {
+      final sketch = File(fromPackage('test', 'runtime', 'widgets', 'widgets.ino')).readAsStringSync();
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+
+      Future<List<String>> run(String header) async {
+        final build = await compileSketch('widgets', sketch, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return results(await runInSimulator(build.hexPath));
+      }
+
+      test('debounce, held at boot, Every count, drift, catch-up and the 2^32 wrap all pass', () async {
+        gate.check();
+        final lines = await run(header);
+        expect(lines, hasLength(9));
+        expect(lines.where((l) => l.startsWith('FAIL')), isEmpty, reason: lines.join('\n'));
+      });
+
+      // Negative controls: a plausible wrong implementation of one rule each, which the checks must catch.
+      String broken(String from, String to) {
+        expect(header, contains(from), reason: 'the runtime header changed; update the negative control');
+        return header.replaceAll(from, to);
+      }
+
+      test('negative control: without debouncing, a bouncing press counts more than once', () async {
+        gate.check();
+        final lines = await run(broken('kDebounceMs = 50', 'kDebounceMs = 0'));
+        expect(lines, contains('FAIL a bouncing press, a clean press and a glitch give exactly 2 presses'));
+      });
+
+      test('negative control: rescheduling from the time a tick was noticed drifts and skips catch-up', () async {
+        gate.check();
+        final lines = await run(broken('last_ += interval_;', 'last_ = now;'));
+        expect(lines,
+            containsAll(['FAIL Every is drift-free when polled late', 'FAIL missed ticks are caught up one per call']));
+      });
+
+      test('negative control: comparing deadlines instead of elapsed time breaks at the millis() wrap', () async {
+        gate.check();
+        final lines = await run(broken('now - last_ < interval_', 'now < last_ + interval_'));
+        expect(lines, contains('FAIL Every ticks on schedule across the millis() wrap'));
+        expect(lines.where((l) => l.startsWith('FAIL')), hasLength(1), reason: lines.join('\n'));
+      });
+    });
+
     test('examples/dial reports the potentiometer reading over Serial', () async {
       gate.check();
       final result = await Compiler().compile(fromPackage('..', '..', 'examples', 'dial', 'main.dart'));
