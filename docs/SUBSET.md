@@ -1,4 +1,4 @@
-# Unodar Dart subset — Phase 3 (hardware API and interop foundation, experimental)
+# Unodar Dart subset — Phase 4 (static widget tree, experimental)
 
 This is the **exact** list of what the compiler accepts. Anything not listed here is rejected with a diagnostic
 (see [`DIAGNOSTICS.md`](DIAGNOSTICS.md)). The subset grows phase by phase; this file is updated *before* any new
@@ -76,7 +76,9 @@ C++ behaves identically:
 
 | Construct | Rule | C++ |
 |---|---|---|
-| `void setup()`, `void loop()` | Both required. Exactly `void name() { … }` (E006). | Same |
+| `void setup()`, `void loop()` | Both required in a sketch without `main()`. Exactly `void name() { … }` (E006). | Same |
+| `void main()` | Only as the single `runDevice(Device(…))` call of a widget program, see [Widgets](#widgets-rundevice); then `setup()`/`loop()` are not allowed (E021). | Generated `setup()` and `loop()` |
+| Widgets | `final led = Led(pin: 13);`, `final button = Button(pin: 2, onPressed: () { … });`, or written directly inside `Device(children: […])`. Arguments are compile-time constants (E022). | `unodar::Led led(13);` and so on, from `unodar_widgets.h` |
 | Functions | `R name(T a, T b) { … }` or `=> expr;`. `R` is a supported type or `void`; every parameter is required, positional, and has an explicit supported type. Recursion, direct or mutual, is rejected (E016). | Same, plus a prototype for each function |
 | `const` variables | `const int x = …;` or `const x = …;` (type inferred). | `constexpr int32_t x = …;` |
 | `final` variables | As above with `final`. | `const int32_t x = …;` |
@@ -91,7 +93,7 @@ constants (`HIGH`, `A0`, …), `const` variables declared **above** this one, `U
 constants, and the operators below. A `final` or mutable variable is not a constant, even if its initializer is.
 The arguments of a bound object's constructor follow the same rule.
 
-Still rejected: `main()` (E008); classes without `@CppClass`, enums, mixins, extensions, typedefs, top-level
+Still rejected: `main()` of any other shape (E008); classes without `@CppClass`, enums, mixins, extensions, typedefs, top-level
 getters/setters (E005); `late` variables, and `external` variables whose type is not a binding class (E005);
 optional, named, or default parameters, type parameters, `async`/generators, `external` functions, untyped
 parameters (E011).
@@ -204,7 +206,9 @@ collide with C++ or the Arduino core (E014):
 - ALL-CAPS names (no lower-case letter): the AVR headers define hundreds of macros such as `PORTB`. Dart style
   already prefers `ledPin` over `LED_PIN`.
 - Names ending in `_t`, containing `__` or `$`, starting with `_` and an upper-case letter, or starting with
-  `unodar_` (reserved for generated helpers).
+  `unodar_` (reserved for generated helpers, widgets written inside `children`, and callbacks).
+- `unodar`, the C++ namespace of the widget runtime, and the widget names `Led`, `Button`, `Every`, `Device`, `Uno`,
+  `runDevice` (unodar API names).
 
 The Dart names of binding classes and their methods are not emitted (the C++ names come from the annotations), so
 they are not checked.
@@ -392,6 +396,133 @@ void loop() {
   plain header path. Each header is included once, as `#include <File.h>`, after `Arduino.h` and the binding
   headers, in source order.
 
+## Widgets: `runDevice`
+
+A **widget program** describes the device as a tree instead of writing `setup()` and `loop()`. The compiler reads
+the tree **statically** (it never runs `main()`) and generates flat C++: one statically allocated object per widget,
+a plain function per callback, and a `setup()`/`loop()` that drive them. No heap, no virtual calls, no function
+pointers.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+final led = Led(pin: 13);
+final button = Button(pin: 2, onPressed: () {
+  led.toggle();
+});
+
+void main() => runDevice(
+      Device(
+        board: Uno(),
+        children: [
+          led,
+          button,
+          Every(Duration(milliseconds: 500), () {
+            Serial.println('tick');
+          }),
+        ],
+      ),
+    );
+```
+
+```cpp
+#include <Arduino.h>
+#include "unodar_widgets.h"
+
+void unodar_button_onPressed();
+void unodar_every_0_callback();
+
+unodar::Led led(13);
+unodar::Button button(2);
+unodar::Every unodar_every_0(500);
+
+void unodar_button_onPressed() {
+  led.toggle();
+}
+
+void unodar_every_0_callback() {
+  Serial.println(F("tick"));
+}
+
+void setup() {
+  Serial.begin(9600);
+  led.begin();
+  button.begin();
+  unodar_every_0.begin();
+}
+
+void loop() {
+  if (button.pressed()) {
+    unodar_button_onPressed();
+  }
+  if (unodar_every_0.due()) {
+    unodar_every_0_callback();
+  }
+}
+```
+
+(`#line` directives omitted here.)
+
+### The program
+
+- `main()` is exactly `void main() => runDevice(Device(…));` or `void main() { runDevice(Device(…)); }`: one call,
+  nothing else (E008). With `main()`, the file has no `setup()` or `loop()` (E021); a file with `setup()`/`loop()`
+  cannot use widgets or `runDevice` (E021).
+- `Device(board: Uno(), children: […], {serialBaud = 9600})`. `board` is `Uno()` (the only board in this version);
+  `children` is a list literal of widgets, without spreads or collection `if`/`for` (E021).
+- The generated `setup()` calls `Serial.begin(serialBaud)` first, but only if the program uses `Serial`, so
+  callbacks can print straight away. `Serial.begin` itself is rejected in a widget program (E021): set
+  `serialBaud:` instead.
+- Other top-level declarations work as in any sketch: variables, functions (callable from callbacks), bindings and
+  bound objects, `@CppInclude`.
+
+### Widgets
+
+| Widget | Arguments | Behaviour |
+|---|---|---|
+| `Led(pin: p)` | `pin` 0–19 (D0–D13, A0–A5) | Output, starts **off** (LOW). Methods `on()`, `off()`, `toggle()`. |
+| `Button(pin: p, onPressed: () { … })` | `pin` 0–19 | Input with the internal pull-up (`INPUT_PULLUP`): wire the button between the pin and GND, no resistor. `onPressed` runs **once per press**, when the reading changes from HIGH to LOW and stays there for **50 ms** (debounced). Releasing runs nothing. A button already held at power-up does not count as a press. |
+| `Every(Duration(…), () { … })` | interval 1 ms to 2147483647 ms | Runs the callback **after one interval**, then every interval, measured from `setup()`. |
+
+- A widget is either a top-level `final` (`final led = Led(pin: 13);`), which gives a handle callbacks can use, or
+  written directly in `children` (no handle). Anywhere else, e.g. a local variable, inside a callback, or in a
+  plain sketch, it is rejected (E022, E021).
+- Every argument is a compile-time constant: `pin` like any constant (`13`, `A0`, a `const`); the interval a
+  `Duration(…)` with constant `days:`/`hours:`/`minutes:`/`seconds:`/`milliseconds:`/`microseconds:` arguments that
+  add up to a whole number of milliseconds (E022). Pins outside 0–19 are E004.
+- Each pin is used by at most one widget, and every top-level widget is listed in `children` exactly once (E022).
+  A top-level widget's callback may only use widgets declared **above** it (E022), the same order rule as
+  top-level initializers.
+- `children` order is the order of `setup()` initialization and of polling in `loop()`.
+- A widget handle can only be used to call its methods (`led.toggle()`) and to be listed in `children` (E022), as
+  with bound objects. `Button` and `Every` have no methods yet.
+
+### Callbacks
+
+`onPressed` and `Every`'s callback are closures: `() { … }` or `() => call(…)`. Each becomes a generated plain
+function (`unodar_button_onPressed`, `unodar_every_0_callback`).
+
+- No parameters, not `async`, no return value; a function reference (`onPressed: toggle`) is not accepted, write
+  `() { toggle(); }` (E012).
+- The body follows the same rules as a function body: statements, expressions, calls, its own local variables. It
+  may use top-level variables and constants, call your top-level functions and the unodar API, use `Serial` (but
+  not `Serial.begin`), widget handles, bound objects, and `cpp()`.
+- No closures inside a callback (E012). Closures anywhere else remain rejected (E012).
+- No `delay()`, directly or through a function the callback calls (E023): while a callback waits, no button is
+  read and no timer runs.
+
+### Timing
+
+The generated `loop()` polls every widget, in `children` order, on every pass; callbacks run inside `loop()`, one
+after the other, never at the same time.
+
+- `Every` is **drift-free**: each tick is scheduled exactly one interval after the previous **scheduled** tick
+  (`last += interval`), not after the moment the callback ran. It is **wrap-safe**: it compares `now - last >=
+  interval` in unsigned 32-bit arithmetic, which stays correct when `millis()` wraps after about 49.7 days.
+- If callbacks run for longer than an interval, the missed ticks of an `Every` run on the following `loop()` passes,
+  one per pass, until it has caught up.
+- `Button` debouncing uses the same wrap-safe comparison.
+
 ## Translation and layout
 
 The generated file contains, in order: the `// Generated by unodar…` header; `#include <Arduino.h>`; the
@@ -400,6 +531,12 @@ any helpers the program uses (`unodar_mod`); a prototype for every user function
 top-level variables and bound objects in source order; then the functions in source order. A `#line` directive
 precedes every variable, function, and statement. Output is deterministic: the same input gives byte-identical
 output on any machine.
+
+A widget program also includes `"unodar_widgets.h"` after the binding and `@CppInclude` headers, declares its
+widgets with the other top-level variables in source order (widgets written inside `children` after them, in list
+order), emits each callback as a function, and ends with the generated `setup()` and `loop()` (their `#line` points
+at `main()`). `unodar build` writes a copy of the fixed, hand-written runtime header `runtime/unodar_widgets.h` into
+the sketch folder next to the `.ino`, and only for programs that use widgets.
 
 ## Building
 
@@ -414,6 +551,7 @@ arduino-cli compile --fqbn arduino:avr:uno \
   out/main
 ```
 
+For a widget program, `out/main` holds `main.ino` and `unodar_widgets.h`; arduino-cli compiles the folder as is.
 `tool/check_arduino.sh` and the test suite pass these properties; the `unodar` CLI will pass them itself from
 Phase 7 (`unodar flash`/`run`). Building without them still compiles, but overflow (including `millis()` wrap
 handling) is then undefined behaviour.
@@ -436,6 +574,7 @@ control built without `-fwrapv`.
 | `millis()` after about 24.8 days, `micros()` after about 35.8 minutes of uptime | (external) | The value passes 2147483647 and continues at -2147483648, wrapping like an `int32_t` (Arduino's `unsigned long` counter, converted). **Elapsed time stays correct**: `now - last` wraps too (`-fwrapv`), so `if (now - last >= interval)` works across the wrap for any interval below 2147483648. Comparing two readings directly (`now > last`) does not. |
 | `Serial.print` of a `double` | (external; Dart's `toString()` would print `1.5`) | Arduino's fixed-point format: `digits` decimals (default 2), so `1.50`; `nan`, `inf`, and `ovf` (above about 4.3e9) for special values. |
 | Bound objects | (external) | Constructed before `setup()` runs (C++ static initialization), not lazily on first use like a Dart top-level `final`. |
+| Widget callbacks and timers | (no direct Dart equivalent; a Dart event loop would queue callbacks) | Callbacks run inside `loop()`, one after another, in `children` order; a slow callback delays the others. An `Every` that falls behind runs its missed ticks on the next passes, one per pass. |
 
 ## Diagnostics summary
 
@@ -448,11 +587,11 @@ control built without `-fwrapv`.
 | Classes without `@CppClass`, enums, typedefs, extensions, getters/setters, `late` variables, `external` variables of a non-binding type, other imports, `export`/`part` | E005 |
 | `setup`/`loop` not exactly `void name() { … }` | E006 |
 | Any Dart analysis error | E007 |
-| `main()` | E008 |
+| `main()` other than a single `runDevice(Device(…))` call | E008 |
 | Unsupported or nullable type, incl. `String` variables and unsupported Serial arguments; comparing a bool with a number | E009 |
 | Constant out of range, constant overflow, constant division by zero | E010 |
 | Optional/named/default parameters, generics, `async`, untyped parameters in a user function | E011 |
-| Closures, function references, local functions | E012 |
+| Closures other than widget callbacks, callbacks with parameters, closures inside callbacks, function references, local functions | E012 |
 | Code whose meaning depends on evaluation order | E013 |
 | Name that collides with C++ or Arduino | E014 |
 | Top-level initializer (or bound-object constructor argument) that is not a compile-time constant | E015 |
@@ -461,4 +600,7 @@ control built without `-fwrapv`.
 | A bound object used other than as a top-level `final` whose methods are called | E018 |
 | `cpp()` used other than as a statement with one string literal | E019 |
 | Heap allocation in `cpp()` text | E020 |
-| Widgets, `Signal`, your own classes | not yet available |
+| Widget program shape: `main()` with `setup()`/`loop()`, widgets in a `setup()`/`loop()` sketch, `Device` arguments, `Serial.begin` | E021 |
+| Widget rules: placement, constant arguments, duplicate pins, widgets missing from `children` or listed twice, use before declaration, handle misuse | E022 |
+| `delay()` in a widget callback, directly or through a called function | E023 |
+| `Signal`, your own classes | not yet available |

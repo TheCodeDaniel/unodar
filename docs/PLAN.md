@@ -1,38 +1,32 @@
-# Phase 3 plan — hardware API and interop foundation
+# Phase 4 plan — static widget tree
 
-**Status: done (2026-11-13), v0.3.** Approved by the maintainer and built step by step on the `phase-3` branch;
-every step below is complete except the optional step 11, which was skipped (it only changes how the C++ reads:
-avr-gcc folds those constants anyway, and most goldens would change). Phase 4 (widgets) is out of scope.
+**Status: approved by the maintainer (2026-11-13), in progress on the `phase-4` branch.** Phase 3 is done (v0.3.0).
+Phase 5 (Signals) is out of scope.
 
-Final state: 269 tests (14 in `packages/unodar`, 255 in `packages/unodar_compiler`), 88 goldens (20 positive,
-each compiled, size-budgeted, and checked heap-free), the avr8js runtime harness with its negative controls, and
-`examples/dial`.
+Spec: PRD §7, §8 row 4, §10, `docs/SUBSET.md` "Widgets: `runDevice`", `docs/DIAGNOSTICS.md` (E008, E012, E021–E023)
+and the 2026-11-13 entries in `docs/DECISIONS.md` (maintainer decisions on Button, Every, `delay()`, and PRD §13.2).
+Exit gate: the goal program (`examples/button_led`) compiles to flat, heap-free C++ and, in avr8js, a debounced
+press toggles the LED and `Every` ticks the expected number of times; every new positive golden compiles, has a
+size budget and passes the no-heap check; every rejection has a negative golden; the docs are accurate.
 
-Spec: PRD §8 row 3, the maintainer's Phase 3 brief, `docs/SUBSET.md`, `docs/DIAGNOSTICS.md` (E017–E020), and the
-2026-11-12 entries in `docs/DECISIONS.md` (including the four maintainer decisions).
-Exit gate: every new golden passes, compiles for `arduino:avr:uno` (Servo installed), and has a size budget; every
-rejection has a negative golden; no generated output uses the heap; the runtime fidelity harness passes in avr8js
-with its negative control failing; `SUBSET.md`/`DIAGNOSTICS.md` are accurate; the examples build.
-
-## Steps (one or more small commits each, golden test first)
+## Steps (one or more small commits each, test first)
 
 | # | Step | Test written first |
 |---|---|---|
-| 1 | Docs: SUBSET, DIAGNOSTICS (E017–E020), DECISIONS, this plan | `docs_test` stays green |
-| 2 | `packages/unodar`: `digitalRead`, `analogRead`, `analogWrite`, `millis`, `micros`, `A0`–`A5`, `LED_BUILTIN`; `Serial`; annotations `CppHeader`, `CppClass`, `CppName`, `CppType`, `CppInclude`; `cpp()`; the Wire and Servo bindings | `api_surface_test` (values mirror `pins_arduino.h`) |
-| 3 | Registry: return types, C++ result types, objects and methods, named parameters with defaults; the binding reader (annotations → registry rows) | Unit tests on the registry and the reader |
-| 4 | IR + emitter: string literal (`F()`), method call, bound global (with constructor arguments), raw C++ statement, program includes; result widening | `emitter_test` on hand-built IR; existing goldens byte-identical |
-| 5 | Validator relaxation, one construct per commit, each with positive and negative goldens: `core_io` → `serial_print` (strings) → `named_arguments` → `user_binding` (SoftwareSerial, constructor arguments, `@CppName`) → `wire` → `servo` → `cpp_escape_hatch` (`@CppInclude`); E013 tightening | Goldens; `arduino_compile_test` |
-| 6 | Servo: `tool/check_arduino.sh` fails with the install command, the test gate checks it, CI installs `Servo@1.3.0` (done before the Servo golden, see DECISIONS) | Gate test with the library missing (`toolchain_gate_test`) |
-| 7 | No-heap check over every positive golden's output | New test in `arduino_compile_test` or its own file |
-| 8 | Runtime fidelity harness: unodar fixture with unfoldable inputs (`analogRead`, `millis`, `micros`) and identities that hold for every input, plus subtraction across the INT32_MAX/INT32_MIN boundary with operands only known at runtime (`volatile`), run by the avr8js runner in `tool/avr_runner/` (pinned version, lockfile; fixed cycle count, USART capture, PASS/FAIL lines); a negative control built without `-fwrapv` must print FAIL; CI installs Node with `actions/setup-node` | `runtime_fidelity_test` (tagged `arduino`) |
-| 9 | Size budgets for the new goldens (dedicated commit with measurements) | `size_budgets.dart` |
-| 10 | `examples/` sketch for Phase 3, built by `tool/check_arduino.sh` | CLI build + arduino-cli compile |
-| 11 | **Skipped** (optional). Drop the `L` suffix where the E010 evaluation proves a constant operation fits a 16-bit `int` (deliberate golden updates, own commit) | Goldens |
-| 12 | Final docs pass (README status, PRD status line); `dart analyze && dart format --set-exit-if-changed . && dart test`; end report | — |
+| 1 | Docs: SUBSET, DIAGNOSTICS (E008, E012, E021–E023), DECISIONS, this plan; PRD version column and §13.2 | `docs_test` stays green (new E008 example waits in `docs/drafts`) |
+| 2 | `packages/unodar`: `Widget`, `Board`, `Uno`, `Device`, `runDevice`, `Led` (`on`/`off`/`toggle`), `Button`, `Every` | `api_surface_test` |
+| 3 | `runtime/unodar_widgets.h`: `unodar::Led`, `Button` (pull-up, 50 ms debounce, press edge), `Every` (drift-free, wrap-safe, one tick per pass), `constexpr` constructors; embedded in the compiler | avr8js tests of a hand-written sketch using the `now` overloads (debounce with bounce, held at boot, Every count, drift, catch-up, 2^32 wrap); header-equality test |
+| 4 | avr8js runner: scheduled pin inputs and output-pin change log | Runner test on a hand-written sketch |
+| 5 | IR + emitter + CLI: sketch-local include; `CompileSuccess` carries extra files; `unodar build` writes `unodar_widgets.h`; test helpers copy it | `emitter_test`, `cli_test`; existing goldens byte-identical |
+| 6 | Validator + lowering, one construct per commit with positive and negative goldens: (a) `main()`/`runDevice`/`Device` shape and `Led` (E008, E021); (b) `Button` and callbacks (E012); (c) `Every` and `Duration`; (d) the remaining E022 rules (pins, children, order, handles); (e) E023 (call-graph check); (f) Serial auto-begin and `serialBaud`, `Serial.begin` rejected | Goldens; `arduino_compile_test` (compile, budget, no heap) |
+| 7 | Behaviour tests in avr8js on the goal program: a bouncing press toggles pin 13 exactly once per press; `Every(500 ms)` prints `tick` exactly N times in a fixed simulated time | `runtime_fidelity_test` (tagged `arduino`) |
+| 8 | Size-budget review (dedicated commit, RAM per widget golden) | `size_budgets.dart` |
+| 9 | `examples/button_led` (the goal program) with `wokwi/` (diagram, README, serial monitor), built by `tool/check_arduino.sh` and run in avr8js | CLI build + arduino-cli compile |
+| 10 | Final docs pass (README status and known limits, PRD status, PLAN); full check suite; end report | — |
 
 ## Extension hooks kept
-- The IR stays the seam: bindings, strings, and raw C++ become IR nodes; the emitter never sees the AST.
-- The registry stays the single API table; bindings are data read from annotations, not code paths per library.
-- C++ type facts (widths, ranges for `@CppType`, promotions) live on `Target`, ready for ESP32 (Phase 9).
-- Bound objects are plain globals, which Phase 4 widgets can own the same way.
+- Widgets lower into the existing IR (bound objects, functions, method calls), so Phase 5 signals and Phase 8
+  display widgets add IR-level behaviour, not a parallel code path.
+- The widget table is data (registry rows: C++ class, setup call, poll call, callback parameters), so new widgets
+  are rows plus runtime structs.
+- The runtime header is plain C++ with `now` overloads, testable without the compiler.

@@ -2,7 +2,7 @@
 
 **Version:** 0.1 (pre-implementation)  
 **Owner:** Daniel Ainoko  
-**Status:** Active. Phase 1 (tagged v0.1.0), Phase 2 (language core, tagged v0.2.0) and Phase 3 (hardware + interop foundation, v0.3) are done; Phase 4 is next (not started).  
+**Status:** Active. Phase 1 (tagged v0.1.0), Phase 2 (language core, tagged v0.2.0) and Phase 3 (hardware + interop foundation, tagged v0.3.0) are done; Phase 4 (static widget tree) is in progress.  
 **Audience:** The maintainer and Claude Code (as the implementing engineer). Read this fully before writing code.
 
 ---
@@ -142,14 +142,14 @@ Each phase has an exit gate. Do not start a phase until the previous gate passes
 |---|---|---|---|
 | 0 | Setup | Repo, license, tooling, `CLAUDE.md`, Wokwi project | — |
 | **1** | **Walking skeleton** | **Dart `setup()`/`loop()` → blink `.ino`; analyzer frontend; diagnostics; golden harness; `#line`; CLI `build`** | **0.1** |
-| 2 | Language core (**done**, tagged v0.2.0) | ints, bools, doubles, consts, top-level vars, arithmetic/logic, `if`/`while`/`for`, functions, sized ints (`Uint8`...), rejection diagnostics | — |
-| 3 | Hardware + interop foundation (**done**) | `Serial`, analog I/O, flash strings, `@CppClass`/`@CppHeader`, `cpp()` escape hatch, `Servo` + `Wire` bindings | 0.3 |
-| 4 | Static widget tree | `runDevice`, `Device`, `Led`, `Button` (debounced), `Every`; non-capturing closures → generated functions | 0.3 |
-| 5 | Signals | `Signal<T>` (value + dirty flag), binding to widgets, no heap | — |
-| 6 | Classes + library wrappers | Simple classes → structs; first-party wrappers for top ~10 libs (SPI, LiquidCrystal, DHT, SSD1306, NeoPixel...) | 0.4 |
-| 7 | CLI and DX | `flash`, `run`, `doctor`, `setup` (toolchain bootstrap, §8.1), friendly errors, 10-minute quickstart | 0.5 (**public announce**) |
-| 8 | Display widgets | `Oled` + `Column`/`Row`/`Text`/`Padding`, layout resolved at compile time | 0.6 |
-| 9 | ESP32 target | Board abstraction, WiFi/BLE, OTA, phone-to-board demo | 0.8 |
+| 2 | Language core (**done**, tagged v0.2.0) | ints, bools, doubles, consts, top-level vars, arithmetic/logic, `if`/`while`/`for`, functions, sized ints (`Uint8`...), rejection diagnostics | 0.2 |
+| 3 | Hardware + interop foundation (**done**, tagged v0.3.0) | `Serial`, analog I/O, flash strings, `@CppClass`/`@CppHeader`, `cpp()` escape hatch, `Servo` + `Wire` bindings | 0.3 |
+| 4 | Static widget tree | `runDevice`, `Device`, `Led`, `Button` (debounced), `Every`; non-capturing closures → generated functions | 0.4 |
+| 5 | Signals | `Signal<T>` (value + dirty flag), binding to widgets, no heap | 0.5 |
+| 6 | Classes + library wrappers | Simple classes → structs; first-party wrappers for top ~10 libs (SPI, LiquidCrystal, DHT, SSD1306, NeoPixel...) | 0.6 |
+| 7 | CLI and DX | `flash`, `run`, `doctor`, `setup` (toolchain bootstrap, §8.1), friendly errors, 10-minute quickstart | 0.7 (**public announce**) |
+| 8 | Display widgets | `Oled` + `Column`/`Row`/`Text`/`Padding`, layout resolved at compile time | 0.8 |
+| 9 | ESP32 target | Board abstraction, WiFi/BLE, OTA, phone-to-board demo | 0.9 |
 | 10 | Hardening + docs | Frozen `SUBSET.md`, semver'd API, docs site, full CI, early-user fixes | **1.0** |
 
 **Announce bar (after Phase 7):** one Dart file builds and flashes; a button toggles an LED on a real Uno; a 60-second demo exists; `SUBSET.md` is honest; labeled experimental.
@@ -365,7 +365,7 @@ Key long-term decisions (already made — do not relitigate without asking):
 ## 13. Open decisions (STOP AND ASK before deciding)
 
 1. ~~Dart `int` mapping~~ **Decided (Phase 2):** `int` → `int32_t` everywhere, `double` → `float`, plus sized `Uint8`/`Uint16`/`Int16`. See `docs/DECISIONS.md`.
-2. Output as single `.ino` vs `.cpp` + `.h` (Phase 1 uses single `.ino`; revisit at Phase 4).
+2. ~~Output as single `.ino` vs `.cpp` + `.h`~~ **Decided (Phase 4):** the generated program stays one `.ino`; a program that uses widgets also gets a copy of the fixed, hand-written runtime header `unodar_widgets.h` in the same sketch folder. See `docs/DECISIONS.md`.
 3. Computed/derived signals: restricted expressions vs general closures (Phase 5).
 4. Fixed-size list design (e.g. `FixedList<int, 8>`) (not before Phase 6).
 5. Board abstraction shape before ESP32 (Phase 9).
