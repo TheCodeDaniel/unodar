@@ -54,8 +54,13 @@ enum IrStorage {
 
 /// A whole translation unit: one Dart source file → one sketch.
 final class IrProgram {
-  const IrProgram(
-      {required this.sourceName, this.includes = const [], this.globals = const [], required this.functions});
+  const IrProgram({
+    required this.sourceName,
+    this.includes = const [],
+    this.localIncludes = const [],
+    this.globals = const [],
+    required this.functions,
+  });
 
   /// Display name of the Dart source (basename), used in `#line` directives.
   final String sourceName;
@@ -63,6 +68,10 @@ final class IrProgram {
   /// Headers the program needs beyond the target's (`Servo.h` for a used binding, `@CppInclude` headers), in
   /// order. Emitted as `#include <…>` after the target's includes, each once.
   final List<String> includes;
+
+  /// Sketch-local headers, i.e. files written next to the `.ino` (`unodar_widgets.h` for a widget program), in
+  /// order. Emitted as `#include "…"` after [includes], each once.
+  final List<String> localIncludes;
 
   /// Top-level variables and bound objects, in source order.
   final List<IrGlobalDeclaration> globals;

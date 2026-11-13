@@ -10,6 +10,7 @@ import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
+import '../semantics/widgets.dart';
 import 'describe.dart';
 import 'rules.dart';
 
@@ -19,9 +20,8 @@ final class StatementRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    for (final function in compiledFunctions(unit)) {
-      final body = function.functionExpression.body;
-      if (isVoidArrow(function)) _statementLevel((body as ExpressionFunctionBody).expression, context);
+    for (final body in compiledBodies(unit)) {
+      if (statementLevelArrow(body) case final expression?) _statementLevel(expression, context);
       for (final statement in statementsIn(body)) {
         _statement(statement, context);
       }
@@ -115,11 +115,15 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
   Diagnostic Function(SourceLocation) e002(String what, String help) =>
       (at) => Diagnostics.unsupportedStatement(what, help, at);
   switch (expression) {
+    case MethodInvocation() when isRunDeviceCall(expression):
+      return (at) => Diagnostics.deviceOutsideMain('runDevice()', at);
     case IntegerLiteral() || DoubleLiteral() || BooleanLiteral():
     case ParenthesizedExpression() || ConditionalExpression() || MethodInvocation():
       return null;
     case SimpleIdentifier():
       return switch (referenceOf(expression)) {
+        FunctionValueReference() when _isWidgetArgument(expression) => (at) =>
+            Diagnostics.callbackReference(expression.name, at),
         FunctionValueReference() => (at) => Diagnostics.functionReference(expression.name, at),
         null => e002("the name '${expression.name}'", genericHelp),
         _ => null,
@@ -152,12 +156,24 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
         return e002('the `??` operator', 'Nullable values are not supported, so `??` is never needed.');
       }
       return e002('the `${operator.lexeme}` operator', bitwiseHelp);
+    // `Every`'s interval: E022 checks its arguments.
+    case InstanceCreationExpression() when isWidgetInterval(expression):
+      return null;
+    // A widget is allowed where E022 says (top-level `final`, or in Device.children); Device and Uno only in main().
+    case InstanceCreationExpression(:final staticType) when widgetClassOf(staticType) != null:
+      return null;
+    case InstanceCreationExpression(:final staticType)
+        when isUnodarClass(staticType, 'Device') || isUnodarClass(staticType, 'Uno'):
+      final name = isUnodarClass(staticType, 'Device') ? 'Device(…)' : 'Uno()';
+      return (at) => Diagnostics.deviceOutsideMain(name, at);
     case InstanceCreationExpression(:final staticType):
       // A binding constructor is allowed where E018 says (a top-level `final` initializer).
       return staticType != null && (sizedTypeOf(staticType) != null || bindingClassOf(staticType) != null)
           ? null
           : e002('a constructor call',
               'Only Uint8(…), Uint16(…), Int16(…), and binding classes can be constructed in this version.');
+    case FunctionExpression() when widgetOfCallback(expression) != null:
+      return null; // A widget callback: its body is compiled like a function body (CallbackRule checks its shape).
     case FunctionExpression():
       return Diagnostics.closure;
     case FunctionReference():
@@ -189,6 +205,14 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     default:
       return e002(describeExpression(expression), genericHelp);
   }
+}
+
+/// Whether [expression] is an argument of a widget constructor (`onPressed: toggle`).
+bool _isWidgetArgument(Expression expression) {
+  var list = expression.parent;
+  if (list is NamedArgument) list = list.parent;
+  final creation = list is ArgumentList ? list.parent : null;
+  return creation is InstanceCreationExpression && widgetCreation(creation) != null;
 }
 
 /// The binary operators of the subset (`%` and `~/` additionally need integer operands).
@@ -223,8 +247,10 @@ final class ExpressionTypeRule implements ValidationRule {
     final roots = [
       for (final variable in topLevelVariables(unit))
         if (variable.initializer case final initializer?) initializer,
+      ...deviceRoots(unit),
       for (final function in compiledFunctions(unit))
         if (!genericFunctions.contains(function)) ...rootsOfFunction(function),
+      for (final callback in widgetCallbacks(unit)) ...rootsOfBody(callback.body),
     ];
     for (final root in roots) {
       walkExpression(root, (expression) {
@@ -242,6 +268,14 @@ final class ExpressionTypeRule implements ValidationRule {
         if (type is InvalidType) return false;
         // Bound objects and binding constructors: E018 decides where they may appear.
         if (bindingClassOf(type) != null) return false;
+        // A widget handle used as a value: E022.
+        if (expression is SimpleIdentifier && widgetClassOf(type) != null) return false;
+        // A widget constructor: E021/E022 decide where it may appear; its arguments are ordinary expressions.
+        if (expression is InstanceCreationExpression && widgetClassOf(type) != null) return true;
+        // `Every`'s interval: a Duration whose int arguments are checked like any other expression.
+        if (isWidgetInterval(expression)) return true;
+        // A widget callback: its body is checked as a root of its own.
+        if (expression is FunctionExpression) return false;
         if (type == null || irTypeOf(type) == null) {
           if (type != null) {
             context.report(
@@ -271,6 +305,9 @@ final class ApiCallRule implements ValidationRule {
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
       if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null || isCppCall(call)) continue;
+      if (isRunDeviceCall(call)) continue; // E021, from ExpressionRule.
+      // A method of a misplaced widget (a local): reported at its declaration (E022).
+      if (call.target != null && widgetClassOf(call.target!.staticType) != null) continue;
       // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
       if (call.target != null && bindingClassOf(call.target!.staticType) != null) continue;
       final target = call.target;
@@ -307,14 +344,17 @@ final class ArgumentRule implements ValidationRule {
       final constructor = cls?.constructor;
       if (cls == null || constructor == null) continue;
       _check(ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), cls.dartName,
-          creation.argumentList, context);
+          creation.argumentList, context,
+          skip: widgetCreation(creation) == null ? null : isCallbackArgument);
     }
   }
 
-  void _check(ApiFunction function, String name, ArgumentList list, ValidationContext context) {
+  void _check(ApiFunction function, String name, ArgumentList list, ValidationContext context,
+      {bool Function(Argument argument)? skip}) {
     final positional = function.positionalParameters;
     var index = 0;
     for (final argument in list.arguments) {
+      if (skip != null && skip(argument)) continue; // A widget callback is not a C++ argument.
       final ApiParameter parameter;
       if (argument is NamedArgument) {
         final named = function.namedParameter(argument.name.lexeme);
@@ -338,7 +378,9 @@ final class ArgumentRule implements ValidationRule {
       final (min, max) = (parameter.min, parameter.max);
       if (min == null || max == null) continue;
       final value = context.constants.valueOf(argument.argumentExpression);
-      if (value is int && (value < min || value > max)) {
+      if (value is int && (value < min || value > max) && parameter.isPin) {
+        context.report(Diagnostics.pinOutOfRange('$value', name, context.at(argument)));
+      } else if (value is int && (value < min || value > max)) {
         context.report(parameter.hasCppRange
             ? Diagnostics.argumentOutsideCppRange('$value', parameter.name, name, '$min to $max', context.at(argument))
             : Diagnostics.argumentOutOfRange(
@@ -388,10 +430,8 @@ final class EscapeHatchRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     final statements = <MethodInvocation>{
-      for (final function in compiledFunctions(unit))
-        if (isVoidArrow(function)) ...[
-          if ((function.functionExpression.body as ExpressionFunctionBody).expression case final MethodInvocation c) c,
-        ],
+      for (final body in compiledBodies(unit))
+        if (statementLevelArrow(body) case final MethodInvocation c) c,
       for (final statement in allStatements(unit))
         if (statement case ExpressionStatement(expression: final MethodInvocation c)) c,
     };

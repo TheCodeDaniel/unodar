@@ -345,7 +345,9 @@ final class BoundObjectRule implements ValidationRule {
         final node = _typeAnnotationOf(parameter) ?? parameter;
         context.report(Diagnostics.bindingTypePosition('a parameter', displayType(type!), context.at(node)));
       }
-      for (final statement in statementsIn(expression.body)) {
+    }
+    for (final body in compiledBodies(unit)) {
+      for (final statement in statementsIn(body)) {
         final list = switch (statement) {
           VariableDeclarationStatement(:final variables) => variables,
           ForStatement(forLoopParts: ForPartsWithDeclarations(:final variables)) => variables,

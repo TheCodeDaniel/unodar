@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 
 import 'elements.dart';
+import 'widgets.dart';
 
 /// Traversal of the user's program in the shape the subset understands. Every validator rule and the lowering
 /// walk the same positions, so a construct is either seen by all of them or by none.
@@ -37,10 +38,33 @@ List<Statement> childStatements(Statement statement) => switch (statement) {
       _ => const [],
     };
 
-/// Every statement of every compiled function, in source order.
-Iterable<Statement> allStatements(CompilationUnit unit) sync* {
+/// The body of every compiled function, then of every widget callback (a callback is compiled like a `void`
+/// function without parameters).
+Iterable<FunctionBody> compiledBodies(CompilationUnit unit) sync* {
   for (final function in compiledFunctions(unit)) {
-    yield* statementsIn(function.functionExpression.body);
+    yield function.functionExpression.body;
+  }
+  for (final callback in widgetCallbacks(unit)) {
+    yield callback.body;
+  }
+}
+
+/// The expression of an `=>` body whose value is discarded, so that it is statement-level: a `void f() => …;`
+/// function or a widget callback. Null for a block body or a value-returning `=>` function.
+Expression? statementLevelArrow(FunctionBody body) {
+  if (body is! ExpressionFunctionBody) return null;
+  return switch (body.parent) {
+    FunctionExpression(parent: final FunctionDeclaration function) when isVoidArrow(function) => body.expression,
+    FunctionExpression(parent: FunctionDeclaration()) => null,
+    FunctionExpression() => body.expression, // A widget callback.
+    _ => null,
+  };
+}
+
+/// Every statement of every compiled function and callback, in source order per body.
+Iterable<Statement> allStatements(CompilationUnit unit) sync* {
+  for (final body in compiledBodies(unit)) {
+    yield* statementsIn(body);
   }
 }
 
@@ -61,9 +85,8 @@ List<Expression> statementLevelExpressions(Statement statement) => switch (state
 
 /// Every statement-level expression in the program.
 Iterable<Expression> allStatementLevelExpressions(CompilationUnit unit) sync* {
-  for (final function in compiledFunctions(unit)) {
-    final body = function.functionExpression.body;
-    if (isVoidArrow(function)) yield (body as ExpressionFunctionBody).expression;
+  for (final body in compiledBodies(unit)) {
+    if (statementLevelArrow(body) case final expression?) yield expression;
     for (final statement in statementsIn(body)) {
       yield* statementLevelExpressions(statement);
     }
@@ -118,24 +141,30 @@ List<Expression> rootsOf(Statement statement) => switch (statement) {
     };
 
 /// Root expressions of one function body.
-Iterable<Expression> rootsOfFunction(FunctionDeclaration function) sync* {
-  final body = function.functionExpression.body;
+Iterable<Expression> rootsOfFunction(FunctionDeclaration function) => rootsOfBody(function.functionExpression.body);
+
+/// Root expressions of one function or callback body.
+Iterable<Expression> rootsOfBody(FunctionBody body) sync* {
   if (body is ExpressionFunctionBody) {
-    yield* isVoidArrow(function) ? rootsOfStatementLevel(body.expression) : [body.expression];
+    final arrow = statementLevelArrow(body);
+    yield* arrow != null ? rootsOfStatementLevel(arrow) : [body.expression];
   }
   for (final statement in statementsIn(body)) {
     yield* rootsOf(statement);
   }
 }
 
-/// Every root expression in the program: top-level initializers first, then each function in source order.
+/// Every root expression in the program: top-level initializers first, then the parts of a widget program's
+/// `main()` that are compiled (the widgets written in `Device.children` and `serialBaud:`), then each function in
+/// source order.
 Iterable<Expression> allRootExpressions(CompilationUnit unit) sync* {
   for (final variable in topLevelVariables(unit)) {
     final initializer = variable.initializer;
     if (initializer != null) yield initializer;
   }
-  for (final function in compiledFunctions(unit)) {
-    yield* rootsOfFunction(function);
+  yield* deviceRoots(unit);
+  for (final body in compiledBodies(unit)) {
+    yield* rootsOfBody(body);
   }
 }
 

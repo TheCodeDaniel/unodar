@@ -82,4 +82,26 @@ const sizeBudgets = <String, SizeBudget>{
   // servo: Servo.cpp's timer1 ISR and its table of 12 servos; RAM 57 B of 2048 B.
   'servo': SizeBudget(baselineFlash: 2724, baselineRam: 57, maxFlash: 3550, maxRam: 68),
   'cpp_escape_hatch': SizeBudget(baselineFlash: 1124, baselineRam: 13, maxFlash: 1500, maxRam: 24),
+
+  // Phase 4, 2026-11-13, arduino-cli 1.5.1, arduino:avr 1.8.8, built with -fwrapv. Same limit rule. First measured
+  // with their goldens and reviewed together in step 8: every one re-measured equal to its baseline.
+  //
+  // Widget objects are constant-initialized globals from unodar_widgets.h. Their sizes are static_asserted by the
+  // runtime's own test sketch (test/runtime/widgets/widgets.ino): Led 2 B (pin, state), Button 7 B (pin, two flags,
+  // a uint32_t timestamp), Every 8 B (interval, last tick). Per widget golden:
+  //   widget_led 15 B                            the core's 9 B (as blink) + three Leds (6 B)
+  //   widget_serial, widget_serial_baud 186 B    a program using Serial (its 64-byte buffers) + one Led
+  //   widget_button 208 B                        Serial + one Led + two Buttons (14 B) + an int counter
+  //   widget_every 218 B                         Serial + one Led + three Everys (24 B) + an int counter
+  // A widget program costs its objects and nothing else in RAM: no tables, no heap, no function pointers.
+  //
+  // widget_led: three Led objects and their begin() calls; smaller than blink, which links delay().
+  'widget_led': SizeBudget(baselineFlash: 808, baselineRam: 15, maxFlash: 1100, maxRam: 26),
+  // widget_serial, widget_serial_baud: Serial opened by the generated setup(). The two measure the same.
+  'widget_serial': SizeBudget(baselineFlash: 1734, baselineRam: 186, maxFlash: 2300, maxRam: 197),
+  'widget_serial_baud': SizeBudget(baselineFlash: 1734, baselineRam: 186, maxFlash: 2300, maxRam: 197),
+  // widget_button: the debounce logic, two callbacks, and Print's integer printing.
+  'widget_button': SizeBudget(baselineFlash: 2662, baselineRam: 208, maxFlash: 3500, maxRam: 219),
+  // widget_every: three timers and their callbacks.
+  'widget_every': SizeBudget(baselineFlash: 2392, baselineRam: 218, maxFlash: 3150, maxRam: 229),
 };

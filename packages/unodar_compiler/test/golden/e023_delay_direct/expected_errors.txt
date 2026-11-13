@@ -1,0 +1,2 @@
+input.dart:13:13: error[E023]: 'delay()' runs inside a widget callback (Every's callback), where it would stop every button and timer while it waits.
+  = help: Time things with an Every widget instead, keeping state in a top-level variable between ticks.

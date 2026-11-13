@@ -10,6 +10,7 @@ import '../emitter/cpp_names.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
 import '../semantics/walk.dart';
+import '../semantics/widgets.dart';
 import 'rules.dart';
 
 /// Top-level initializers must be compile-time constants over earlier declarations (E015).
@@ -25,10 +26,21 @@ final class InitializerRule implements ValidationRule {
       // No initializer: `int? x;` and `var x;` are E009, `late`/`external` E005, anything else an analyzer error.
       if (initializer == null) continue;
       if (subexpressions(initializer).any((e) => expressionIssue(e) != null)) continue; // Reported as E002/E012.
+      // A widget handle used as a value is E022.
+      if (subexpressions(initializer).any((e) => e is SimpleIdentifier && widgetClassOf(e.staticType) != null)) {
+        continue;
+      }
       // A bound object (`final link = SoftSerial(10, 11);`): each constructor argument must be constant. Any other
       // initializer of a binding type is E018.
       final List<Expression> values;
-      if (bindingClassOf(variable.declaredFragment?.element.type) != null) {
+      // A widget's arguments are constant-checked by E022; only the declaration order is checked here, because they
+      // are emitted in its C++ declaration.
+      final isWidget = widgetCreation(initializer) != null;
+      if (isWidget) {
+        values = [
+          for (final a in (initializer as InstanceCreationExpression).argumentList.arguments) a.argumentExpression
+        ];
+      } else if (bindingClassOf(variable.declaredFragment?.element.type) != null) {
         if (initializer is! InstanceCreationExpression) continue;
         values = [for (final a in initializer.argumentList.arguments) a.argumentExpression];
       } else {
@@ -41,7 +53,7 @@ final class InitializerRule implements ValidationRule {
         }).firstOrNull;
         if (later != null) {
           context.report(Diagnostics.forwardReference(name, later.name, context.at(later)));
-        } else if (context.constants.evaluate(value) is NotConstant) {
+        } else if (!isWidget && context.constants.evaluate(value) is NotConstant) {
           context.report(Diagnostics.nonConstantInitializer(name, context.at(value)));
         }
       }
@@ -79,7 +91,9 @@ final class ReservedNameRule implements ValidationRule {
       for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
         if (parameter.name case final name?) checkName(name);
       }
-      for (final statement in statementsIn(function.functionExpression.body)) {
+    }
+    for (final body in compiledBodies(unit)) {
+      for (final statement in statementsIn(body)) {
         final list = switch (statement) {
           VariableDeclarationStatement(:final variables) => variables,
           ForStatement(forLoopParts: ForPartsWithDeclarations(:final variables)) => variables,

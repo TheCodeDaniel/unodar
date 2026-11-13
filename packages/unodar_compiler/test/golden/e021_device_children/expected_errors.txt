@@ -1,0 +1,4 @@
+input.dart:4:18: error[E002]: a collection literal is not supported in this version.
+  = help: See docs/SUBSET.md for the supported statements and expressions.
+input.dart:7:57: error[E021]: children must be a list literal written in place, e.g. `children: [led, button]`.
+  = help: List the widgets directly inside `Device(children: [...])`; the compiler reads it statically.

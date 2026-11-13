@@ -4,6 +4,7 @@ import 'diagnostics/diagnostics.dart';
 import 'emitter/emitter.dart';
 import 'frontend/frontend.dart';
 import 'lowering/lowering.dart';
+import 'runtime/runtime_files.dart';
 import 'validator/rules.dart';
 import 'validator/validator.dart';
 
@@ -13,10 +14,14 @@ sealed class CompileResult {
 
 /// The sketch compiled. [cpp] is the full `.ino` text.
 final class CompileSuccess extends CompileResult {
-  const CompileSuccess({required this.sourceName, required this.cpp});
+  const CompileSuccess({required this.sourceName, required this.cpp, this.files = const {}});
 
   final String sourceName;
   final String cpp;
+
+  /// Files that belong next to the `.ino` in the sketch folder, by file name (`unodar_widgets.h` for a widget
+  /// program). Empty for a plain `setup()`/`loop()` sketch.
+  final Map<String, String> files;
 }
 
 /// The user's source has problems (exit code 1).
@@ -70,7 +75,8 @@ final class Compiler {
     // Defensive: never let a deferred analyzer error through just because no rule explained it.
     if (analysisErrors.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
     final program = Lowering(programApi).lower(source);
-    return CompileSuccess(sourceName: source.displayName, cpp: CppEmitter(target).emit(program));
+    return CompileSuccess(
+        sourceName: source.displayName, cpp: CppEmitter(target).emit(program), files: runtimeFilesFor(program));
   }
 
   /// The registry for one program: [api] plus the bindings `package:unodar` exports (Wire, Servo), and that plus the

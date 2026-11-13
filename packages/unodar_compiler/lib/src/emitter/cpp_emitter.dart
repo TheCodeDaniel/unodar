@@ -52,6 +52,9 @@ final class CppEmitter {
     for (final header in {...target.includes, ...program.includes}) {
       out.writeln('#include <$header>');
     }
+    for (final header in {...program.localIncludes}) {
+      out.writeln('#include "$header"');
+    }
     if (_usesModulo(program)) {
       out.writeln();
       modHelper.forEach(out.writeln);

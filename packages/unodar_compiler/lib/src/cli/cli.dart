@@ -97,18 +97,15 @@ Future<int> _build(List<String> arguments, {required StringSink out, required St
 
   final input = args.rest.single;
   switch (await Compiler().compile(input)) {
-    case CompileSuccess(:final cpp):
-      // arduino-cli requires the sketch folder and the .ino to share a name.
-      final name = p.basenameWithoutExtension(input);
-      final file = File(p.join(args.option('output')!, name, '$name.ino'));
+    case final CompileSuccess result:
+      final String ino;
       try {
-        file.parent.createSync(recursive: true);
-        file.writeAsStringSync(cpp, flush: true);
+        ino = writeSketch(args.option('output')!, p.basenameWithoutExtension(input), result);
       } on FileSystemException catch (e) {
-        err.writeln('error: could not write ${file.path}: ${e.osError?.message ?? e.message}');
+        err.writeln('error: could not write ${e.path ?? args.option('output')}: ${e.osError?.message ?? e.message}');
         return ExitCodes.tooling;
       }
-      out.writeln(file.path);
+      out.writeln(ino);
       return ExitCodes.success;
     case CompileFailure(:final diagnostics):
       for (final diagnostic in diagnostics) {
@@ -120,6 +117,19 @@ Future<int> _build(List<String> arguments, {required StringSink out, required St
       err.writeln('error: $message');
       return ExitCodes.tooling;
   }
+}
+
+/// Writes [result] as `<outDir>/<name>/<name>.ino` (arduino-cli requires the sketch folder and the `.ino` to share a
+/// name), plus its extra files (the widget runtime header) in the same folder, and returns the `.ino` path. A file
+/// from an earlier build that this program no longer needs is left alone: arduino-cli only compiles a header that
+/// something includes.
+String writeSketch(String outDir, String name, CompileSuccess result) {
+  final folder = Directory(p.join(outDir, name))..createSync(recursive: true);
+  final ino = File(p.join(folder.path, '$name.ino'))..writeAsStringSync(result.cpp, flush: true);
+  for (final MapEntry(key: fileName, value: contents) in result.files.entries) {
+    File(p.join(folder.path, fileName)).writeAsStringSync(contents, flush: true);
+  }
+  return ino.path;
 }
 
 int _buildUsageError(StringSink err, ArgParser parser, String message) {

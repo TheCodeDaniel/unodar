@@ -19,7 +19,7 @@ import 'test_paths.dart';
 Future<ArduinoBuild> buildGolden(String goldenCase) async {
   final result = await Compiler().compile(fromPackage('test', 'golden', goldenCase, 'input.dart'));
   if (result is! CompileSuccess) fail('$goldenCase did not compile with unodar: $result');
-  return compileSketch(goldenCase, result.cpp);
+  return compileSketch(goldenCase, result.cpp, files: result.files);
 }
 
 /// Every golden case that compiles (has an expected.ino), in name order. Each one must build for the Uno and have
@@ -70,12 +70,12 @@ void main() {
       });
     }
 
-    for (final example in ['blink', 'pulse', 'dial']) {
+    for (final example in ['blink', 'pulse', 'dial', 'button_led']) {
       test('examples/$example builds for the Uno', () async {
         checkToolchain();
         final result = await Compiler().compile(fromPackage('..', '..', 'examples', example, 'main.dart'));
         if (result is! CompileSuccess) fail('examples/$example did not compile with unodar: $result');
-        final build = await compileSketch(example, result.cpp);
+        final build = await compileSketch(example, result.cpp, files: result.files);
         printOnFailure(build.rawOutput);
         expect(build.success, isTrue, reason: 'arduino-cli compile failed');
         expect(build.heapSymbols(), isEmpty, reason: 'examples/$example links heap functions');

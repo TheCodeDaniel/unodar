@@ -1,0 +1,6 @@
+input.dart:10:11: error[E021]: a spread (`...`) is not supported in children: each element is a top-level widget or a widget constructor.
+  = help: List every widget on its own, e.g. `children: [led, Led(pin: 3)]`.
+input.dart:11:11: error[E021]: a collection `if` is not supported in children: each element is a top-level widget or a widget constructor.
+  = help: List every widget on its own, e.g. `children: [led, Led(pin: 3)]`.
+input.dart:12:11: error[E021]: a collection `for` is not supported in children: each element is a top-level widget or a widget constructor.
+  = help: List every widget on its own, e.g. `children: [led, Led(pin: 3)]`.

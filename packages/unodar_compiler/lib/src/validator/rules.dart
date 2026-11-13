@@ -12,6 +12,7 @@ export 'binding_rules.dart';
 export 'body_rules.dart';
 export 'declaration_rules.dart';
 export 'program_rules.dart';
+export 'widget_rules.dart';
 
 /// Shared state for one validation run. Rules only ever *add* diagnostics; none of them stops the run, so the user
 /// sees every problem at once (PRD §9.5 step 2).

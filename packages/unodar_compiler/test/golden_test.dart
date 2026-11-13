@@ -40,6 +40,11 @@ void main() {
       final expectedErrors = File(p.join(dir.path, 'expected_errors.txt'));
 
       final result = await compiler.compile(input);
+      if (result case CompileSuccess(:final cpp, :final files)) {
+        // `unodar build` writes a file for every sketch-local include, and only for those.
+        final local = RegExp(r'^#include "([^"]+)"$', multiLine: true).allMatches(cpp).map((m) => m[1]!);
+        expect(files.keys.toSet(), local.toSet(), reason: 'extra files must match the quoted includes');
+      }
       final (actualFile, staleFile, actual) = switch (result) {
         CompileSuccess(:final cpp) => (expectedIno, expectedErrors, cpp),
         CompileFailure(:final diagnostics) => (

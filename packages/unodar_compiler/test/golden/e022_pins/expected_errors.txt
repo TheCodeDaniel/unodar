@@ -1,0 +1,4 @@
+input.dart:5:23: error[E022]: pin 14 is already used by 'led' (line 4).
+  = help: Give each widget its own pin.
+input.dart:7:91: error[E022]: pin 2 is already used by the Led on line 7.
+  = help: Give each widget its own pin.

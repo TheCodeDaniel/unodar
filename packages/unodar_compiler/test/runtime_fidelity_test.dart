@@ -11,6 +11,7 @@ library;
 
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/compiler.dart';
 
@@ -101,11 +102,155 @@ void main() {
       });
     });
 
+    group('runner pin I/O (hand-written sketch)', () {
+      late String hex;
+      setUpAll(() async {
+        if (gate.skip != false) return;
+        final build =
+            await compileSketch('pins', File(fromPackage('test', 'runtime', 'pins', 'pins.ino')).readAsStringSync());
+        expect(build.success, isTrue, reason: build.rawOutput);
+        // The build folder is removed by the tearDown of setUpAll, so keep the image.
+        hex = File(build.hexPath).readAsStringSync();
+      });
+
+      Future<({String serial, List<String> pinLog})> run(List<String> pins) async {
+        final file = File(p.join(Directory.systemTemp.createTempSync('unodar_hex_').path, 'pins.hex'))
+          ..writeAsStringSync(hex);
+        addTearDown(() => file.parent.deleteSync(recursive: true));
+        return simulate(file.path, pins: pins);
+      }
+
+      /// The simulated time in ms of each `<pin> <state>` change in [log].
+      List<double> changes(List<String> log, String pin, String state) => [
+            for (final line in log)
+              if (line.endsWith(' $pin $state')) double.parse(line.split(' ').first)
+          ];
+
+      test('an undriven pin reads HIGH with the pull-up and LOW without; a driven pin reads its level', () async {
+        gate.check();
+        final result = await run(['D3=high@50']);
+        expect(result.serial, startsWith('boot D2=1 D3=0 A1=0\r\nD2=1 at 0\r\n'));
+        expect(result.serial, contains('end D3=1 A1=0\r\nDONE'));
+        expect(changes(result.pinLog, 'D2', 'input-pullup'), hasLength(1));
+        expect(changes(result.pinLog, 'D13', 'low'), hasLength(1), reason: 'pinMode(13, OUTPUT) with PORT low');
+      });
+
+      test('a scheduled press and release reach the program and the output log at the scheduled time', () async {
+        gate.check();
+        final result = await run(['D2=low@100', 'D2=open@200']);
+        final reports = RegExp(r'D2=(\d) at (\d+)').allMatches(result.serial).map((m) => (m[1], int.parse(m[2]!)));
+        expect([for (final (level, _) in reports) level], ['1', '0', '1']);
+        // millis() counts whole 1.024 ms timer overflows, so it can trail the simulated time by up to a millisecond
+        // (and steps by 2 now and then): allow one millisecond either way.
+        expect([for (final (_, ms) in reports) ms], [0, inInclusiveRange(99, 101), inInclusiveRange(199, 201)]);
+        final high = changes(result.pinLog, 'D13', 'high');
+        final low = changes(result.pinLog, 'D13', 'low');
+        expect(high, [lessThan(1), allOf(greaterThanOrEqualTo(200), lessThan(200.1))]);
+        expect(low, [lessThan(1), allOf(greaterThanOrEqualTo(100), lessThan(100.1))]);
+      });
+    });
+
+    group('widget runtime (runtime/unodar_widgets.h, hand-written sketch)', () {
+      final sketch = File(fromPackage('test', 'runtime', 'widgets', 'widgets.ino')).readAsStringSync();
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+
+      Future<List<String>> run(String header) async {
+        final build = await compileSketch('widgets', sketch, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return results(await runInSimulator(build.hexPath));
+      }
+
+      test('debounce, held at boot, Every count, drift, catch-up, the 2^32 wrap and the pins all pass', () async {
+        gate.check();
+        final lines = await run(header);
+        expect(lines, hasLength(11));
+        expect(lines.where((l) => l.startsWith('FAIL')), isEmpty, reason: lines.join('\n'));
+      });
+
+      // Negative controls: a plausible wrong implementation of one rule each, which the checks must catch.
+      String broken(String from, String to) {
+        expect(header, contains(from), reason: 'the runtime header changed; update the negative control');
+        return header.replaceAll(from, to);
+      }
+
+      test('negative control: without debouncing, a bouncing press counts more than once', () async {
+        gate.check();
+        final lines = await run(broken('kDebounceMs = 50', 'kDebounceMs = 0'));
+        expect(lines, contains('FAIL a bouncing press, a clean press and a glitch give exactly 2 presses'));
+      });
+
+      test('negative control: rescheduling from the time a tick was noticed drifts and skips catch-up', () async {
+        gate.check();
+        final lines = await run(broken('last_ += interval_;', 'last_ = now;'));
+        expect(lines,
+            containsAll(['FAIL Every is drift-free when polled late', 'FAIL missed ticks are caught up one per call']));
+      });
+
+      test('negative control: comparing deadlines instead of elapsed time breaks at the millis() wrap', () async {
+        gate.check();
+        final lines = await run(broken('now - last_ < interval_', 'now < last_ + interval_'));
+        expect(lines, contains('FAIL Every ticks on schedule across the millis() wrap'));
+        expect(lines.where((l) => l.startsWith('FAIL')), hasLength(1), reason: lines.join('\n'));
+      });
+    });
+
+    group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
+      // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
+      // Every(500 ms) prints `tick`.
+      final source = fromPackage('..', '..', 'examples', 'button_led', 'main.dart');
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+
+      // Two presses with contact bounce, a bouncing release, and a 20 ms glitch, over 2.6 simulated seconds.
+      const inputs = [
+        'D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@307', 'D2=low@310', // press 1, stable from 310 ms
+        'D2=open@800', 'D2=low@802', 'D2=open@805', // release with bounce
+        'D2=low@1200', 'D2=open@1203', 'D2=low@1206', // press 2, stable from 1206 ms
+        'D2=open@1600', // release
+        'D2=low@2000', 'D2=open@2020', // a 20 ms glitch: not a press
+      ];
+      const cycles = 2600 * 16000; // 2.6 s at 16 MHz
+
+      Future<({String serial, List<String> pinLog})> run(String headerText) async {
+        final result = await Compiler().compile(source);
+        if (result is! CompileSuccess) fail('the goal program did not compile with unodar: $result');
+        final build = await compileSketch('button_led', result.cpp, files: {'unodar_widgets.h': headerText});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return simulate(build.hexPath, pins: inputs, until: null, cycles: cycles);
+      }
+
+      List<double> changes(List<String> log, String pin, String state) => [
+            for (final line in log)
+              if (line.endsWith(' $pin $state')) double.parse(line.split(' ').first)
+          ];
+
+      test('each bouncing press toggles pin 13 exactly once, 50 ms after it settles; Every ticks 5 times', () async {
+        gate.check();
+        final result = await run(header);
+        printOnFailure(result.pinLog.join('\n'));
+        // On at press 1 (stable 310 ms + 50 ms debounce), off at press 2 (1206 + 50). The debounce is measured in
+        // millis(), which counts whole 1.024 ms timer overflows at both ends, so allow a millisecond either way.
+        expect(changes(result.pinLog, 'D13', 'high'), [allOf(greaterThanOrEqualTo(359), lessThan(362))]);
+        expect(changes(result.pinLog, 'D13', 'low'), [lessThan(1), allOf(greaterThanOrEqualTo(1255), lessThan(1258))]);
+        // First tick one interval after setup(), then every 500 ms: 500, 1000, 1500, 2000, 2500.
+        expect('tick\r\n'.allMatches(result.serial), hasLength(5), reason: result.serial);
+        expect(result.serial, 'tick\r\n' * 5);
+      });
+
+      test('negative control: without debouncing, the bounces toggle the LED many times', () async {
+        gate.check();
+        expect(header, contains('kDebounceMs = 50'));
+        final result = await run(header.replaceAll('kDebounceMs = 50', 'kDebounceMs = 0'));
+        expect(changes(result.pinLog, 'D13', 'high').length, greaterThan(1), reason: result.pinLog.join('\n'));
+      });
+    });
+
     test('examples/dial reports the potentiometer reading over Serial', () async {
       gate.check();
       final result = await Compiler().compile(fromPackage('..', '..', 'examples', 'dial', 'main.dart'));
       if (result is! CompileSuccess) fail('examples/dial did not compile with unodar: $result');
-      final build = await compileSketch('dial', result.cpp);
+      final build = await compileSketch('dial', result.cpp, files: result.files);
       printOnFailure(build.rawOutput);
       expect(build.success, isTrue);
       // 2.5 V on A0 reads 512: the servo angle is 512 * 180 ~/ 1023 = 90, and 512 * 5.0 / 1023 prints as 2.502.

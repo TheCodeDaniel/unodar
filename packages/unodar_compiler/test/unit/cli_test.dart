@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/cli/cli.dart';
+import 'package:unodar_compiler/src/compiler.dart';
 
 import '../test_paths.dart';
 
@@ -29,6 +30,24 @@ void main() {
     expect(r.out.trim(), ino.path);
     expect(r.err, isEmpty);
     expect(ino.readAsStringSync(), File(fromPackage('test', 'golden', 'blink', 'expected.ino')).readAsStringSync());
+  });
+
+  test('writeSketch puts the extra files of a widget program next to the .ino', () {
+    const result = CompileSuccess(
+      sourceName: 'main.dart',
+      cpp: '// sketch\n',
+      files: {'unodar_widgets.h': '// runtime\n'},
+    );
+    final ino = writeSketch(temp.path, 'main', result);
+    expect(ino, p.join(temp.path, 'main', 'main.ino'));
+    expect(File(ino).readAsStringSync(), '// sketch\n');
+    expect(File(p.join(temp.path, 'main', 'unodar_widgets.h')).readAsStringSync(), '// runtime\n');
+  });
+
+  test('a sketch without widgets gets no extra files', () async {
+    final r = await run(['build', blink, '-o', temp.path]);
+    expect(r.exitCode, 0, reason: r.err);
+    expect(Directory(p.join(temp.path, 'input')).listSync().map((e) => p.basename(e.path)), ['input.ino']);
   });
 
   test('diagnostics go to stderr, nothing is written, exit 1', () async {

@@ -7,9 +7,11 @@ import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../frontend/frontend.dart';
 import '../ir/ir.dart';
+import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
+import '../semantics/widgets.dart';
 
 /// Thrown when lowering meets a construct the validator should have rejected. Always a compiler bug (exit code 2),
 /// never a user error: it means a validator rule and the lowering disagree about the subset.
@@ -44,18 +46,113 @@ final class _Lowerer {
   /// Headers of the binding classes the program uses, in order of first use.
   final _headers = <String>{};
 
+  /// Whether any lowered code calls a `Serial` method (a widget program then opens the port in `setup()`).
+  var _usesSerial = false;
+
   IrProgram program() {
+    final device = deviceOf(source.unit);
+    final children = device == null ? const <WidgetChild>[] : widgetChildren(device, source.unit);
     final globals = [
       for (final variable in topLevelVariables(source.unit))
-        if (!_isExternal(variable)) _global(variable)
+        if (!_isExternal(variable)) _global(variable),
+      // Widgets written in Device.children, after the top-level variables, in list order.
+      for (final child in children)
+        if (identical(child.element, child.creation)) _widgetObject(child.name, child.creation),
     ];
-    final functions = [for (final function in compiledFunctions(source.unit)) _function(function)];
+    final names = {for (final (name, creation) in acceptedWidgets(source.unit)) creation: name};
+    final bodies = <(int, IrFunction Function())>[
+      for (final function in compiledFunctions(source.unit)) (function.offset, () => _function(function)),
+      for (final callback in widgetCallbacks(source.unit))
+        (
+          callback.offset,
+          () => _callback(callbackFunctionName(names[widgetOfCallback(callback)]!, callback), callback)
+        ),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    final functions = [
+      for (final (_, lower) in bodies) lower(),
+      if (device != null) ..._entryPoints(mainFunction(source.unit)!, children),
+    ];
+    final functionNames = <String>{};
+    for (final function in functions) {
+      if (!functionNames.add(function.name)) throw LoweringError('two functions named ${function.name}');
+    }
     return IrProgram(
       sourceName: source.displayName,
       includes: [..._headers, ..._cppIncludes()],
+      localIncludes: [if (device != null) 'unodar_widgets.h'],
       globals: globals,
       functions: functions,
     );
+  }
+
+  /// A widget's C++ object: `unodar::Led led(13);`. Its arguments are constants (E022), in C++ parameter order.
+  IrBoundObject _widgetObject(String name, InstanceCreationExpression creation) {
+    final cls = api.classOfType(creation.staticType) ?? (throw LoweringError('unregistered widget $creation'));
+    final constructor = cls.constructor ?? (throw LoweringError('${cls.dartName} has no constructor'));
+    return IrBoundObject(
+      name: name,
+      cppClass: cls.cppName,
+      arguments: _apiArguments(
+          ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), cppArgumentsOf(creation)),
+      line: _line(creation),
+    );
+  }
+
+  /// A widget callback as a plain `void` function without parameters (docs/SUBSET.md "Callbacks").
+  IrFunction _callback(String name, FunctionExpression closure) {
+    final body = closure.body;
+    return IrFunction(
+      name: name,
+      line: _line(closure),
+      body: switch (body) {
+        BlockFunctionBody(:final block) => _statements(block.statements),
+        ExpressionFunctionBody(:final expression) => [_statementLevel(expression)],
+        _ => throw LoweringError('unsupported callback body ${closure.toSource()}'),
+      },
+    );
+  }
+
+  /// The generated `setup()` and `loop()` of a widget program (docs/SUBSET.md "Widgets: runDevice"): `setup()`
+  /// starts every widget, `loop()` polls every widget that has something to poll, both in `children` order. Their
+  /// `#line` is `main()`'s; each call's is the line of its entry in `children`.
+  List<IrFunction> _entryPoints(FunctionDeclaration main, List<WidgetChild> children) {
+    final line = _line(main.firstTokenAfterCommentAndMetadata);
+    ApiWidget widget(WidgetChild child) =>
+        api.widgetOfType(child.creation.staticType) ?? (throw LoweringError('unregistered widget ${child.name}'));
+    final device = deviceOfMain(main)!;
+    final baud = namedArgument(device, 'serialBaud');
+    final serial = api.object('Serial')!;
+    final begin = api.classOf(serial).method('begin')!;
+    return [
+      IrFunction(name: 'setup', line: line, isEntryPoint: true, body: [
+        // Opens Serial first, so that callbacks can print straight away (docs/SUBSET.md "The program").
+        if (_usesSerial)
+          IrExpressionStatement(
+              IrCall(begin.cppName, [baud == null ? IrIntLiteral(serialBaudDefault(device)) : _expression(baud)],
+                  receiver: serial.cppName),
+              line: baud == null ? line : _line(baud)),
+        for (final child in children)
+          IrExpressionStatement(IrCall(widget(child).setup, const [], receiver: child.name),
+              line: _line(child.element)),
+      ]),
+      IrFunction(name: 'loop', line: line, isEntryPoint: true, body: [
+        // `if (button.pressed()) { unodar_button_onPressed(); }`
+        for (final child in children)
+          if (widget(child).poll case final poll?)
+            IrIf(
+              IrCall(poll, const [], receiver: child.name, type: IrType.bool_),
+              [
+                IrExpressionStatement(
+                    IrCall(
+                        callbackFunctionName(child.name,
+                            callbackOf(child.creation) ?? (throw LoweringError('no callback for ${child.name}'))),
+                        const []),
+                    line: _line(child.element)),
+              ],
+              line: _line(child.element),
+            ),
+      ]),
+    ];
   }
 
   /// `external final TwoWire Wire;` names an existing C++ object: nothing is emitted for it.
@@ -87,6 +184,7 @@ final class _Lowerer {
 
   IrGlobalDeclaration _global(VariableDeclaration variable) {
     final initializer = variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'));
+    if (widgetCreation(initializer) case final creation?) return _widgetObject(variable.name.lexeme, creation);
     final cls = api.classOfType(variable.declaredFragment?.element.type);
     if (cls != null) {
       // A bound object: `final link = SoftSerial(10, 11);` → `SoftwareSerial link(10, 11);`.
@@ -96,8 +194,8 @@ final class _Lowerer {
       return IrBoundObject(
         name: variable.name.lexeme,
         cppClass: cls.cppName,
-        arguments: _apiArguments(
-            ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), initializer.argumentList),
+        arguments: _apiArguments(ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor),
+            initializer.argumentList.arguments),
         line: _line(variable.name),
       );
     }
@@ -273,6 +371,12 @@ final class _Lowerer {
         );
       case MethodInvocation():
         return _call(expression);
+      // `Every`'s interval, validated (E022): its length in milliseconds.
+      case InstanceCreationExpression() when isWidgetInterval(expression):
+        return switch (intervalOf(expression, const ConstantEvaluator())) {
+          IntervalMilliseconds(:final milliseconds) => IrIntLiteral(milliseconds),
+          _ => throw LoweringError('invalid interval ${expression.toSource()}'),
+        };
       case InstanceCreationExpression(:final argumentList):
         final type =
             sizedTypeOf(expression.staticType!) ?? (throw LoweringError('constructor ${expression.toSource()}'));
@@ -317,7 +421,7 @@ final class _Lowerer {
     if (apiFunction != null) {
       return IrCall(
         apiFunction.cppName,
-        _apiArguments(apiFunction, call.argumentList),
+        _apiArguments(apiFunction, call.argumentList.arguments),
         type: apiFunction.returnType,
         cppResult: _cppResult(apiFunction),
       );
@@ -326,12 +430,13 @@ final class _Lowerer {
     if (method != null) {
       final function = method.method;
       _usesClass(method.cls);
+      if (method.cls.dartName == 'HardwareSerial') _usesSerial = true;
       if (function.parameters.firstOrNull?.isPrintable ?? false) {
         return _printCall(method.receiver, function, call.argumentList);
       }
       return IrCall(
         function.cppName,
-        _apiArguments(function, call.argumentList),
+        _apiArguments(function, call.argumentList.arguments),
         receiver: method.receiver,
         type: function.returnType,
         cppResult: _cppResult(function),
@@ -348,13 +453,13 @@ final class _Lowerer {
 
   /// The arguments of an API call in C++ parameter order: positional ones, then each named parameter's argument or,
   /// if omitted, its declared default.
-  List<IrExpression> _apiArguments(ApiFunction function, ArgumentList list) {
+  List<IrExpression> _apiArguments(ApiFunction function, List<Argument> arguments) {
     final positional = [
-      for (final a in list.arguments)
+      for (final a in arguments)
         if (a is! NamedArgument) a.argumentExpression
     ];
     final named = {
-      for (final a in list.arguments)
+      for (final a in arguments)
         if (a is NamedArgument) a.name.lexeme: a.argumentExpression
     };
     if (positional.length != function.positionalParameters.length) {

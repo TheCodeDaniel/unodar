@@ -22,7 +22,12 @@ final class ApiParameter {
     this.isNamed = false,
     this.defaultValue,
     this.hasCppRange = false,
+    this.isPin = false,
   });
+
+  /// A widget pin: `uint8_t`, 0 to 19 on the Uno (D0–D13, A0–A5), named and required.
+  const ApiParameter.widgetPin(String name)
+      : this(name, type: IrType.int32, cppType: 'uint8_t', min: 0, max: 19, isNamed: true, isPin: true);
 
   const ApiParameter.uint8(String name, {bool isNamed = false, int? defaultValue})
       : this(name,
@@ -43,7 +48,8 @@ final class ApiParameter {
         max = null,
         isNamed = false,
         defaultValue = null,
-        hasCppRange = false;
+        hasCppRange = false,
+        isPin = false;
 
   /// The Dart parameter name.
   final String name;
@@ -61,6 +67,9 @@ final class ApiParameter {
 
   /// Whether [min] and [max] come from a `@CppRange` that narrows [cppType]'s range (for the E004 wording).
   final bool hasCppRange;
+
+  /// Whether this is a widget pin, whose [min]..[max] are the board's pins (for the E004 wording).
+  final bool isPin;
 
   /// A Dart named parameter. Every parameter is passed to C++ positionally, in declaration order.
   final bool isNamed;
@@ -146,6 +155,25 @@ final class ApiClass {
   }
 }
 
+/// A widget class (docs/SUBSET.md "Widgets: runDevice"): its [ApiClass] (C++ class in `unodar_widgets.h`,
+/// constructor parameters, methods), and what the generated `setup()` and `loop()` call on each object.
+final class ApiWidget {
+  const ApiWidget(this.className, {this.setup = 'begin', this.poll, this.callback});
+
+  /// The [ApiClass.dartName] of its class.
+  final String className;
+
+  /// The method the generated `setup()` calls, in `children` order.
+  final String setup;
+
+  /// The method the generated `loop()` calls on every pass; when it returns true, the callback runs. Null for a
+  /// widget that is never polled (`Led`).
+  final String? poll;
+
+  /// The Dart parameter that holds the callback closure (`onPressed`), or null.
+  final String? callback;
+}
+
 /// An existing C++ object of an [ApiClass]: `Serial`, or an `external final` object of a binding class (`Wire`).
 final class ApiObject {
   const ApiObject(this.dartName, {required this.cppName, required this.className});
@@ -171,7 +199,11 @@ final class ApiRegistry {
     required List<ApiConstant> constants,
     List<ApiClass> classes = const [],
     List<ApiObject> objects = const [],
-  })  : _functions = {for (final f in functions) f.dartName: f},
+    List<ApiWidget> widgets = const [],
+    Set<String> otherNames = const {},
+  })  : _widgets = {for (final w in widgets) w.className: w},
+        _otherNames = otherNames,
+        _functions = {for (final f in functions) f.dartName: f},
         _constants = {for (final c in constants) c.dartName: c},
         _classes = {for (final c in classes) c.dartName: c},
         _objects = {for (final o in objects) o.dartName: o} {
@@ -180,13 +212,16 @@ final class ApiRegistry {
         throw ArgumentError('object ${object.dartName} has unregistered class ${object.className}');
       }
     }
+    for (final widget in widgets) {
+      if (!_classes.containsKey(widget.className)) throw ArgumentError('widget ${widget.className} has no class');
+    }
   }
 
   /// The Arduino core slice declared in `packages/unodar/lib/src/arduino_core.dart`. Parameter and result types are
   /// those of the Arduino AVR core 1.8.8 (`Arduino.h`, `wiring_digital.c`, `wiring_analog.c`, `wiring.c`);
   /// `api_registry_test` checks each row against its Dart declaration. Phase 3 rows enter in the commit that
   /// enables them end to end, with their golden (docs/DECISIONS.md).
-  factory ApiRegistry.core() => ApiRegistry(
+  factory ApiRegistry.core() => ApiRegistry._core(
         functions: const [
           ApiFunction('pinMode',
               cppName: 'pinMode', parameters: [ApiParameter.uint8('pin'), ApiParameter.uint8('mode')]),
@@ -233,7 +268,48 @@ final class ApiRegistry {
           ]),
         ],
         objects: const [ApiObject('Serial', cppName: 'Serial', className: 'HardwareSerial')],
+        // `widgets.dart`; the C++ classes are in runtime/unodar_widgets.h. Rows enter with their golden.
+        widgetClasses: const [
+          ApiClass('Led', cppName: 'unodar::Led', constructor: [
+            ApiParameter.widgetPin('pin')
+          ], methods: [
+            ApiFunction('on', cppName: 'on', parameters: []),
+            ApiFunction('off', cppName: 'off', parameters: []),
+            ApiFunction('toggle', cppName: 'toggle', parameters: []),
+          ]),
+          // `onPressed` is a callback, not a C++ constructor argument.
+          ApiClass('Button', cppName: 'unodar::Button', constructor: [ApiParameter.widgetPin('pin')], methods: []),
+          // The interval is a Duration in Dart, passed as whole milliseconds (E022 checks the range).
+          ApiClass('Every',
+              cppName: 'unodar::Every',
+              constructor: [ApiParameter('interval', type: IrType.int32, cppType: 'uint32_t')],
+              methods: []),
+        ],
+        widgets: const [
+          ApiWidget('Led'),
+          ApiWidget('Button', poll: 'pressed', callback: 'onPressed'),
+          ApiWidget('Every', poll: 'due', callback: 'callback'),
+        ],
+        // Not callable or constructible as API rows, but taken by the widget API and its C++ namespace (E014).
+        otherNames: const {'runDevice', 'Device', 'Uno', 'Board', 'Widget', 'unodar'},
       );
+
+  ApiRegistry._core({
+    required List<ApiFunction> functions,
+    required List<ApiConstant> constants,
+    required List<ApiClass> classes,
+    required List<ApiObject> objects,
+    required List<ApiClass> widgetClasses,
+    required List<ApiWidget> widgets,
+    required Set<String> otherNames,
+  }) : this(
+          functions: functions,
+          constants: constants,
+          classes: [...classes, ...widgetClasses],
+          objects: objects,
+          widgets: widgets,
+          otherNames: otherNames,
+        );
 
   /// `print(Object value, {int digits = 2})`. The value is [ApiParameter.printable]; `digits` is passed only with
   /// a `double` value (`Print::print(double, int)`; `printFloat` takes it as a `uint8_t`, hence its range).
@@ -246,6 +322,8 @@ final class ApiRegistry {
   final Map<String, ApiConstant> _constants;
   final Map<String, ApiClass> _classes;
   final Map<String, ApiObject> _objects;
+  final Map<String, ApiWidget> _widgets;
+  final Set<String> _otherNames;
 
   /// This registry plus [bindings]. A binding may not reuse a registered Dart name.
   ApiRegistry withBindings(ApiBindings bindings) {
@@ -259,6 +337,8 @@ final class ApiRegistry {
       constants: [..._constants.values],
       classes: [..._classes.values, ...bindings.classes],
       objects: [..._objects.values, ...bindings.objects],
+      widgets: [..._widgets.values],
+      otherNames: _otherNames,
     );
   }
 
@@ -269,6 +349,9 @@ final class ApiRegistry {
   ApiClass? classNamed(String dartName) => _classes[dartName];
 
   ApiObject? object(String dartName) => _objects[dartName];
+
+  /// The widget row of the widget class [className] (`Led`), or null.
+  ApiWidget? widget(String className) => _widgets[className];
 
   /// The class of [object].
   ApiClass classOf(ApiObject object) => _classes[object.className]!;
@@ -286,5 +369,6 @@ final class ApiRegistry {
         for (final c in _constants.values) ...[c.dartName, c.cppName],
         for (final c in _classes.values) ...[c.dartName, c.cppName],
         for (final o in _objects.values) ...[o.dartName, o.cppName],
+        ..._otherNames,
       };
 }

@@ -1,0 +1,10 @@
+input.dart:12:17: error[E022]: the interval of Every is 1500 µs, but it must be a whole number of milliseconds from 1 to 2147483647 (about 24.8 days).
+  = help: Use whole milliseconds in that range, e.g. `Duration(milliseconds: 500)`.
+input.dart:13:17: error[E022]: the interval of Every is 0 ms, but it must be a whole number of milliseconds from 1 to 2147483647 (about 24.8 days).
+  = help: Use whole milliseconds in that range, e.g. `Duration(milliseconds: 500)`.
+input.dart:14:17: error[E022]: the interval of Every is 2160000000 ms, but it must be a whole number of milliseconds from 1 to 2147483647 (about 24.8 days).
+  = help: Use whole milliseconds in that range, e.g. `Duration(milliseconds: 500)`.
+input.dart:15:40: error[E022]: the interval of Every must be a compile-time constant.
+  = help: Use literals or `const` ints, e.g. `Duration(milliseconds: blinkMs)` with `const int blinkMs = 500;`.
+input.dart:16:17: error[E002]: a property access ('Duration.zero') is not supported in this version.
+  = help: Properties and methods of values are not supported in this version.

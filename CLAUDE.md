@@ -26,6 +26,7 @@ UPDATE_GOLDENS=1 dart test packages/unodar_compiler/test/golden_test.dart   # de
 dart run packages/unodar_compiler/bin/unodar.dart build examples/blink/main.dart -o out
 tool/check_arduino.sh                                                     # arduino-cli compile of the examples
 tool/extract_arduino_names.sh                                             # regenerate input for the E014 deny-list
+tool/embed_runtime.sh                                                     # re-embed runtime/unodar_widgets.h after editing it
 (cd tool/avr_runner && npm ci)                                            # avr8js for the runtime fidelity harness
 ```
 Tests tagged `arduino` (compile checks, size budgets, fidelity harnesses, reserved names) skip with install

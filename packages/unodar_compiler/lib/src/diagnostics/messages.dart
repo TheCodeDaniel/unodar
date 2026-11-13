@@ -100,11 +100,13 @@ abstract final class Diagnostics {
         suggestion: 'Fix the Dart error first; `dart analyze` on this file shows the same problem.',
       );
 
-  static Diagnostic reservedMain(SourceLocation at) => Diagnostic(
-        code: DiagnosticCode.reservedMain,
+  static Diagnostic unsupportedMain(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedMain,
         location: at,
-        message: "'main()' is reserved for the widget API (runDevice), which arrives in a later phase.",
-        suggestion: 'Remove main() and put your code in `void setup()` and `void loop()` instead.',
+        message: 'unsupported main(): it may only contain a single `runDevice(Device(…))` call.',
+        suggestion: 'Describe the device with widgets, e.g. '
+            '`void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, or write `setup()` and '
+            '`loop()` instead.',
       );
 
   static Diagnostic nullableType(String type, String nonNullable, SourceLocation at) => Diagnostic(
@@ -182,6 +184,21 @@ abstract final class Diagnostics {
         message: "a function reference ('$name') is not supported in this version. Functions can only be called "
             'directly.',
         suggestion: 'Call the function instead, e.g. `$name()`.',
+      );
+
+  static Diagnostic callbackReference(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.functionValue,
+        location: at,
+        message: "a function reference ('$name') cannot be a widget callback.",
+        suggestion: 'Write a closure that calls it: `() { $name(); }`.',
+      );
+
+  /// [problem] is `it is async`, `it is a generator`.
+  static Diagnostic callbackShape(String problem, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.functionValue,
+        location: at,
+        message: 'unsupported widget callback: $problem.',
+        suggestion: 'Write a plain closure without parameters, `() { … }`; it runs to the end inside loop().',
       );
 
   static Diagnostic localFunction(String name, SourceLocation at) => Diagnostic(
@@ -354,6 +371,183 @@ abstract final class Diagnostics {
             '${word == 'free' || word == 'delete' ? 'frees heap memory' : 'allocates on the heap'}. Generated code '
             'must not use the heap.',
         suggestion: "Allocate statically instead, e.g. a global array: `cpp('static char buffer[16];');`.",
+      );
+
+  static Diagnostic pinOutOfRange(String value, String widget, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedArgument,
+        location: at,
+        message: 'pin $value is out of range for $widget: the Uno has pins 0 to 19 (D0–D13, and A0–A5 as 14–19).',
+        suggestion: 'Pass a pin from 0 to 19, e.g. `13` or `A0`.',
+      );
+
+  // E021: widget program shape.
+
+  static Diagnostic widgetProgramEntryPoint(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: "a widget program cannot also declare '$name()': main() and runDevice() generate setup() and loop().",
+        suggestion: 'Remove it and put the code in widget callbacks, e.g. '
+            '`Every(Duration(milliseconds: 100), () { … })`.',
+      );
+
+  /// [what] is `the widget 'Led'`, `Device(…)`, `runDevice()`, ….
+  static Diagnostic widgetOutsideWidgetProgram(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: '$what can only be used in a widget program, which has `void main() => runDevice(…)` instead of '
+            'setup() and loop().',
+        suggestion: 'Describe the device in main(), e.g. '
+            '`void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, and remove setup() and '
+            'loop(); or use pinMode() and digitalWrite() directly.',
+      );
+
+  /// [what] is `runDevice()`, `Device(…)`, or `Uno()`.
+  static Diagnostic deviceOutsideMain(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: '$what can only be written in main(), as `runDevice(Device(board: Uno(), children: […]))`.',
+        suggestion: 'Move it into `void main() => runDevice(Device(…));`; the compiler reads main() statically.',
+      );
+
+  static Diagnostic deviceBoard(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: 'the board must be written as `Uno()`, the only board in this version.',
+        suggestion: 'Write `board: Uno()`.',
+      );
+
+  static Diagnostic deviceChildrenNotLiteral(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: 'children must be a list literal written in place, e.g. `children: [led, button]`.',
+        suggestion: 'List the widgets directly inside `Device(children: [...])`; the compiler reads it statically.',
+      );
+
+  /// [what] is `a spread (...)`, `a collection if`, `a collection for`, or a description of the element.
+  static Diagnostic deviceChildElement(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: '$what is not supported in children: each element is a top-level widget or a widget constructor.',
+        suggestion: 'List every widget on its own, e.g. `children: [led, Led(pin: 3)]`.',
+      );
+
+  static Diagnostic serialBeginInWidgetProgram(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: 'a widget program cannot call Serial.begin(): the generated setup() opens Serial before anything '
+            'else runs.',
+        suggestion: 'Remove it, and set the speed with `Device(serialBaud: 115200, …)` if 9600 baud does not fit.',
+      );
+
+  static Diagnostic serialBaudNotConstant(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetProgram,
+        location: at,
+        message: 'serialBaud must be a compile-time constant.',
+        suggestion: 'Use a literal or a `const`, e.g. `serialBaud: 115200`.',
+      );
+
+  // E022: widget rules.
+
+  static Diagnostic widgetPlacement(String widget, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'a widget ($widget) can only be a top-level `final` or be written directly in Device.children.',
+        suggestion: 'Declare it at the top level, e.g. `final ${lowerFirst(widget)} = $widget(…);`, and list it in '
+            'children.',
+      );
+
+  static Diagnostic widgetNotFinal(String name, String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the widget '$name' must be declared `final`.",
+        suggestion: 'Write `$example`. Each widget is one C++ object, created once.',
+      );
+
+  /// [what] is `the pin of Led`.
+  static Diagnostic widgetArgumentNotConstant(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: '$what must be a compile-time constant.',
+        suggestion: 'Use a literal or a `const`, e.g. `const int ledPin = 13;`.',
+      );
+
+  /// [owner] is `'alarm' (line 5)` or `the Led on line 12`.
+  static Diagnostic duplicatePin(int pin, String owner, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'pin $pin is already used by $owner.',
+        suggestion: 'Give each widget its own pin.',
+      );
+
+  static Diagnostic widgetNotInChildren(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the widget '$name' is not listed in Device.children, so it would never be set up or polled.",
+        suggestion: 'Add `$name` to `children: [...]` in main().',
+      );
+
+  static Diagnostic widgetListedTwice(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the widget '$name' is listed in Device.children more than once.",
+        suggestion: 'List each widget once; the children order is the order of setup and polling.',
+      );
+
+  static Diagnostic widgetUsedBeforeDeclaration(String owner, String used, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the callback of '$owner' uses the widget '$used', which is declared below it.",
+        suggestion: "Move the declaration of '$used' above '$owner'.",
+      );
+
+  static Diagnostic widgetHandleUse(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the widget '$name' can only be used to call its methods or be listed in Device.children.",
+        suggestion:
+            'Call a method on it directly, e.g. `$name.toggle()`, instead of storing, comparing, or passing it.',
+      );
+
+  /// [position] is `a parameter`, `a local variable`, `a return value`.
+  static Diagnostic widgetTypePosition(String position, String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "$position of the widget type '$type' is not supported. Widgets can only be top-level `final`s.",
+        suggestion: 'Use the top-level widget directly instead of passing it around.',
+      );
+
+  /// [path] is `Button's onPressed → blink()`.
+  static Diagnostic delayInCallback(String path, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.delayInCallback,
+        location: at,
+        message: "'delay()' runs inside a widget callback ($path), where it would stop every button and timer "
+            'while it waits.',
+        suggestion: 'Time things with an Every widget instead, keeping state in a top-level variable between ticks.',
+      );
+
+  static Diagnostic intervalNotDuration(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'the interval of Every must be written in place as `Duration(…)`.',
+        suggestion: 'Write it in the call, e.g. `Every(Duration(milliseconds: 500), () { … })`.',
+      );
+
+  static Diagnostic intervalNotConstant(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'the interval of Every must be a compile-time constant.',
+        suggestion: 'Use literals or `const` ints, e.g. `Duration(milliseconds: blinkMs)` with '
+            '`const int blinkMs = 500;`.',
+      );
+
+  /// [microseconds] is the interval's exact length.
+  static Diagnostic intervalOutOfRange(int microseconds, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message:
+            'the interval of Every is ${microseconds % 1000 == 0 ? '${microseconds ~/ 1000} ms' : '$microseconds µs'}'
+            ', but it must be a whole number of milliseconds from 1 to 2147483647 (about 24.8 days).',
+        suggestion: 'Use whole milliseconds in that range, e.g. `Duration(milliseconds: 500)`.',
       );
 
   static String _article(String word) => word.startsWith('uint') || !'aeiou'.contains(word[0]) ? 'a' : 'an';

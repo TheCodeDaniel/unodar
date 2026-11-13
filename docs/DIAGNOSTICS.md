@@ -20,7 +20,8 @@ The file is the source's base name. Diagnostics are printed in source order, fol
 
 ## E001: Missing required `setup()` or `loop()`
 
-Both entry points are required. Reported at 1:1, once per missing function.
+Both entry points are required in a sketch without `main()`. A widget program (`void main() => runDevice(…)`)
+has neither; see E008 and E021. Reported at 1:1, once per missing function.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -114,6 +115,8 @@ An argument the unodar API function cannot accept:
   values are converted at runtime instead (see "Known deviations from Dart" in `docs/SUBSET.md`);
 - `digits:` given to `Serial.print`/`println` with a value that is not a `double` (for an `int`, Arduino's second
   argument would mean the number base);
+- a widget pin outside 0 to 19, the Uno's pins (D0–D13, and A0–A5 as 14–19), reported as "pin 20 is out of range
+  for Led: …";
 - a named argument the function does not declare. The analyzer already reports such a call as E007; E004 is the
   compiler's own guard behind it.
 
@@ -141,7 +144,7 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
 
 (Golden tests: `test/golden/e004_argument_out_of_range`, `e004_more_ranges`, `e004_core_io_ranges`,
 `e004_serial_digits`, `e004_binding_ranges`, `e004_wire_ranges`, `e004_servo_ranges`, `e004_servo_pulse_min`,
-`e004_servo_pulse_max`.)
+`e004_servo_pulse_max`, `e004_widget_pins`, `e004_serial_baud`.)
 
 ## E005: Unsupported top-level declaration
 
@@ -216,26 +219,31 @@ input.dart:4:15: error[E007]: Dart analysis error: The argument type 'String' ca
 
 (Golden test: `test/golden/e007_type_error`.)
 
-## E008: `main()` is reserved
+## E008: Unsupported `main()`
 
-`main()` is reserved for the widget API (`runDevice`, Phase 4). It is not compiled.
+`main()` is only for widget programs, and must be exactly one call, `void main() => runDevice(Device(…));` or
+`void main() { runDevice(Device(…)); }`. The compiler reads that call statically and never compiles `main()`
+itself, so anything else is rejected: other statements or calls, parameters, a return type other than `void`,
+`async`, or a `runDevice` argument that is not a `Device(…)` constructor call. To write code that runs once and
+then in a loop, use `setup()` and `loop()` instead.
 
 ```dart
 import 'package:unodar/unodar.dart';
 
-void main() {}
-
-void setup() {}
-
-void loop() {}
+void main() {
+  pinMode(13, OUTPUT);
+}
 ```
 
 ```text
-input.dart:3:6: error[E008]: 'main()' is reserved for the widget API (runDevice), which arrives in a later phase.
-  = help: Remove main() and put your code in `void setup()` and `void loop()` instead.
+input.dart:3:6: error[E008]: unsupported main(): it may only contain a single `runDevice(Device(…))` call.
+  = help: Describe the device with widgets, e.g. `void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, or write `setup()` and `loop()` instead.
 ```
 
-(Golden test: `test/golden/e008_main`.)
+A file whose `main()` is rejected is neither a widget program nor a plain sketch, so its `setup()`/`loop()` and its
+widgets are not checked further until `main()` is fixed.
+
+(Golden tests: `test/golden/e008_main`, `e008_main_shapes`.)
 
 
 ## E009: Unsupported type
@@ -327,9 +335,12 @@ input.dart:5:3: error[E011]: unsupported signature for function 'first': it has 
 
 ## E012: Closure or function value
 
-Functions can only be declared at the top level and called directly. Closures (`() => …`), function references
-(using `pulse` without calling it), and local functions need captured state or function pointers, which arrive
-(restricted) with the widget API.
+Functions can only be declared at the top level and called directly. The one place a closure is allowed is a widget
+callback (`Button(onPressed: () { … })`, `Every(…, () { … })`), where it becomes a generated plain function. It
+takes no parameters, is not `async`, returns nothing, and contains no closures of its own; a function reference
+(`onPressed: toggle`) is not accepted there either. Everywhere else, closures (`() => …`), function references (using
+`pulse` without calling it), and local functions are rejected: they would need captured state or function
+pointers.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -348,7 +359,8 @@ input.dart:6:13: error[E012]: a function reference ('pulse') is not supported in
   = help: Call the function instead, e.g. `pulse()`.
 ```
 
-(Golden tests: `test/golden/e012_closure`, `e012_function_reference`, `e012_local_function`.)
+(Golden tests: `test/golden/e012_closure`, `e012_function_reference`, `e012_local_function`,
+`e012_widget_callbacks`.)
 
 ## E013: Evaluation order differs in C++
 
@@ -420,7 +432,8 @@ input.dart:8:7: error[E014]: 'and' cannot be used as a name: it is a C++ keyword
 
 Every top-level variable needs an initializer made only of literals, unodar constants, `const` variables declared
 **above** it, `Uint8(…)`/`Uint16(…)`/`Int16(…)` of constants, and supported operators. The constructor arguments of
-a bound object (`final link = SoftSerial(10, 11);`) follow the same rule. C++ initializes globals before
+a bound object (`final link = SoftSerial(10, 11);`) follow the same rule; widget arguments are checked by E022
+instead, except for declaration order (a widget's arguments are emitted in its C++ declaration). C++ initializes globals before
 `setup()` runs and needs declarations before use, while Dart initializes them lazily, so anything else could run
 in a different order. Compute other values in `setup()`.
 
@@ -445,7 +458,8 @@ input.dart:6:15: error[E015]: the initializer of top-level variable 'b' refers t
   = help: Move the declaration of 'c' above 'b'.
 ```
 
-(Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`.)
+(Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
+`e015_widget_forward_reference`.)
 
 ## E016: Recursive function
 
@@ -603,3 +617,101 @@ input.dart:6:7: error[E020]: the C++ text uses 'malloc', which allocates on the 
 ```
 
 (Golden tests: `test/golden/e020_cpp_heap`.)
+
+## E021: Widget program shape
+
+A widget program has `main()` and no `setup()`/`loop()`; a sketch with `setup()`/`loop()` has no widgets. Also
+rejected: `runDevice` anywhere but `main()`; a `Device` whose `board` is not `Uno()` or whose `children` is not a
+list literal of widgets (no spreads, collection `if`/`for`, or other values); a `serialBaud:` that is not a
+compile-time constant (a negative one is E004); and `Serial.begin` in a widget program, because the generated
+`setup()` opens the port (set the speed with `Device(serialBaud: …)`).
+
+```dart
+import 'package:unodar/unodar.dart';
+
+final led = Led(pin: 13);
+
+void main() => runDevice(Device(board: Uno(), children: [led]));
+
+void loop() {}
+```
+
+```text
+input.dart:7:6: error[E021]: a widget program cannot also declare 'loop()': main() and runDevice() generate setup() and loop().
+  = help: Remove it and put the code in widget callbacks, e.g. `Every(Duration(milliseconds: 100), () { … })`.
+```
+
+(Golden tests: `test/golden/e021_main_and_loop`, `e021_widgets_without_main`, `e021_device_arguments`,
+`e021_device_children`, `e021_serial_begin`.)
+
+## E022: Widget rules
+
+A widget (`Led`, `Button`, `Every`) is a top-level `final` or is written directly inside `Device(children: […])`;
+anywhere else (a local variable, inside a callback, a non-`final` variable) it is rejected. Its arguments are
+compile-time constants: the pin like any constant, the interval a `Duration(…)` with constant arguments adding up
+to a whole number of milliseconds from 1 to 2147483647. Each pin belongs to one widget. Every top-level widget is
+listed in `children` exactly once, or it would never be set up and polled. A top-level widget's callback may only
+use widgets declared above it. A widget handle can only be listed in `children` or used to call its methods
+(`led.toggle()`); it cannot be stored, compared, or passed.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+int ledPin = 13;
+final led = Led(pin: ledPin);
+final alarm = Led(pin: 2);
+final button = Button(pin: 2, onPressed: () {
+  alarm.on();
+});
+
+void main() => runDevice(Device(board: Uno(), children: [led, button]));
+```
+
+```text
+input.dart:4:17: error[E022]: the pin of Led must be a compile-time constant.
+  = help: Use a literal or a `const`, e.g. `const int ledPin = 13;`.
+input.dart:5:7: error[E022]: the widget 'alarm' is not listed in Device.children, so it would never be set up or polled.
+  = help: Add `alarm` to `children: [...]` in main().
+input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
+  = help: Give each widget its own pin.
+```
+
+(Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
+`e022_declaration_order`, `e022_handle_uses`, `e022_durations`.)
+
+## E023: `delay()` in a widget callback
+
+Widget callbacks run inside the generated `loop()`, which polls every button and timer. `delay()` would stop all of
+them while it waits, so it is rejected in a callback, and in any of your functions that a callback calls, directly
+or through other functions. Plain `setup()`/`loop()` sketches keep `delay()`.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+final led = Led(pin: 13);
+
+void blink() {
+  led.on();
+  delay(100);
+  led.off();
+}
+
+void main() => runDevice(
+      Device(
+        board: Uno(),
+        children: [
+          led,
+          Button(pin: 2, onPressed: () {
+            blink();
+          }),
+        ],
+      ),
+    );
+```
+
+```text
+input.dart:7:3: error[E023]: 'delay()' runs inside a widget callback (Button's onPressed → blink()), where it would stop every button and timer while it waits.
+  = help: Time things with an Every widget instead, keeping state in a top-level variable between ticks.
+```
+
+(Golden tests: `test/golden/e023_delay_direct`, `e023_delay_indirect`.)

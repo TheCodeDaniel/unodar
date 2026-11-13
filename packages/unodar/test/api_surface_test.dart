@@ -24,4 +24,50 @@ void main() {
     expect([header.header, cppClass.name, name.name, type.type, include.header, range.min, range.max],
         ['Servo.h', 'Servo', 'write', 'uint8_t', 'avr/wdt.h', 33, 1059]);
   });
+
+  // The widget declarations are never executed (their constructors are `external`), so these tests check their
+  // types. `_goalProgram` and `_handles` below are compiled with this file: if a signature changes, this test file
+  // stops compiling.
+  test('Led, Button and Every are widgets, and Uno is a board', () {
+    expect(_isSubtype<Led, Widget>(), isTrue);
+    expect(_isSubtype<Button, Widget>(), isTrue);
+    expect(_isSubtype<Every, Widget>(), isTrue);
+    expect(_isSubtype<Uno, Board>(), isTrue);
+    expect(_isSubtype<Device, Widget>(), isFalse, reason: 'a Device is the root, never a child');
+  });
+
+  test('the Phase 4 goal program and widget handles type-check', () {
+    expect(_goalProgram, isA<void Function()>());
+    expect(_handles, isA<void Function()>());
+  });
+}
+
+bool _isSubtype<S, T>() => <S>[] is List<T>;
+
+// The Phase 4 goal program (docs/SUBSET.md "Widgets: runDevice"), with every optional argument spelled out.
+final _led = Led(pin: 13);
+final _button = Button(
+    pin: 2,
+    onPressed: () {
+      _led.toggle();
+    });
+
+void _goalProgram() => runDevice(
+      Device(
+        board: Uno(),
+        serialBaud: 115200,
+        children: [
+          _led,
+          _button,
+          Every(Duration(milliseconds: 500), () {
+            Serial.println('tick');
+          }),
+        ],
+      ),
+    );
+
+void _handles() {
+  _led.on();
+  _led.off();
+  _led.toggle();
 }
