@@ -1,7 +1,12 @@
 # Phase 3 plan — hardware API and interop foundation
 
-**Status: planned, awaiting maintainer approval.** Phase 2 is done (tagged `v0.2.0`). Phase 4 (widgets) is out of
-scope.
+**Status: done (2026-11-13), v0.3.** Approved by the maintainer and built step by step on the `phase-3` branch;
+every step below is complete except the optional step 11, which was skipped (it only changes how the C++ reads:
+avr-gcc folds those constants anyway, and most goldens would change). Phase 4 (widgets) is out of scope.
+
+Final state: 269 tests (14 in `packages/unodar`, 255 in `packages/unodar_compiler`), 88 goldens (20 positive,
+each compiled, size-budgeted, and checked heap-free), the avr8js runtime harness with its negative controls, and
+`examples/dial`.
 
 Spec: PRD §8 row 3, the maintainer's Phase 3 brief, `docs/SUBSET.md`, `docs/DIAGNOSTICS.md` (E017–E020), and the
 2026-11-12 entries in `docs/DECISIONS.md` (including the four maintainer decisions).
@@ -20,10 +25,10 @@ with its negative control failing; `SUBSET.md`/`DIAGNOSTICS.md` are accurate; th
 | 5 | Validator relaxation, one construct per commit, each with positive and negative goldens: `core_io` → `serial_print` (strings) → `named_arguments` → `user_binding` (SoftwareSerial, constructor arguments, `@CppName`) → `wire` → `servo` → `cpp_escape_hatch` (`@CppInclude`); E013 tightening | Goldens; `arduino_compile_test` |
 | 6 | Servo: `tool/check_arduino.sh` fails with the install command, the test gate checks it, CI installs `Servo@1.3.0` (done before the Servo golden, see DECISIONS) | Gate test with the library missing (`toolchain_gate_test`) |
 | 7 | No-heap check over every positive golden's output | New test in `arduino_compile_test` or its own file |
-| 8 | **Done.** Runtime fidelity harness: unodar fixture with unfoldable inputs (`analogRead`, `millis`, `micros`) and identities that hold for every input, plus subtraction across the INT32_MAX/INT32_MIN boundary with operands only known at runtime (`volatile`), run by the avr8js runner in `tool/avr_runner/` (pinned version, lockfile; fixed cycle count, USART capture, PASS/FAIL lines); a negative control built without `-fwrapv` must print FAIL; CI installs Node with `actions/setup-node` | `runtime_fidelity_test` (tagged `arduino`) |
+| 8 | Runtime fidelity harness: unodar fixture with unfoldable inputs (`analogRead`, `millis`, `micros`) and identities that hold for every input, plus subtraction across the INT32_MAX/INT32_MIN boundary with operands only known at runtime (`volatile`), run by the avr8js runner in `tool/avr_runner/` (pinned version, lockfile; fixed cycle count, USART capture, PASS/FAIL lines); a negative control built without `-fwrapv` must print FAIL; CI installs Node with `actions/setup-node` | `runtime_fidelity_test` (tagged `arduino`) |
 | 9 | Size budgets for the new goldens (dedicated commit with measurements) | `size_budgets.dart` |
 | 10 | `examples/` sketch for Phase 3, built by `tool/check_arduino.sh` | CLI build + arduino-cli compile |
-| 11 | Optional: drop the `L` suffix where the E010 evaluation proves a constant operation fits a 16-bit `int` (deliberate golden updates, own commit) | Goldens |
+| 11 | **Skipped** (optional). Drop the `L` suffix where the E010 evaluation proves a constant operation fits a 16-bit `int` (deliberate golden updates, own commit) | Goldens |
 | 12 | Final docs pass (README status, PRD status line); `dart analyze && dart format --set-exit-if-changed . && dart test`; end report | — |
 
 ## Extension hooks kept

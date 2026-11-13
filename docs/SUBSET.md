@@ -421,7 +421,9 @@ handling) is then undefined behaviour.
 ## Known deviations from Dart
 
 These are the only places where generated C++ can behave differently from the same Dart program. They are runtime
-conditions that cannot be detected at compile time; constant cases are rejected (E010, E004).
+conditions that cannot be detected at compile time; constant cases are rejected (E010, E004). The wraparound and
+`millis()` rows are checked at runtime in a simulated Uno (avr8js) by `runtime_fidelity_test`, with a negative
+control built without `-fwrapv`.
 
 | Situation | Dart | Generated C++ |
 |---|---|---|

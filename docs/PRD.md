@@ -2,7 +2,7 @@
 
 **Version:** 0.1 (pre-implementation)  
 **Owner:** Daniel Ainoko  
-**Status:** Active. Phase 1 (tagged v0.1.0) and Phase 2 (language core, tagged v0.2.0) are done; Phase 3 is next (not started).  
+**Status:** Active. Phase 1 (tagged v0.1.0), Phase 2 (language core, tagged v0.2.0) and Phase 3 (hardware + interop foundation, v0.3) are done; Phase 4 is next (not started).  
 **Audience:** The maintainer and Claude Code (as the implementing engineer). Read this fully before writing code.
 
 ---
@@ -143,7 +143,7 @@ Each phase has an exit gate. Do not start a phase until the previous gate passes
 | 0 | Setup | Repo, license, tooling, `CLAUDE.md`, Wokwi project | — |
 | **1** | **Walking skeleton** | **Dart `setup()`/`loop()` → blink `.ino`; analyzer frontend; diagnostics; golden harness; `#line`; CLI `build`** | **0.1** |
 | 2 | Language core (**done**, tagged v0.2.0) | ints, bools, doubles, consts, top-level vars, arithmetic/logic, `if`/`while`/`for`, functions, sized ints (`Uint8`...), rejection diagnostics | — |
-| 3 | Hardware + interop foundation | `Serial`, analog I/O, flash strings, `@CppClass`/`@CppHeader`, `cpp()` escape hatch, `Servo` + `Wire` bindings | 0.2 |
+| 3 | Hardware + interop foundation (**done**) | `Serial`, analog I/O, flash strings, `@CppClass`/`@CppHeader`, `cpp()` escape hatch, `Servo` + `Wire` bindings | 0.3 |
 | 4 | Static widget tree | `runDevice`, `Device`, `Led`, `Button` (debounced), `Every`; non-capturing closures → generated functions | 0.3 |
 | 5 | Signals | `Signal<T>` (value + dirty flag), binding to widgets, no heap | — |
 | 6 | Classes + library wrappers | Simple classes → structs; first-party wrappers for top ~10 libs (SPI, LiquidCrystal, DHT, SSD1306, NeoPixel...) | 0.4 |
