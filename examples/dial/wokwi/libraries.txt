@@ -1,0 +1,2 @@
+# Arduino libraries for the wokwi.com project (Library Manager tab). Servo is not part of the AVR core.
+Servo@1.3.0
