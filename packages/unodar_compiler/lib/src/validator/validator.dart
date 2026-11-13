@@ -40,6 +40,7 @@ final class Validator {
     WidgetChildrenRule(),
     WidgetOrderRule(),
     WidgetHandleRule(),
+    DelayInCallbackRule(),
   ];
 
   final ApiRegistry api;

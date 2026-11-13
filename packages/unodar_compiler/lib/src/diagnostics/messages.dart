@@ -516,6 +516,15 @@ abstract final class Diagnostics {
         suggestion: 'Use the top-level widget directly instead of passing it around.',
       );
 
+  /// [path] is `Button's onPressed → blink()`.
+  static Diagnostic delayInCallback(String path, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.delayInCallback,
+        location: at,
+        message: "'delay()' runs inside a widget callback ($path), where it would stop every button and timer "
+            'while it waits.',
+        suggestion: 'Time things with an Every widget instead, keeping state in a top-level variable between ticks.',
+      );
+
   static Diagnostic intervalNotDuration(SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,

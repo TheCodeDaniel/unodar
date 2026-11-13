@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 
+import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
@@ -318,5 +319,55 @@ final class WidgetHandleRule implements ValidationRule {
         }
       }
     }
+  }
+}
+
+/// `delay()` must not run inside a widget callback, directly or through the user functions it calls (E023): the
+/// generated loop() would stop polling every button and timer. Each `delay()` call is reported once, with the
+/// shortest call path from the first callback (in source order) that reaches it.
+final class DelayInCallbackRule implements ValidationRule {
+  const DelayInCallbackRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    final functions = {for (final f in compiledFunctions(unit)) f.declaredFragment?.element: f};
+    final reported = <MethodInvocation>{};
+    for (final callback in widgetCallbacks(unit)) {
+      final widget = widgetClassOf(widgetOfCallback(callback)!.staticType)!.name;
+      final start = "$widget's ${callbackParameterName(callback)}";
+      // Breadth first, so each function is reached by its shortest path.
+      final queue = <(FunctionBody, String)>[(callback.body, start)];
+      final seen = <FunctionDeclaration>{};
+      while (queue.isNotEmpty) {
+        final (body, path) = queue.removeAt(0);
+        final calls = <MethodInvocation>[];
+        body.accept(_CallVisitor(calls.add));
+        for (final call in calls) {
+          if (_isDelay(call)) {
+            if (reported.add(call)) context.report(Diagnostics.delayInCallback(path, context.at(call)));
+          } else if (functions[userFunctionOf(call)] case final function? when seen.add(function)) {
+            queue.add((function.functionExpression.body, '$path → ${function.name.lexeme}()'));
+          }
+        }
+      }
+    }
+  }
+
+  /// `package:unodar`'s `delay`, matched by element.
+  static bool _isDelay(MethodInvocation call) {
+    final element = call.methodName.element;
+    return call.target == null && element != null && isUnodarElement(element) && element.name == 'delay';
+  }
+}
+
+final class _CallVisitor extends RecursiveAstVisitor<void> {
+  _CallVisitor(this.onCall);
+
+  final void Function(MethodInvocation call) onCall;
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    onCall(node);
+    super.visitMethodInvocation(node);
   }
 }
