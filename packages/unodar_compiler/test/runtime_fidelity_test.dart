@@ -196,8 +196,9 @@ void main() {
     });
 
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
-      // The widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13, Every(500 ms) prints `tick`.
-      final source = fromPackage('test', 'runtime', 'button_led', 'input.dart');
+      // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
+      // Every(500 ms) prints `tick`.
+      final source = fromPackage('..', '..', 'examples', 'button_led', 'main.dart');
       final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
 
       // Two presses with contact bounce, a bouncing release, and a 20 ms glitch, over 2.6 simulated seconds.

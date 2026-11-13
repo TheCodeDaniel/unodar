@@ -70,7 +70,7 @@ void main() {
       });
     }
 
-    for (final example in ['blink', 'pulse', 'dial']) {
+    for (final example in ['blink', 'pulse', 'dial', 'button_led']) {
       test('examples/$example builds for the Uno', () async {
         checkToolchain();
         final result = await Compiler().compile(fromPackage('..', '..', 'examples', example, 'main.dart'));

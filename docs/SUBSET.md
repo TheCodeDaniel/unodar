@@ -407,9 +407,11 @@ pointers.
 import 'package:unodar/unodar.dart';
 
 final led = Led(pin: 13);
-final button = Button(pin: 2, onPressed: () {
-  led.toggle();
-});
+final button = Button(
+    pin: 2,
+    onPressed: () {
+      led.toggle();
+    });
 
 void main() => runDevice(
       Device(

@@ -66,6 +66,12 @@ void main() {
     expect(result.files.keys, ['unodar_widgets.h']);
   });
 
+  test('examples/button_led is the widget example of docs/SUBSET.md (after its header comment)', () {
+    final section = subsetDoc.substring(subsetDoc.indexOf('## Widgets: `runDevice`'));
+    final example = File(fromPackage('..', '..', 'examples', 'button_led', 'main.dart')).readAsStringSync();
+    expect(example.substring(example.indexOf('import ')), block(section, 'dart'));
+  });
+
   test('the complete program in docs/SUBSET.md compiles', () async {
     final dart = block(subsetDoc, 'dart');
     expect(dart, isNotNull);

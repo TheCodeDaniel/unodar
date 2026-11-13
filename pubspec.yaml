@@ -12,6 +12,7 @@ workspace:
   - examples/blink
   - examples/pulse
   - examples/dial
+  - examples/button_led
 
 dev_dependencies:
   lints: ^6.0.0

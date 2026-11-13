@@ -1,0 +1,11 @@
+name: unodar_example_button_led
+description: A debounced push button toggles an LED and a timer prints to Serial. Shows the Phase 4 widget tree.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  unodar:
+    path: ../../packages/unodar
