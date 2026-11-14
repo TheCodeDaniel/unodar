@@ -1,8 +1,17 @@
 # Phase 5 plan — Signals
 
-**Status: approved (2026-11-14), on the `phase-5` branch.** The maintainer approved D1–D7 as recommended (D6 is
-PRD §13.3), so `Computed` is in scope (steps 10–11). Step 1 (plan) and step 2 (spec) are done. Phase 6 (classes,
-library wrappers) is out of scope.
+**Status: done (2026-11-14), on the `phase-5` branch, awaiting maintainer review and the v0.5.0 tag.** The
+maintainer approved D1–D7 as recommended (D6 is PRD §13.3), and every step was built in order, one construct per
+commit. Five fixes landed between steps as their own commits: the generated-name clash (E014, before step 3), the
+most vexing parse in object declarations (before step 4), and, before step 10, the proof of the anonymous RAM bytes,
+the E022 wording for an unlisted Watch, and a golden for a `_` Watch parameter. Phase 6 (classes, library wrappers)
+is out of scope.
+
+Final state: 409 tests (19 in `packages/unodar`, 390 in `packages/unodar_compiler`), none skipped; 147 goldens (36
+positive, each compiled with arduino-cli, size-budgeted, and checked heap-free); the signal runtime tested on its
+own in avr8js with three negative controls; every construct's behaviour tested in avr8js with a negative control;
+the goal program `examples/counter` run in avr8js (bouncing presses, exact serial transcript and pin log) with a
+negative control, and built by `tool/check_arduino.sh`.
 
 Goal: a Flutter developer can hold state and react to it, with no heap, no capturing closures, and generated C++
 that behaves exactly as documented in `docs/SUBSET.md` (fidelity rule). PRD §8 row 5: `Signal<T>` (value + dirty
@@ -328,7 +337,7 @@ gets an avr8js behaviour test with a negative control in the same commit (not in
 | 11 | (**done**) Computed in delivery: re-evaluate on changed dependencies, compare with last delivered, Watch and `Led(on:)` on a computed | Golden `computed_watch`; avr8js: 0→2 notifies nothing, observers never see a stale computed; control: delivery that runs observers before re-evaluating |
 | 12 | (**done**) Size-budget review (dedicated commit): every Phase 5 budget, RAM per signal golden, the §5 estimates replaced by measurements | `size_budgets.dart` |
 | 13 | (**done**) `examples/counter` (the goal program) with `wokwi/` (two buttons, the L LED, serial monitor), built by `tool/check_arduino.sh` | avr8js on the goal program: bounced presses on D2 and D3, exact serial transcript (`0`, `1`, `2`, `0`; clear at 0 prints nothing) and pin-13 log; negative control |
-| 14 | Final docs pass (README status and known limits, PRD status, PLAN); full check suite; end report | — |
+| 14 | (**done**) Final docs pass (README status and known limits, PRD status, PLAN); full check suite; end report | — |
 
 ## 9. Decisions (approved by the maintainer on 2026-11-14, all as recommended)
 

@@ -1,4 +1,4 @@
-# Unodar Dart subset — Phase 5 (signals, in progress; experimental)
+# Unodar Dart subset — Phase 5 (signals, experimental)
 
 This is the **exact** list of what the compiler accepts. Anything not listed here is rejected with a diagnostic
 (see [`DIAGNOSTICS.md`](DIAGNOSTICS.md)). The subset grows phase by phase; this file is updated *before* any new
@@ -537,9 +537,6 @@ after the other, never at the same time. A program with signals ends every pass 
 
 ## Signals
 
-**Status: implemented on the `phase-5` branch** (`docs/PLAN.md` steps 3–11): every construct below compiles and is
-tested in avr8js. The size-budget review, the example program and the final docs pass follow (steps 12–14).
-
 A **signal** holds a value and tells the widgets that watch it when the value changes. Signals are statically
 allocated globals: no heap, no listener lists, no function pointers. Everything about who watches what is known at
 compile time, so the compiler generates one flat function that delivers changes.
@@ -753,11 +750,13 @@ Sizes on the Uno (1-byte alignment, so no padding), fixed at build time:
 | `Signal<int>`, `Signal<double>` | 5 B (value and a changed mark) |
 | `Signal<Uint16>`, `Signal<Int16>` | 3 B |
 | `Signal<bool>`, `Signal<Uint8>` | 2 B |
-| `Computed<T>` | as `Signal<T>` |
+| `Computed<T>`, watched (by a `Watch` or a bound `Led`) | as `Signal<T>` (the value it last delivered) |
+| `Computed<T>`, not watched | 0 B (only its compute function; the linker drops the object) |
 | `Watch`, `Led(on: …)` | 0 B (generated code only; a Led keeps its own 2 B) |
 
 The values and marks taken during delivery are local variables. Delivery code is generated only for signals that
-are watched or read by a Computed; a signal nobody observes is plain state with its 1-byte mark.
+are watched or read by a watched Computed; a signal nobody observes is plain state with its 1-byte mark. Measured
+with `avr-nm` (see `test/size_budgets.dart`).
 
 ## Translation and layout
 
