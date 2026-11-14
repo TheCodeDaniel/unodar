@@ -6,6 +6,7 @@ import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
@@ -239,9 +240,16 @@ final class WidgetChildrenRule implements ValidationRule {
     }
     if (childrenElements(device) == null) return; // E021: the list is not readable.
     for (final variable in topLevelVariables(unit)) {
-      if (topLevelWidget(variable) != null && !listed.contains(variable)) {
-        context.report(Diagnostics.widgetNotInChildren(variable.name.lexeme, context.at(variable.name)));
-      }
+      final creation = topLevelWidget(variable);
+      if (creation == null || listed.contains(variable)) continue;
+      final name = variable.name.lexeme;
+      // A Watch has no object to set up or poll; it is only reached from the delivery of its signal.
+      final signal = widgetClassOf(creation.staticType)?.name == 'Watch'
+          ? creation.argumentList.arguments.where(isSignalArgument).firstOrNull?.argumentExpression
+          : null;
+      context.report(signal is SimpleIdentifier
+          ? Diagnostics.watchNotInChildren(name, signal.name, context.at(variable.name))
+          : Diagnostics.widgetNotInChildren(name, context.at(variable.name)));
     }
   }
 }

@@ -663,7 +663,8 @@ A widget (`Led`, `Button`, `Every`) is a top-level `final` or is written directl
 anywhere else (a local variable, inside a callback, a non-`final` variable) it is rejected. Its arguments are
 compile-time constants: the pin like any constant, the interval a `Duration(…)` with constant arguments adding up
 to a whole number of milliseconds from 1 to 2147483647. Each pin belongs to one widget. Every top-level widget is
-listed in `children` exactly once, or it would never be set up and polled. A top-level widget's callback may only
+listed in `children` exactly once, or it would never be set up and polled (a `Watch`, which has nothing to set up
+or poll, would never run when its signal changes, and its message says so). A top-level widget's callback may only
 use widgets declared above it. A widget handle can only be listed in `children` or used to call its methods
 (`led.toggle()`); it cannot be stored, compared, or passed. `Watch` is a widget and follows all of these rules. A
 `Led` bound to a signal (`Led(pin: 13, on: flag)`) is driven only by that signal, so calling `on()`, `off()`,

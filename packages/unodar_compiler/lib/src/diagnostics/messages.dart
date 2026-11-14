@@ -494,6 +494,15 @@ abstract final class Diagnostics {
         suggestion: 'Add `$name` to `children: [...]` in main().',
       );
 
+  /// A Watch is not set up or polled: it only runs when its signal changes, from the generated delivery.
+  static Diagnostic watchNotInChildren(String name, String signal, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the Watch '$name' is not listed in Device.children, so its callback would never run when '$signal' "
+            'changes.',
+        suggestion: 'Add `$name` to `children: [...]` in main().',
+      );
+
   static Diagnostic widgetListedTwice(String name, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,
