@@ -119,7 +119,8 @@ const sizeBudgets = <String, SizeBudget>{
   // Computed<T> is a Signal<T> (its last delivered value); an unwatched Computed has no symbol (dropped by the
   // linker). A Watch, a bound Led's binding, and unodar_deliver() have no symbol: 0 B. Programs that print with
   // println also keep "\r\n\0" (3 B) in .data, and .data is padded to an even size (0-1 B). Per signal golden:
-  //   signal_state 232 B   Serial (157 B object + 18 B vtable) + core (11 B) + Button 7 + Every 8 + signals
+  //   signal_state 232 B   Serial (157 B object + 18 B vtable) + core (9 B: timer0_millis 4, timer0_overflow_count
+  //                        4, timer0_fract 1) + Button 7 + Every 8 + signals
   //                        count 5, ratio 5 (double), depth 3 (Int16), lit 2 (bool), level 2 (Uint8) = 17 B;
   //                        plus 16 B of anonymous .data after the last symbol, read with `avr-objdump -s -j .data`:
   //                        "nan\0inf\0ovf\0" (12 B, Print::printFloat's literals, kept in RAM by the core),
