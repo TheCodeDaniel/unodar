@@ -114,11 +114,15 @@ const sizeBudgets = <String, SizeBudget>{
   // the value plus a 1-byte mark (static_asserted in test/runtime/signals/signals.ino and read with avr-nm):
   //   signal_state 232 B   Serial (157 B object + 18 B vtable) + core (11 B) + Button 7 + Every 8 + signals
   //                        count 5, ratio 5 (double), depth 3 (Int16), lit 2 (bool), level 2 (Uint8) = 17 B;
-  //                        16 B lie outside these symbols: the 3-4 B every widget program has there (also
-  //                        widget_button), plus, most likely, Print::printFloat's RAM string literals ("nan", "inf",
-  //                        "ovf", 12 B): the first widget golden that prints a double.
-  //   watch 206 B          Serial + core + two Buttons 14 + count 5; no symbol for either Watch: a Watch is 0 B
-  //   watch_order 210 B    Serial + core + Button 7 + three signals 15; four Watches, 0 B
+  //                        plus 16 B of anonymous .data after the last symbol, read with `avr-objdump -s -j .data`:
+  //                        "nan\0inf\0ovf\0" (12 B, Print::printFloat's literals, kept in RAM by the core),
+  //                        "\r\n\0" (3 B, Print::println's line end) and 1 NUL byte that pads .data to an even
+  //                        size. Proof: without the one `Serial.print(ratio.value)` the build measures 220 B, and
+  //                        the three float strings are gone from the dump.
+  //   watch 206 B          Serial + core + two Buttons 14 + count 5 + "\r\n\0" 3; no symbol for either Watch: a
+  //                        Watch is 0 B
+  //   watch_order 210 B    Serial + core + Button 7 + three signals 15 + "\r\n\0" 3 + 1 padding byte; four
+  //                        Watches, 0 B
   'signal_state': SizeBudget(baselineFlash: 4134, baselineRam: 232, maxFlash: 5400, maxRam: 243),
   // watch, watch_order: unodar_deliver() (snapshot, then dispatch) and Watch callbacks with a parameter.
   'watch': SizeBudget(baselineFlash: 2686, baselineRam: 206, maxFlash: 3500, maxRam: 217),
