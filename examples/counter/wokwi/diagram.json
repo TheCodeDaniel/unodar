@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "author": "unodar",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-arduino-uno", "id": "uno", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "plus", "top": -90, "left": 90, "attrs": { "color": "green", "label": "+1" } },
+    { "type": "wokwi-pushbutton", "id": "clear", "top": -90, "left": 190, "attrs": { "color": "red", "label": "clear" } }
+  ],
+  "connections": [
+    [ "plus:1.l", "uno:2", "green", [] ],
+    [ "plus:2.l", "uno:GND.1", "black", [] ],
+    [ "clear:1.l", "uno:3", "red", [] ],
+    [ "clear:2.l", "uno:GND.1", "black", [] ],
+    [ "uno:TX", "$serialMonitor:RX", "", [] ],
+    [ "uno:RX", "$serialMonitor:TX", "", [] ]
+  ],
+  "serialMonitor": { "display": "always", "newline": "lf" },
+  "dependencies": {}
+}

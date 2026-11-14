@@ -683,6 +683,53 @@ void main() {
       });
     });
 
+    group('goal program: a signal, a Computed, a bound Led and a Watch (examples/counter, compiled by unodar)', () {
+      // examples/counter, the signals example of docs/SUBSET.md: +1 on D2, clear on D3, the LED on D13 follows
+      // isOdd, a Watch prints the count. Every press bounces; each is stable 5 ms after it starts.
+      final source = fromPackage('..', '..', 'examples', 'counter', 'main.dart');
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      const inputs = [
+        'D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@600', // +1 -> 1, stable from 305 ms
+        'D2=low@900', 'D2=open@902', 'D2=low@905', 'D2=open@1200', // +1 -> 2, from 905 ms
+        'D3=low@1500', 'D3=open@1502', 'D3=low@1505', 'D3=open@1800', // clear -> 0, from 1505 ms
+        'D3=low@2100', 'D3=open@2102', 'D3=low@2105', 'D3=open@2400', // clear at 0: an equal write
+        'D2=low@2700', 'D2=open@2702', 'D2=low@2705', 'D2=open@3000', // +1 -> 1, from 2705 ms
+      ];
+      const cycles = 3100 * 16000; // 3.1 s at 16 MHz
+
+      Future<({String serial, List<String> pinLog})> run(String headerText) async {
+        final result = await Compiler().compile(source);
+        if (result is! CompileSuccess) fail('examples/counter did not compile with unodar: $result');
+        final build = await compileSketch('counter', result.cpp, files: {'unodar_widgets.h': headerText});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return simulate(build.hexPath, pins: inputs, until: null, cycles: cycles);
+      }
+
+      List<double> changes(List<String> log, String state) => [
+            for (final line in log)
+              if (line.endsWith(' D13 $state')) double.parse(line.split(' ').first)
+          ];
+
+      test('prints 0, then each new count once; the clear at 0 prints nothing; pin 13 is lit while odd', () async {
+        gate.check();
+        final result = await run(header);
+        printOnFailure(result.pinLog.join('\n'));
+        expect(result.serial, '0\r\n1\r\n2\r\n0\r\n1\r\n');
+        // 50 ms after each press settles; millis() may trail the simulated time by a millisecond.
+        Matcher at(int ms) => allOf(greaterThanOrEqualTo(ms - 1), lessThan(ms + 2));
+        expect(changes(result.pinLog, 'high'), [at(355), at(2755)]);
+        expect(changes(result.pinLog, 'low'), [lessThan(1), at(955)]);
+      });
+
+      test('negative control: with equal writes delivered, the clear at 0 prints a second 0', () async {
+        gate.check();
+        expect(header, contains('if (value != value_) {'));
+        final result = await run(header.replaceAll('if (value != value_) {', 'if (true) {'));
+        expect(result.serial, '0\r\n1\r\n2\r\n0\r\n0\r\n1\r\n');
+      });
+    });
+
     test('examples/dial reports the potentiometer reading over Serial', () async {
       gate.check();
       final result = await Compiler().compile(fromPackage('..', '..', 'examples', 'dial', 'main.dart'));

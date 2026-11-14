@@ -162,4 +162,7 @@ const sizeBudgets = <String, SizeBudget>{
   // Serial + core + count 5 + other 5 + isOdd 2 (a watched Computed has its object: the last delivered value and
   // the mark, as a Signal of its type) + Led 2 + two Buttons 14 + "\r\n\0" and the .data padding byte.
   'computed_watch': SizeBudget(baselineFlash: 3274, baselineRam: 216, maxFlash: 4300, maxRam: 227),
+  // counter: examples/counter, the Phase 5 goal program (step 13); first measurement. RAM (avr-nm): Serial 175 +
+  // core 9 + count 5 + isOdd 2 (watched by the Led) + Led 2 + two Buttons 14 + "\r\n\0" 3.
+  'counter': SizeBudget(baselineFlash: 2894, baselineRam: 210, maxFlash: 3800, maxRam: 221),
 };

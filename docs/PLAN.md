@@ -264,7 +264,9 @@ one construct each (a Led and a Button on D2, no Serial; Watch callbacks drive p
 | Watching `Computed(() => count.value % 2 == 1)` instead of `count` | 1464 B | **+34 B** for the re-evaluation in delivery; +2 B RAM for its object |
 
 So the delivery machinery itself costs tens of bytes; what dominates is the arithmetic the program asks for, as
-everywhere on AVR. The goal program's measurement is recorded with it in step 13. Packing the marks into bit
+everywhere on AVR. The goal program (`examples/counter`, step 13) measures **2894 B flash and 210 B RAM** (Serial
+175 + core 9 + count 5 + isOdd 2 + Led 2 + two Buttons 14 + 3 B), against the step-1 estimate of about 3000-3100 B
+and 215 B. Packing the marks into bit
 fields would save at most 7 bits per signal at the cost of bit operations at every write and take; not worth it
 below dozens of signals.
 
@@ -325,7 +327,7 @@ gets an avr8js behaviour test with a negative control in the same commit (not in
 | 10 | (**done**) `Computed<T>` declaration and reads (pull: `unodar_c_compute()`); E026 | Goldens `computed` + `e026_*`; avr8js: reads equal the expression right after a write |
 | 11 | (**done**) Computed in delivery: re-evaluate on changed dependencies, compare with last delivered, Watch and `Led(on:)` on a computed | Golden `computed_watch`; avr8js: 0→2 notifies nothing, observers never see a stale computed; control: delivery that runs observers before re-evaluating |
 | 12 | (**done**) Size-budget review (dedicated commit): every Phase 5 budget, RAM per signal golden, the §5 estimates replaced by measurements | `size_budgets.dart` |
-| 13 | `examples/counter` (the goal program) with `wokwi/` (two buttons, the L LED, serial monitor), built by `tool/check_arduino.sh` | avr8js on the goal program: bounced presses on D2 and D3, exact serial transcript (`0`, `1`, `2`, `0`; clear at 0 prints nothing) and pin-13 log; negative control |
+| 13 | (**done**) `examples/counter` (the goal program) with `wokwi/` (two buttons, the L LED, serial monitor), built by `tool/check_arduino.sh` | avr8js on the goal program: bounced presses on D2 and D3, exact serial transcript (`0`, `1`, `2`, `0`; clear at 0 prints nothing) and pin-13 log; negative control |
 | 14 | Final docs pass (README status and known limits, PRD status, PLAN); full check suite; end report | — |
 
 ## 9. Decisions (approved by the maintainer on 2026-11-14, all as recommended)

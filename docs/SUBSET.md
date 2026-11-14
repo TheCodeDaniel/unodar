@@ -580,6 +580,7 @@ void main() => runDevice(
 #include <Arduino.h>
 #include "unodar_widgets.h"
 
+// Dart's % never returns a negative result; C++'s % keeps the sign of the left operand.
 constexpr int32_t unodar_mod(int32_t a, int32_t b) { return a % b < 0 ? (b < 0 ? a % b - b : a % b + b) : a % b; }
 
 bool unodar_isOdd_compute();
@@ -645,7 +646,7 @@ void loop() {
 }
 ```
 
-(`#line` directives omitted. This listing becomes a tested example with `examples/counter`, plan step 13.)
+(`#line` directives omitted. This is `examples/counter`; `docs_test` checks that it compiles to exactly this C++.)
 
 At boot this prints `0` and leaves the LED off. Each press on pin 2 prints the next count and switches the LED
 on for odd counts; a press on pin 3 prints `0`, unless the count is already 0, which prints nothing.

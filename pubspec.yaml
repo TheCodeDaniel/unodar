@@ -13,6 +13,7 @@ workspace:
   - examples/pulse
   - examples/dial
   - examples/button_led
+  - examples/counter
 
 dev_dependencies:
   lints: ^6.0.0
