@@ -1,8 +1,8 @@
 # Phase 5 plan — Signals
 
-**Status: proposed (2026-11-14), on the `phase-5` branch. Planning only: no compiler or runtime code yet.** Waiting
-for the maintainer's answers to the open decisions D1–D7 at the end of this section (D6 is PRD §13.3). Phase 6
-(classes, library wrappers) is out of scope.
+**Status: approved (2026-11-14), on the `phase-5` branch.** The maintainer approved D1–D7 as recommended (D6 is
+PRD §13.3), so `Computed` is in scope (steps 10–11). Step 1 (plan) and step 2 (spec) are done. Phase 6 (classes,
+library wrappers) is out of scope.
 
 Goal: a Flutter developer can hold state and react to it, with no heap, no capturing closures, and generated C++
 that behaves exactly as documented in `docs/SUBSET.md` (fidelity rule). PRD §8 row 5: `Signal<T>` (value + dirty
@@ -62,15 +62,16 @@ void unodar_plus_onPressed() { count.set(count.value() + 1); }
 void unodar_clear_onPressed() { count.set(0); }
 void unodar_watch_0_callback(int32_t v) { Serial.println(v); }
 
-// Delivery: first take every flag and value (declaration order), then run the observers.
+// Delivery: first take every flag and value (declaration order), then run the observers. Locals carry the
+// reserved unodar_ prefix, so they cannot shadow a user's signal (e.g. one named count_value).
 void unodar_deliver() {
-  const bool count_changed = count.take();
-  const int32_t count_value = count.value();
-  if (count_changed) isOdd.set(unodar_isOdd_compute());
-  const bool isOdd_changed = isOdd.take();
-  const bool isOdd_value = isOdd.value();
-  if (count_changed) unodar_watch_0_callback(count_value);
-  if (isOdd_changed) led.set(isOdd_value);
+  const bool unodar_count_changed = count.take();
+  const int32_t unodar_count_value = count.value();
+  if (unodar_count_changed) isOdd.set(unodar_isOdd_compute());
+  const bool unodar_isOdd_changed = isOdd.take();
+  const bool unodar_isOdd_value = isOdd.value();
+  if (unodar_count_changed) unodar_watch_0_callback(unodar_count_value);
+  if (unodar_isOdd_changed) led.set(unodar_isOdd_value);
 }
 
 void setup() {
@@ -292,8 +293,8 @@ gets an avr8js behaviour test with a negative control in the same commit (not in
 
 | # | Step | Test written first |
 |---|---|---|
-| 1 | This plan and the decisions (this commit) | — |
-| 2 | Spec, after the maintainer's answers: SUBSET "Signals" (syntax, pass model, timing, costs, deviations), DIAGNOSTICS E024–E026 and the reworded codes (new examples wait in `docs/drafts` until their commits), PRD status and §13.3 | `docs_test` stays green |
+| 1 | This plan and the decisions (**done**, 1979f7a) | — |
+| 2 | (**done**) Spec, after the maintainer's answers: SUBSET "Signals" (syntax, pass model, timing, costs, deviations), DIAGNOSTICS E024–E026 and the reworded codes (`docs_test` runs a section's example once its code is registered, so the new sections carry their final examples; no existing example changes, so no `docs/drafts` file), PRD status and §13.3 | `docs_test` stays green |
 | 3 | `packages/unodar`: `ReadonlySignal<T>`, `Signal<T>`, `Watch<T>`, `Led.set`, `Led(on:)` (`Computed` waits for step 10) | `api_surface_test` |
 | 4 | `runtime/unodar_widgets.h`: `unodar::Signal<T>`, public `Led::set`; re-embed | avr8js runtime sketch: sizes (`static_assert` 5/3/2 B), equal write silent, NaN notifies, take clears, coalescing, a hand-written two-phase delivery with snapshot (a write during delivery waits a pass); negative controls: `set()` without the compare, delivery without the snapshot; header-equality test |
 | 5 | Signal declarations, `.value` reads and writes (no Watch yet): E024 (placement, value uses, types of locals/parameters), E009, E015, E021, E013 | Goldens `signal_state` + negatives; avr8js: presses increment, an `Every` prints the count, a `Signal<Int16>` read stays 32-bit in `* 1000`; control: that read emitted without the widening |
@@ -308,7 +309,7 @@ gets an avr8js behaviour test with a negative control in the same commit (not in
 | 13 | `examples/counter` (the goal program) with `wokwi/` (two buttons, the L LED, serial monitor), built by `tool/check_arduino.sh` | avr8js on the goal program: bounced presses on D2 and D3, exact serial transcript (`0`, `1`, `2`, `0`; clear at 0 prints nothing) and pin-13 log; negative control |
 | 14 | Final docs pass (README status and known limits, PRD status, PLAN); full check suite; end report | — |
 
-## 9. Open decisions for the maintainer
+## 9. Decisions (approved by the maintainer on 2026-11-14, all as recommended)
 
 | # | Decision | Recommendation | Cost of the alternative |
 |---|---|---|---|

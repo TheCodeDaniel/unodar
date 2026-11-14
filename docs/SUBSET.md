@@ -1,4 +1,4 @@
-# Unodar Dart subset — Phase 4 (static widget tree, experimental)
+# Unodar Dart subset — Phase 5 (signals, in progress; experimental)
 
 This is the **exact** list of what the compiler accepts. Anything not listed here is rejected with a diagnostic
 (see [`DIAGNOSTICS.md`](DIAGNOSTICS.md)). The subset grows phase by phase; this file is updated *before* any new
@@ -55,6 +55,7 @@ void loop() {
 | `void` | `void` | Function return type only. |
 | String literal | `F("…")` | **Only** as the argument of `Serial.print`/`Serial.println` (see [Serial](#serial)). |
 | A [binding class](#binding-c-classes) | its `@CppClass` name | **Only** as the type of a top-level `final` object (E018). |
+| `Signal<T>`, `Computed<T>` | `unodar::Signal<…>` | **Only** as a top-level `final` signal, see [Signals](#signals) (E024). `T` is one of the types above it. |
 
 Every other type is rejected (E009), including nullable types (`int?`), `num`, `dynamic`, `Object`, `String`
 (as the type of a variable, parameter, or return value), function types, and classes. That includes the *inferred*
@@ -79,6 +80,7 @@ C++ behaves identically:
 | `void setup()`, `void loop()` | Both required in a sketch without `main()`. Exactly `void name() { … }` (E006). | Same |
 | `void main()` | Only as the single `runDevice(Device(…))` call of a widget program, see [Widgets](#widgets-rundevice); then `setup()`/`loop()` are not allowed (E021). | Generated `setup()` and `loop()` |
 | Widgets | `final led = Led(pin: 13);`, `final button = Button(pin: 2, onPressed: () { … });`, or written directly inside `Device(children: […])`. Arguments are compile-time constants (E022). | `unodar::Led led(13);` and so on, from `unodar_widgets.h` |
+| Signals | `final count = Signal<int>(0);`, `final isOdd = Computed(() => …);` in a widget program, see [Signals](#signals). | `unodar::Signal<int32_t> count(0);` |
 | Functions | `R name(T a, T b) { … }` or `=> expr;`. `R` is a supported type or `void`; every parameter is required, positional, and has an explicit supported type. Recursion, direct or mutual, is rejected (E016). | Same, plus a prototype for each function |
 | `const` variables | `const int x = …;` or `const x = …;` (type inferred). | `constexpr int32_t x = …;` |
 | `final` variables | As above with `final`. | `const int32_t x = …;` |
@@ -105,7 +107,7 @@ Allowed inside any function body:
 | Statement | Notes |
 |---|---|
 | Call | `pulse(300);`, `delay(ms);`, `servo.write(90);`. A non-void result may be discarded. |
-| Assignment | `x = e;`, `x += e;`, `x -= e;`, `x++;`, `x--;`, `++x;`, `--x;`. **Statements only**: an assignment, `++`, or `--` inside a larger expression is rejected (E002). `*=`, `/=`, `~/=`, `%=` and the bitwise forms are rejected (E002); write `x = x * y;`. |
+| Assignment | `x = e;`, `x += e;`, `x -= e;`, `x++;`, `x--;`, `++x;`, `--x;`, and the same on a signal's `.value` (`count.value++;`, see [Signals](#signals)). **Statements only**: an assignment, `++`, or `--` inside a larger expression is rejected (E002). `*=`, `/=`, `~/=`, `%=` and the bitwise forms are rejected (E002); write `x = x * y;`. |
 | Local variable | `int x = e;`, `var x = e;`, `final x = e;`, `const x = e;`, `int x;`. Any initializer expression. Types are the resolved Dart types. `const` → `constexpr`, `final` → `const`. `late` is rejected. |
 | `if` / `else` | Including `else if` chains. |
 | `while` | |
@@ -129,6 +131,7 @@ E012. A rejected statement is reported as a whole; the code inside it is checked
 | Bool literals | `true`, `false` | Same |
 | String literals | Only as the argument of `Serial.print`/`Serial.println`. No interpolation (E002). | `F("…")` |
 | Names | Locals, parameters, top-level variables, unodar constants. | Same name |
+| Signal reads | `count.value`, `isOdd.value` (see [Signals](#signals)) | `count.value()`, `unodar_isOdd_compute()` |
 | Parentheses | Kept where C++ needs them; see Precedence. | |
 | Unary | `-x`, `!b` | Same |
 | Arithmetic | `+`, `-`, `*` on numbers. | Same |
@@ -207,8 +210,8 @@ collide with C++ or the Arduino core (E014):
   already prefers `ledPin` over `LED_PIN`.
 - Names ending in `_t`, containing `__` or `$`, starting with `_` and an upper-case letter, or starting with
   `unodar_` (reserved for generated helpers, widgets written inside `children`, and callbacks).
-- `unodar`, the C++ namespace of the widget runtime, and the widget names `Led`, `Button`, `Every`, `Device`, `Uno`,
-  `runDevice` (unodar API names).
+- `unodar`, the C++ namespace of the widget runtime, and the widget and signal names `Led`, `Button`, `Every`,
+  `Watch`, `Device`, `Uno`, `runDevice`, `Signal`, `Computed`, `ReadonlySignal` (unodar API names).
 
 The Dart names of binding classes and their methods are not emitted (the C++ names come from the annotations), so
 they are not checked.
@@ -483,9 +486,10 @@ void loop() {
 
 | Widget | Arguments | Behaviour |
 |---|---|---|
-| `Led(pin: p)` | `pin` 0–19 (D0–D13, A0–A5) | Output, starts **off** (LOW). Methods `on()`, `off()`, `toggle()`. |
+| `Led(pin: p)`, `Led(pin: p, on: flag)` | `pin` 0–19 (D0–D13, A0–A5); `on` a `Signal<bool>` or `Computed<bool>` | Output, starts **off** (LOW). Methods `on()`, `off()`, `toggle()`, `set(b)`. With `on:`, the LED follows the signal instead and has no methods (see [Signals](#signals)). |
 | `Button(pin: p, onPressed: () { … })` | `pin` 0–19 | Input with the internal pull-up (`INPUT_PULLUP`): wire the button between the pin and GND, no resistor. `onPressed` runs **once per press**, when the reading changes from HIGH to LOW and stays there for **50 ms** (debounced). Releasing runs nothing. A button already held at power-up does not count as a press. |
 | `Every(Duration(…), () { … })` | interval 1 ms to 2147483647 ms | Runs the callback **after one interval**, then every interval, measured from `setup()`. |
+| `Watch(signal, (v) { … })` | a top-level `Signal` or `Computed` | Runs the callback with the value when the signal changes, and once at the end of `setup()` (see [Signals](#signals)). |
 
 - A widget is either a top-level `final` (`final led = Led(pin: 13);`), which gives a handle callbacks can use, or
   written directly in `children` (no handle). Anywhere else, e.g. a local variable, inside a callback, or in a
@@ -498,15 +502,16 @@ void loop() {
   top-level initializers.
 - `children` order is the order of `setup()` initialization and of polling in `loop()`.
 - A widget handle can only be used to call its methods (`led.toggle()`) and to be listed in `children` (E022), as
-  with bound objects. `Button` and `Every` have no methods yet.
+  with bound objects. `Button`, `Every` and `Watch` have no methods yet.
 
 ### Callbacks
 
-`onPressed` and `Every`'s callback are closures: `() { … }` or `() => call(…)`. Each becomes a generated plain
-function (`unodar_button_onPressed`, `unodar_every_0_callback`).
+`onPressed`, `Every`'s and `Watch`'s callbacks are closures: `() { … }` or `() => call(…)`, and `(v) { … }` for
+`Watch`. Each becomes a generated plain function (`unodar_button_onPressed`, `unodar_every_0_callback`,
+`unodar_watch_0_callback`).
 
-- No parameters, not `async`, no return value; a function reference (`onPressed: toggle`) is not accepted, write
-  `() { toggle(); }` (E012).
+- No parameters (`Watch`: exactly one, the value), not `async`, no return value; a function reference
+  (`onPressed: toggle`) is not accepted, write `() { toggle(); }` (E012).
 - The body follows the same rules as a function body: statements, expressions, calls, its own local variables. It
   may use top-level variables and constants, call your top-level functions and the unodar API, use `Serial` (but
   not `Serial.begin`), widget handles, bound objects, and `cpp()`.
@@ -517,7 +522,8 @@ function (`unodar_button_onPressed`, `unodar_every_0_callback`).
 ### Timing
 
 The generated `loop()` polls every widget, in `children` order, on every pass; callbacks run inside `loop()`, one
-after the other, never at the same time.
+after the other, never at the same time. A program with signals ends every pass with their delivery (see
+[Signals](#signals)).
 
 - `Every` is **drift-free**: each tick is scheduled exactly one interval after the previous **scheduled** tick
   (`last += interval`), not after the moment the callback ran. It is **wrap-safe**: it compares `now - last >=
@@ -525,6 +531,227 @@ after the other, never at the same time.
 - If callbacks run for longer than an interval, the missed ticks of an `Every` run on the following `loop()` passes,
   one per pass, until it has caught up.
 - `Button` debouncing uses the same wrap-safe comparison.
+
+## Signals
+
+**Status: specified, being implemented on the `phase-5` branch (`docs/PLAN.md` steps 3–11).** Until each construct
+lands, the compiler does not know these names (E007).
+
+A **signal** holds a value and tells the widgets that watch it when the value changes. Signals are statically
+allocated globals: no heap, no listener lists, no function pointers. Everything about who watches what is known at
+compile time, so the compiler generates one flat function that delivers changes.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+final count = Signal<int>(0);
+final isOdd = Computed(() => count.value % 2 == 1);
+final led = Led(pin: 13, on: isOdd);
+final plus = Button(
+    pin: 2,
+    onPressed: () {
+      count.value++;
+    });
+final clear = Button(
+    pin: 3,
+    onPressed: () {
+      count.value = 0;
+    });
+
+void main() => runDevice(
+      Device(
+        board: Uno(),
+        children: [
+          led,
+          plus,
+          clear,
+          Watch(count, (v) {
+            Serial.println(v);
+          }),
+        ],
+      ),
+    );
+```
+
+```cpp
+#include <Arduino.h>
+#include "unodar_widgets.h"
+
+constexpr int32_t unodar_mod(int32_t a, int32_t b) { return a % b < 0 ? (b < 0 ? a % b - b : a % b + b) : a % b; }
+
+bool unodar_isOdd_compute();
+void unodar_plus_onPressed();
+void unodar_clear_onPressed();
+void unodar_watch_0_callback(int32_t v);
+void unodar_deliver();
+
+unodar::Signal<int32_t> count(0);
+unodar::Signal<bool> isOdd(false);
+unodar::Led led(13);
+unodar::Button plus(2);
+unodar::Button clear(3);
+
+bool unodar_isOdd_compute() {
+  return unodar_mod(count.value(), 2) == 1;
+}
+
+void unodar_plus_onPressed() {
+  count.set(count.value() + 1);
+}
+
+void unodar_clear_onPressed() {
+  count.set(0);
+}
+
+void unodar_watch_0_callback(int32_t v) {
+  Serial.println(v);
+}
+
+void unodar_deliver() {
+  const bool unodar_count_changed = count.take();
+  const int32_t unodar_count_value = count.value();
+  if (unodar_count_changed) {
+    isOdd.set(unodar_isOdd_compute());
+  }
+  const bool unodar_isOdd_changed = isOdd.take();
+  const bool unodar_isOdd_value = isOdd.value();
+  if (unodar_count_changed) {
+    unodar_watch_0_callback(unodar_count_value);
+  }
+  if (unodar_isOdd_changed) {
+    led.set(unodar_isOdd_value);
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+  led.begin();
+  plus.begin();
+  clear.begin();
+  unodar_deliver();
+}
+
+void loop() {
+  if (plus.pressed()) {
+    unodar_plus_onPressed();
+  }
+  if (clear.pressed()) {
+    unodar_clear_onPressed();
+  }
+  unodar_deliver();
+}
+```
+
+(`#line` directives omitted. This listing becomes a tested example with `examples/counter`, plan step 13.)
+
+At boot this prints `0` and leaves the LED off. Each press on pin 2 prints the next count and switches the LED
+on for odd counts; a press on pin 3 prints `0`, unless the count is already 0, which prints nothing.
+
+### Declaring, reading, writing
+
+| Dart | Rule | C++ |
+|---|---|---|
+| `final count = Signal<int>(0);`, `final on = Signal(true);` | A top-level `final` in a widget program. `T` is `int`, `double`, `bool`, `Uint8`, `Uint16` or `Int16` (E009), explicit or inferred from the initial value, which is a compile-time constant (E015). | `unodar::Signal<int32_t> count(0);` |
+| `count.value` | Read, anywhere an expression of type `T` is allowed. | `count.value()` |
+| `count.value = e;` and `+=`, `-=`, `++`, `--` | Write. Statements only, like assignments to variables. A sized signal is written back with its constructor: `level.value = Uint8(level.value + 1);`. | `count.set(e);`, `count.set(count.value() + 1);` |
+
+- A signal is used only through `.value` (E024): it cannot be stored in another variable, compared, passed,
+  printed, or returned, and no local, parameter, or return value has a signal type. It is not a widget and is not
+  listed in `children`.
+- Callbacks and the functions they call may read and write any signal, wherever it is declared.
+- A `.value` read counts as a read of mutable top-level state for the evaluation-order rule (E013): write
+  `final n = next();` before `count.value + n`.
+- Signals, `Watch` and `Computed` only exist in widget programs; in a `setup()`/`loop()` sketch they are E021.
+
+### Watching: `Watch`
+
+`Watch(signal, (v) { … })` is a widget: a top-level `final` or written in `children`, listed exactly once (E022).
+Its first argument is the name of a top-level `Signal` or `Computed` declared above it (E024, E015); the callback
+takes exactly one parameter, the value, of the signal's type, and follows every rule of widget callbacks, including
+no `delay()` (E023). A signal may have any number of Watches.
+
+### When changes are delivered
+
+A `loop()` pass has two phases:
+
+1. **Inputs and timers.** Every `Button` and `Every` is polled in `children` order and runs its callback, as
+   without signals. A write only stores the value and marks the signal changed; it never runs other code.
+2. **Delivery.** First, for every signal in declaration order, its changed mark is taken (and cleared) and its
+   value is read; a `Computed` whose dependencies changed is re-evaluated at its place in that order. Then, for
+   every signal that changed, in declaration order, its observers run in `children` order: each `Watch` callback
+   with the value read in the first half, and each `Led(on: …)` is switched to it.
+
+So:
+
+- A press or tick is seen by the Watches in the **same** pass.
+- A write made during delivery (by a Watch callback) is delivered in the **next** pass, wherever the signal is
+  declared.
+- Each Watch runs at most once per pass, and all observers of one signal see the same value in that pass.
+- Several writes in one pass are delivered once, with the last value. A sequence that ends where it started
+  (0 → 1 → 0) is still delivered, with `0`.
+- No callback ever runs inside another: delivery is one flat generated function, `unodar_deliver()`.
+- **The first value is delivered once**, at the end of `setup()`, after every widget's `begin()`: every Watch
+  runs once with its signal's initial value and every bound Led takes it. Writes made there arrive in the first
+  `loop()` pass.
+
+A Watch callback can still read another signal's `.value` directly; it then sees that signal's current value,
+including writes made earlier in the same delivery.
+
+### Change detection
+
+A write of a value equal to the current one (`==`) does nothing: the signal is not marked and nothing is
+delivered, as with Flutter's `ValueNotifier`. Doubles compare as in Dart: writing `double.nan` is always a change
+(`NaN != NaN`), and writing `-0.0` onto `0.0` is not (the value stays `0.0`).
+
+### No cycles
+
+A Watch callback may not write the signal it watches, directly or through functions it calls, and Watches may not
+write each other's signals in a circle (`Watch(a)` writes `b`, `Watch(b)` writes `a`): E025, with the path. Such a
+program would deliver on every pass for ever. Write a signal where the change starts (in a Button or Every
+callback), or derive the value with a `Computed`. Because the watch graph has no cycles, the program is quiet again
+after a bounded number of passes following any input.
+
+### Derived values: `Computed`
+
+```dart
+final isOdd = Computed(() => count.value % 2 == 1);
+final percent = Computed(() => level.value * 100 ~/ 1023);
+```
+
+- The closure is a single `=>` expression of a supported type. It may use `.value` of signals and Computeds
+  declared **above** it, literals, constants (`const` variables, unodar constants), `Uint8(…)`/`Uint16(…)`/
+  `Int16(…)`, and the operators of the subset. Anything else is E026: a block body, any call (including
+  `analogRead`), an assignment, or a mutable top-level variable (the Computed would not see it change).
+- Since a Computed only reads what is declared above it, there can be no cycles.
+- **Reading** `isOdd.value` evaluates the expression (`unodar_isOdd_compute()`), so it always equals the expression
+  over the current signal values, even in the middle of a delivery. A Computed cannot be written (no setter, E007).
+- **Watching** it (`Watch`, `Led(on: …)`) works as for a signal. In delivery, a Computed with a changed dependency is
+  re-evaluated and compared with the value it last delivered; it is delivered only if that differs, so `isOdd`
+  stays silent when the count goes from 0 to 2. Computeds are settled before any observer runs.
+- Its C++ object stores the last delivered value, starting at `T`'s zero (`0`, `0.0`, `false`); the delivery at
+  the end of `setup()` evaluates it first.
+
+### LEDs that follow a signal
+
+`Led(pin: 13, on: flag)`, with `flag` a `Signal<bool>` or `Computed<bool>` declared above it (E015), is switched to
+the signal's value at the end of `setup()` and whenever it changes. The signal is the only thing that drives it:
+calling `on()`, `off()`, `toggle()` or `set()` on a bound Led is E022. An unbound Led can be switched to a `bool`
+with `led.set(b)`.
+
+### Cost
+
+Sizes on the Uno (1-byte alignment, so no padding), fixed at build time:
+
+| Object | RAM |
+|---|---|
+| `Signal<int>`, `Signal<double>` | 5 B (value and a changed mark) |
+| `Signal<Uint16>`, `Signal<Int16>` | 3 B |
+| `Signal<bool>`, `Signal<Uint8>` | 2 B |
+| `Computed<T>` | as `Signal<T>` |
+| `Watch`, `Led(on: …)` | 0 B (generated code only; a Led keeps its own 2 B) |
+
+The values and marks taken during delivery are local variables. Delivery code is generated only for signals that
+are watched or read by a Computed; a signal nobody observes is plain state with its 1-byte mark.
 
 ## Translation and layout
 
@@ -540,6 +767,11 @@ widgets with the other top-level variables in source order (widgets written insi
 order), emits each callback as a function, and ends with the generated `setup()` and `loop()` (their `#line` points
 at `main()`). `unodar build` writes a copy of the fixed, hand-written runtime header `runtime/unodar_widgets.h` into
 the sketch folder next to the `.ino`, and only for programs that use widgets.
+
+Signals and Computeds are declared with the other top-level variables, in source order. Each Computed's function
+(`unodar_<name>_compute`) sits at its declaration among the functions, each Watch callback with the other callbacks,
+and `unodar_deliver()` right before the generated `setup()`. Its locals are named `unodar_<signal>_changed` and
+`unodar_<signal>_value`, so they cannot shadow a user name (the `unodar_` prefix is reserved, E014).
 
 ## Building
 
@@ -578,6 +810,7 @@ control built without `-fwrapv`.
 | `Serial.print` of a `double` | (external; Dart's `toString()` would print `1.5`) | Arduino's fixed-point format: `digits` decimals (default 2), so `1.50`; `nan`, `inf`, and `ovf` (above about 4.3e9) for special values. |
 | Bound objects | (external) | Constructed before `setup()` runs (C++ static initialization), not lazily on first use like a Dart top-level `final`. |
 | Widget callbacks and timers | (no direct Dart equivalent; a Dart event loop would queue callbacks) | Callbacks run inside `loop()`, one after another, in `children` order; a slow callback delays the others. An `Every` that falls behind runs its missed ticks on the next passes, one per pass. |
+| Signal delivery | (no direct Dart equivalent; a `ValueNotifier` calls its listeners synchronously on every change) | Changes are delivered once per `loop()` pass, after the inputs and timers: several writes in one pass are delivered once, with the last value, and a write made during delivery arrives one pass later ([When changes are delivered](#when-changes-are-delivered)). |
 
 ## Diagnostics summary
 
@@ -591,19 +824,22 @@ control built without `-fwrapv`.
 | `setup`/`loop` not exactly `void name() { … }` | E006 |
 | Any Dart analysis error | E007 |
 | `main()` other than a single `runDevice(Device(…))` call | E008 |
-| Unsupported or nullable type, incl. `String` variables and unsupported Serial arguments; comparing a bool with a number | E009 |
+| Unsupported or nullable type, incl. `String` variables, unsupported Serial arguments, and signal type arguments (`Signal<String>`); comparing a bool with a number | E009 |
 | Constant out of range, constant overflow, constant division by zero | E010 |
 | Optional/named/default parameters, generics, `async`, untyped parameters in a user function | E011 |
 | Closures other than widget callbacks, callbacks with parameters, closures inside callbacks, function references, local functions | E012 |
-| Code whose meaning depends on evaluation order | E013 |
+| Code whose meaning depends on evaluation order, incl. a call next to a `.value` read | E013 |
 | Name that collides with C++ or Arduino | E014 |
-| Top-level initializer (or bound-object constructor argument) that is not a compile-time constant | E015 |
+| Top-level initializer (or bound-object constructor argument, or signal initial value) that is not a compile-time constant; a signal argument of a widget declared below it | E015 |
 | A function that calls itself, directly or through other functions | E016 |
 | Invalid binding class or interop annotation | E017 |
 | A bound object used other than as a top-level `final` whose methods are called | E018 |
 | `cpp()` used other than as a statement with one string literal | E019 |
 | Heap allocation in `cpp()` text | E020 |
-| Widget program shape: `main()` with `setup()`/`loop()`, widgets in a `setup()`/`loop()` sketch, `Device` arguments, `Serial.begin` | E021 |
-| Widget rules: placement, constant arguments, duplicate pins, widgets missing from `children` or listed twice, use before declaration, handle misuse | E022 |
-| `delay()` in a widget callback, directly or through a called function | E023 |
-| `Signal`, your own classes | not yet available |
+| Widget program shape: `main()` with `setup()`/`loop()`, widgets or signals in a `setup()`/`loop()` sketch, `Device` arguments, `Serial.begin` | E021 |
+| Widget rules: placement, constant arguments, duplicate pins, widgets (incl. `Watch`) missing from `children` or listed twice, use before declaration, handle misuse, methods on a bound Led | E022 |
+| `delay()` in a widget callback (incl. `Watch`), directly or through a called function | E023 |
+| Signal misuse: not a top-level `final`, used other than through `.value`, signal-typed locals/parameters/returns, a Watch source that is not a top-level signal | E024 |
+| A Watch that writes the signal it watches, or Watches that write each other's signals in a cycle | E025 |
+| `Computed` not a single expression over signals/Computeds declared above and constants | E026 |
+| Your own classes | not yet available |
