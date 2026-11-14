@@ -195,6 +195,58 @@ void main() {
       });
     });
 
+    group('signal runtime (unodar::Signal<T> in runtime/unodar_widgets.h, hand-written sketch)', () {
+      final sketch = File(fromPackage('test', 'runtime', 'signals', 'signals.ino')).readAsStringSync();
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+
+      Future<List<String>> run({String? headerText, String? sketchText}) async {
+        final build =
+            await compileSketch('signals', sketchText ?? sketch, files: {'unodar_widgets.h': headerText ?? header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return results(await runInSimulator(build.hexPath));
+      }
+
+      String replaced(String text, String from, String to) {
+        expect(text, contains(from), reason: 'the source changed; update the negative control');
+        return text.replaceAll(from, to);
+      }
+
+      test('marks, equality (NaN, -0.0), coalescing, sized ranges and two-phase delivery all pass', () async {
+        gate.check();
+        final lines = await run();
+        expect(lines, hasLength(10));
+        expect(lines.where((l) => l.startsWith('FAIL')), isEmpty, reason: lines.join('\n'));
+      });
+
+      test('negative control: set() without the comparison marks equal writes', () async {
+        gate.check();
+        final lines = await run(headerText: replaced(header, 'if (value != value_) {', 'if (true) {'));
+        expect(
+            lines,
+            containsAll([
+              'FAIL an equal write does not mark the signal',
+              'FAIL writing -0.0 onto 0.0 does not mark and keeps 0.0 (equal, as in Dart)',
+            ]));
+      });
+
+      test('negative control: take() that does not clear the mark reports a change again', () async {
+        gate.check();
+        final lines = await run(
+            headerText: replaced(header, '    changed_ = false;\n    return changed;', '    return changed;'));
+        expect(lines, contains('FAIL a signal starts changed, and take() clears the mark'));
+      });
+
+      test('negative control: delivery without the snapshot delivers a write made during delivery at once', () async {
+        gate.check();
+        final lines = await run(sketchText: replaced(sketch, '#define NAIVE_DELIVERY 0', '#define NAIVE_DELIVERY 1'));
+        expect(
+            lines,
+            contains(
+                'FAIL a write made during delivery is delivered in the next pass, whatever the declaration order'));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

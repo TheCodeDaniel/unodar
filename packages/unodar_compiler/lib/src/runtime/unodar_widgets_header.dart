@@ -3,8 +3,9 @@
 
 /// The text of `runtime/unodar_widgets.h`, the widget runtime every widget program includes.
 const unodarWidgetsHeader =
-    r'''// unodar widget runtime (docs/SUBSET.md "Widgets: runDevice"). Hand-written, fixed, and copied unchanged next to
-// every generated widget program; the compiler embeds this exact text (a test keeps the copy identical).
+    r'''// unodar widget runtime (docs/SUBSET.md "Widgets: runDevice" and "Signals"). Hand-written, fixed, and copied
+// unchanged next to every generated widget program; the compiler embeds this exact text (a test keeps the copy
+// identical).
 //
 // Every widget is a plain object with a constexpr constructor, so the generated globals are constant-initialized:
 // no heap, no virtual calls, no function pointers. Time is compared as uint32_t (`now - last >= interval`), which
@@ -33,13 +34,12 @@ class Led {
   void on() { set(true); }
   void off() { set(false); }
   void toggle() { set(!lit_); }
-
- private:
   void set(bool lit) {
     lit_ = lit;
     digitalWrite(pin_, lit ? HIGH : LOW);
   }
 
+ private:
   uint8_t pin_;
   bool lit_;
 };
@@ -112,6 +112,37 @@ class Every {
  private:
   uint32_t interval_;
   uint32_t last_;
+};
+
+// A value with a "changed" mark (docs/SUBSET.md "Signals"). T is int32_t, float, bool, uint8_t, uint16_t or int16_t.
+//
+// set() stores a value that differs from the current one (`!=`, so NaN always differs and -0.0 equals 0.0) and marks
+// the signal changed; an equal value changes nothing. take() reports the mark and clears it. A signal starts
+// changed, so its initial value is delivered at the end of setup(). Delivery itself is generated code
+// (unodar_deliver()): set() never calls anything.
+template <typename T>
+class Signal {
+ public:
+  constexpr explicit Signal(T initial) : value_(initial), changed_(true) {}
+
+  T value() const { return value_; }
+
+  void set(T value) {
+    if (value != value_) {
+      value_ = value;
+      changed_ = true;
+    }
+  }
+
+  bool take() {
+    const bool changed = changed_;
+    changed_ = false;
+    return changed;
+  }
+
+ private:
+  T value_;
+  bool changed_;
 };
 
 }  // namespace unodar
