@@ -66,3 +66,15 @@ DartType? _typeOfName(SimpleIdentifier name) =>
       VariableElement(:final type) => type,
       _ => null,
     };
+
+/// Whether [argument] of a widget constructor is a signal argument: its parameter has a signal type (`Watch`'s
+/// signal, and from step 9 `Led`'s `on:`). Signal arguments are references, not C++ constructor arguments or
+/// constants; E024 requires the name of a top-level signal.
+bool isSignalArgument(Argument argument) => isSignalType(argument.correspondingParameter?.type);
+
+/// The argument [expression] is, if it is one (`count` in `Watch(count, …)` or `Led(on: count)`), else null.
+Argument? argumentOf(Expression expression) => switch (expression.parent) {
+      NamedArgument() && final named => named,
+      ArgumentList() => expression as Argument,
+      _ => null,
+    };

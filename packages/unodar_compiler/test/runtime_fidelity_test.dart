@@ -287,6 +287,82 @@ void main() {
       });
     });
 
+    group('Watch delivery (goldens watch and watch_order, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+
+      Future<String> generated(String golden) async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', golden, 'input.dart'));
+        if (result is! CompileSuccess) fail('$golden did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<String> run(String name, String cpp, List<String> pins, int ms, {String? headerText}) async {
+        final build = await compileSketch(name, cpp, files: {'unodar_widgets.h': headerText ?? header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, pins: pins, until: null, cycles: ms * 16000)).serial;
+      }
+
+      // watch: plus (D2) writes count twice, clear (D3) writes 0. Presses stable from 300, 800, 1300, 1800 ms.
+      const presses = [
+        'D2=low@300', 'D2=open@302', 'D2=low@304', 'D2=open@500', // plus (bouncing)
+        'D3=low@800', 'D3=open@1000', // clear: 2 -> 0
+        'D3=low@1300', 'D3=open@1500', // clear at 0: an equal write
+        'D2=low@1800', 'D2=open@2000', // plus
+      ];
+      const watchTranscript = 'count 0\r\ntwice 0\r\n' // the initial value, once, at the end of setup()
+          'count 2\r\ntwice 4\r\n' // two writes in one callback: one delivery, the last value
+          'count 0\r\ntwice 0\r\n' // clear
+          'count 2\r\ntwice 4\r\n'; // the second clear wrote an equal value: nothing
+
+      test('initial value once, two writes delivered once, an equal write silent, Watches in children order', () async {
+        gate.check();
+        expect(await run('watch', await generated('watch'), presses, 2200), watchTranscript);
+      });
+
+      test('negative control: with set() marking equal writes, the clear at 0 is delivered', () async {
+        gate.check();
+        expect(header, contains('if (value != value_) {'));
+        final serial = await run('watch', await generated('watch'), presses, 2200,
+            headerText: header.replaceAll('if (value != value_) {', 'if (true) {'));
+        expect(serial, isNot(watchTranscript));
+        expect(serial, contains('count 0\r\ntwice 0\r\ncount 0\r\ntwice 0\r\n'), reason: serial);
+      });
+
+      // watch_order: the Watch of `a` writes `b`; `b` is declared between `a` and `d`.
+      const orderTranscript = 'a2 0\r\na 0\r\nb 0\r\nd 0\r\n' // setup delivery: all start changed
+          'b 10\r\n' // the write made during it, in the first loop() pass
+          'a2 1\r\na 1\r\nd 1\r\n' // the press writes a and d: one pass
+          'b 11\r\n'; // the Watch of a wrote b: the next pass
+
+      test('flags and values are taken first: a write made during delivery arrives in the next pass, after d',
+          () async {
+        gate.check();
+        expect(await run('watch_order', await generated('watch_order'), ['D2=low@300', 'D2=open@500'], 600),
+            orderTranscript);
+      });
+
+      test('negative control: taking b lazily (no snapshot) delivers the write in the same pass, before d', () async {
+        gate.check();
+        final cpp = await generated('watch_order');
+        for (final line in [
+          '  const bool unodar_b_changed = b.take();\n',
+          '  const int32_t unodar_b_value = b.value();\n',
+          'if (unodar_b_changed) {',
+          'unodar_watch_1_callback(unodar_b_value)',
+        ]) {
+          expect(cpp, contains(line), reason: 'the generated code changed; update the negative control');
+        }
+        final naive = cpp
+            .replaceAll('  const bool unodar_b_changed = b.take();\n', '')
+            .replaceAll('  const int32_t unodar_b_value = b.value();\n', '')
+            .replaceAll('if (unodar_b_changed) {', 'if (b.take()) {')
+            .replaceAll('unodar_watch_1_callback(unodar_b_value)', 'unodar_watch_1_callback(b.value())');
+        final serial = await run('watch_order', naive, ['D2=low@300', 'D2=open@500'], 600);
+        expect(serial, 'a2 0\r\na 0\r\nb 10\r\nd 0\r\na2 1\r\na 1\r\nb 11\r\nd 1\r\n');
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

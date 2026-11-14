@@ -278,7 +278,7 @@ input.dart:8:17: error[E009]: the type 'num' is not supported in this version. O
 ```
 
 (Golden tests: `test/golden/e009_nullable_type`, `e009_unsupported_type`, `e009_types`,
-`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`.)
+`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`, `e009_watch_parameter`.)
 
 ## E010: Constant out of range
 
@@ -366,7 +366,7 @@ A `Watch` callback takes exactly one parameter, the value (the analyzer checks i
 follows the same rules. The closure of a `Computed` is the one other allowed closure; its body is checked by E026.
 
 (Golden tests: `test/golden/e012_closure`, `e012_function_reference`, `e012_local_function`,
-`e012_widget_callbacks`.)
+`e012_widget_callbacks`, `e012_watch_callback`.)
 
 ## E013: Evaluation order differs in C++
 
@@ -434,7 +434,7 @@ input.dart:8:7: error[E014]: 'and' cannot be used as a name: it is a C++ keyword
 ```
 
 (Golden tests: `test/golden/e014_all_caps`, `e014_arduino_name`, `e014_cpp_keyword`, `e014_api_name`,
-`e014_reserved_pattern`, `e014_generated_name`.)
+`e014_reserved_pattern`, `e014_generated_name`, `e014_watch_parameter`.)
 
 ## E015: Top-level initializer is not a compile-time constant
 
@@ -470,7 +470,8 @@ A widget's signal argument (the source of a `Watch`, the `on:` of a `Led`) must 
 the same reason.
 
 (Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
-`e015_widget_forward_reference`, `e015_signal_initial_value`.)
+`e015_widget_forward_reference`, `e015_signal_initial_value`,
+`e015_watch_forward_reference`.)
 
 ## E016: Recursive function
 
@@ -691,7 +692,7 @@ input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
 ```
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
-`e022_declaration_order`, `e022_handle_uses`, `e022_durations`.)
+`e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`.)
 
 ## E023: `delay()` in a widget callback
 
@@ -728,7 +729,7 @@ input.dart:7:3: error[E023]: 'delay()' runs inside a widget callback (Button's o
   = help: Time things with an Every widget instead, keeping state in a top-level variable between ticks.
 ```
 
-(Golden tests: `test/golden/e023_delay_direct`, `e023_delay_indirect`.)
+(Golden tests: `test/golden/e023_delay_direct`, `e023_delay_indirect`, `e023_delay_watch`.)
 
 ## E024: Signal misuse
 
@@ -766,7 +767,7 @@ input.dart:13:32: error[E024]: the signal 'count' is used as a value; a signal c
   = help: Write `count.value`.
 ```
 
-(Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`.)
+(Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`, `e024_watch_source`.)
 
 ## E025: Reactive cycle
 

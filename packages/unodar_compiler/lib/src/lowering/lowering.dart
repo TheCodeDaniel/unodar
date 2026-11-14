@@ -55,10 +55,11 @@ final class _Lowerer {
     final children = device == null ? const <WidgetChild>[] : widgetChildren(device, source.unit);
     final globals = [
       for (final variable in topLevelVariables(source.unit))
-        if (!_isExternal(variable)) _global(variable),
+        if (!_isExternal(variable) && !_isObjectlessWidget(variable.initializer)) _global(variable),
       // Widgets written in Device.children, after the top-level variables, in list order.
       for (final child in children)
-        if (identical(child.element, child.creation)) _widgetObject(child.name, child.creation),
+        if (identical(child.element, child.creation) && !_isObjectlessWidget(child.creation))
+          _widgetObject(child.name, child.creation),
     ];
     final names = {for (final (name, creation) in acceptedWidgets(source.unit)) creation: name};
     final bodies = <(int, IrFunction Function())>[
@@ -105,6 +106,11 @@ final class _Lowerer {
     return IrFunction(
       name: name,
       line: _line(closure),
+      // A Watch callback takes the value (`void unodar_watch_0_callback(int32_t v)`).
+      parameters: [
+        for (final parameter in closure.parameters?.parameters ?? const <FormalParameter>[])
+          IrParameter(parameter.name!.lexeme, _type(parameter.declaredFragment?.element.type, parameter)),
+      ],
       body: switch (body) {
         BlockFunctionBody(:final block) => _statements(block.statements),
         ExpressionFunctionBody(:final expression) => [_statementLevel(expression)],
@@ -122,9 +128,11 @@ final class _Lowerer {
         api.widgetOfType(child.creation.staticType) ?? (throw LoweringError('unregistered widget ${child.name}'));
     final device = deviceOfMain(main)!;
     final baud = namedArgument(device, 'serialBaud');
+    final deliver = _delivery(line, children);
     final serial = api.object('Serial')!;
     final begin = api.classOf(serial).method('begin')!;
     return [
+      if (deliver != null) deliver,
       IrFunction(name: 'setup', line: line, isEntryPoint: true, body: [
         // Opens Serial first, so that callbacks can print straight away (docs/SUBSET.md "The program").
         if (_usesSerial)
@@ -133,8 +141,11 @@ final class _Lowerer {
                   receiver: serial.cppName),
               line: baud == null ? line : _line(baud)),
         for (final child in children)
-          IrExpressionStatement(IrCall(widget(child).setup, const [], receiver: child.name),
-              line: _line(child.element)),
+          if (widget(child).hasObject)
+            IrExpressionStatement(IrCall(widget(child).setup, const [], receiver: child.name),
+                line: _line(child.element)),
+        // Delivers every signal's initial value (docs/SUBSET.md "When changes are delivered").
+        if (deliver != null) IrExpressionStatement(IrCall(deliver.name, const []), line: line),
       ]),
       IrFunction(name: 'loop', line: line, isEntryPoint: true, body: [
         // `if (button.pressed()) { unodar_button_onPressed(); }`
@@ -152,8 +163,62 @@ final class _Lowerer {
               ],
               line: _line(child.element),
             ),
+        if (deliver != null) IrExpressionStatement(IrCall(deliver.name, const []), line: line),
       ]),
     ];
+  }
+
+  /// A Watch is not a C++ object (its callback is called from `unodar_deliver()`).
+  bool _isObjectlessWidget(Expression? expression) {
+    final creation = widgetCreation(expression);
+    return creation != null && !(api.widgetOfType(creation.staticType)?.hasObject ?? true);
+  }
+
+  /// `unodar_deliver()`, or null when no signal is watched (docs/SUBSET.md "When changes are delivered"). First, for
+  /// every watched signal in declaration order, its mark is taken and its value read into locals; then the Watches
+  /// of every changed signal run, signals in declaration order, Watches in `children` order, each with the value
+  /// taken first. A write made by a Watch is therefore delivered in the next pass.
+  IrFunction? _delivery(int line, List<WidgetChild> children) {
+    final watches = <String, List<(String, WidgetChild)>>{}; // signal → (callback, Watch), in children order
+    for (final child in children) {
+      if (api.widgetOfType(child.creation.staticType)?.hasObject ?? true) continue;
+      final source = child.creation.argumentList.arguments.firstWhere(isSignalArgument).argumentExpression;
+      final closure = callbackOf(child.creation) ?? (throw LoweringError('no callback for ${child.name}'));
+      (watches[(source as SimpleIdentifier).name] ??= []).add((callbackFunctionName(child.name, closure), child));
+    }
+    if (watches.isEmpty) return null;
+    final observed = [
+      for (final variable in topLevelVariables(source.unit))
+        if (topLevelSignal(variable) case final creation? when watches.containsKey(variable.name.lexeme))
+          (variable.name.lexeme, _type(signalValueType(creation.staticType), creation), _line(variable.name)),
+    ];
+    String changed(String signal) => 'unodar_${signal}_changed';
+    String value(String signal) => 'unodar_${signal}_value';
+    return IrFunction(name: 'unodar_deliver', line: line, body: [
+      for (final (signal, type, at) in observed) ...[
+        IrLocal(
+            name: changed(signal),
+            type: IrType.bool_,
+            storage: IrStorage.final_,
+            initializer: IrCall('take', const [], receiver: signal, type: IrType.bool_),
+            line: at),
+        IrLocal(
+            name: value(signal),
+            type: type,
+            storage: IrStorage.final_,
+            initializer: IrCall('value', const [], receiver: signal, type: type),
+            line: at),
+      ],
+      for (final (signal, type, at) in observed)
+        IrIf(
+          IrVariable(changed(signal), IrType.bool_),
+          [
+            for (final (callback, watch) in watches[signal]!)
+              IrExpressionStatement(IrCall(callback, [IrVariable(value(signal), type)]), line: _line(watch.element)),
+          ],
+          line: at,
+        ),
+    ]);
   }
 
   /// `external final TwoWire Wire;` names an existing C++ object: nothing is emitted for it.

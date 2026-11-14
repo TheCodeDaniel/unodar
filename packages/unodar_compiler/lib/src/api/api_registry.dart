@@ -158,7 +158,14 @@ final class ApiClass {
 /// A widget class (docs/SUBSET.md "Widgets: runDevice"): its [ApiClass] (C++ class in `unodar_widgets.h`,
 /// constructor parameters, methods), and what the generated `setup()` and `loop()` call on each object.
 final class ApiWidget {
-  const ApiWidget(this.className, {this.setup = 'begin', this.poll, this.callback});
+  const ApiWidget(
+    this.className, {
+    this.setup = 'begin',
+    this.poll,
+    this.callback,
+    this.signals = const [],
+    this.hasObject = true,
+  });
 
   /// The [ApiClass.dartName] of its class.
   final String className;
@@ -172,6 +179,14 @@ final class ApiWidget {
 
   /// The Dart parameter that holds the callback closure (`onPressed`), or null.
   final String? callback;
+
+  /// The Dart parameters that take a signal (`Watch`'s `signal`). A signal-typed parameter not listed here is not
+  /// supported yet, and an argument for it is rejected like an unknown parameter (E004).
+  final List<String> signals;
+
+  /// Whether the widget is a C++ object (declared, started in `setup()`). A `Watch` is not: it is only its callback,
+  /// called from the generated `unodar_deliver()`.
+  final bool hasObject;
 }
 
 /// An existing C++ object of an [ApiClass]: `Serial`, or an `external final` object of a binding class (`Wire`).
@@ -213,7 +228,10 @@ final class ApiRegistry {
       }
     }
     for (final widget in widgets) {
-      if (!_classes.containsKey(widget.className)) throw ArgumentError('widget ${widget.className} has no class');
+      // A widget without a C++ object (`Watch`) has no class row.
+      if (widget.hasObject && !_classes.containsKey(widget.className)) {
+        throw ArgumentError('widget ${widget.className} has no class');
+      }
     }
   }
 
@@ -289,9 +307,14 @@ final class ApiRegistry {
           ApiWidget('Led'),
           ApiWidget('Button', poll: 'pressed', callback: 'onPressed'),
           ApiWidget('Every', poll: 'due', callback: 'callback'),
+          // No C++ class: a Watch is its callback, run by the generated unodar_deliver() (docs/SUBSET.md "Signals").
+          ApiWidget('Watch', callback: 'callback', signals: ['signal'], hasObject: false),
         ],
         // Not callable or constructible as API rows, but taken by the widget API and its C++ namespace (E014).
-        otherNames: const {'runDevice', 'Device', 'Uno', 'Board', 'Widget', 'unodar'},
+        otherNames: const {
+          'runDevice', 'Device', 'Uno', 'Board', 'Widget', 'unodar', //
+          'Watch', 'Signal', 'ReadonlySignal',
+        },
       );
 
   ApiRegistry._core({

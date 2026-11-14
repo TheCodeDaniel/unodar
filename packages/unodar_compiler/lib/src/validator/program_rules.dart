@@ -28,8 +28,9 @@ final class InitializerRule implements ValidationRule {
       if (initializer == null) continue;
       if (subexpressions(initializer).any((e) => expressionIssue(e) != null)) continue; // Reported as E002/E012.
       // A widget handle used as a value is E022, a signal used as a value E024.
-      if (subexpressions(initializer)
-          .any((e) => e is SimpleIdentifier && (widgetClassOf(e.staticType) != null || isSignalType(e.staticType)))) {
+      if (subexpressions(initializer).any((e) =>
+          e is SimpleIdentifier &&
+          (widgetClassOf(e.staticType) != null || (isSignalType(e.staticType) && !_isSignalArgumentName(e))))) {
         continue;
       }
       // A bound object (`final link = SoftSerial(10, 11);`): each constructor argument must be constant. Any other
@@ -96,6 +97,12 @@ final class ReservedNameRule implements ValidationRule {
     for (final function in compiledFunctions(unit)) {
       if (!isEntryPoint(function)) checkName(function.name);
       for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
+        if (parameter.name case final name?) checkName(name);
+      }
+    }
+    // A Watch callback's parameter becomes a C++ parameter.
+    for (final callback in widgetCallbacks(unit)) {
+      for (final parameter in callback.parameters?.parameters ?? const <FormalParameter>[]) {
         if (parameter.name case final name?) checkName(name);
       }
     }
@@ -251,6 +258,12 @@ final class EvaluationOrderRule implements ValidationRule {
   /// `next()`, `Wire.read()`.
   static String _callText(MethodInvocation call) =>
       '${call.target == null ? '' : '${call.target!.toSource()}.'}${call.methodName.name}()';
+}
+
+/// `count` in `Watch(count, …)`: a widget's signal argument, checked for declaration order like other arguments.
+bool _isSignalArgumentName(SimpleIdentifier identifier) {
+  final argument = argumentOf(identifier);
+  return argument != null && isSignalArgument(argument);
 }
 
 bool _mutableGlobal(SimpleIdentifier identifier) => switch (referenceOf(identifier)) {

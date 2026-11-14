@@ -115,6 +115,21 @@ void loop() {}
     expect(registry.reservedNames, containsAll(['Led', 'runDevice', 'Device', 'Uno', 'unodar']));
   });
 
+  test('Watch is a widget row without a C++ object or class, whose callback is its function-typed parameter', () {
+    final watch = registry.widget('Watch')!;
+    expect(watch.hasObject, isFalse);
+    expect(watch.poll, isNull);
+    expect(registry.classNamed('Watch'), isNull);
+    final constructor = (unodar['Watch'] as ClassElement).constructors.single;
+    expect([
+      for (final p in constructor.formalParameters)
+        if (p.type is FunctionType) p.name
+    ], [
+      watch.callback
+    ]);
+    expect(registry.reservedNames, containsAll(['Watch', 'Signal', 'ReadonlySignal']));
+  });
+
   test('every registered constant is a const in package:unodar', () {
     for (final name in registry.constantNames) {
       final getter = unodar[name];

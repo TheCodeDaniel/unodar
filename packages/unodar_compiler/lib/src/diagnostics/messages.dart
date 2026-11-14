@@ -545,6 +545,13 @@ abstract final class Diagnostics {
         suggestion: 'Write `$name.value`.',
       );
 
+  static Diagnostic signalArgument(String parameter, String widget, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: 'the $parameter of $widget must be the name of a top-level signal.',
+        suggestion: 'Declare the signal at the top level, e.g. `final count = Signal<int>(0);`, and pass its name.',
+      );
+
   static Diagnostic signalTypePosition(String position, String type, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.signalMisuse,
         location: at,

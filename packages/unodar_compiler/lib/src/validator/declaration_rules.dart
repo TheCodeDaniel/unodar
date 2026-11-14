@@ -180,6 +180,10 @@ final class DeclaredTypeRule implements ValidationRule {
       _locals(expression.body, context);
     }
     for (final callback in widgetCallbacks(unit)) {
+      // `Watch(ratio, (num r) { … })`: an annotated callback parameter must have a supported type.
+      for (final parameter in callback.parameters?.parameters ?? const <FormalParameter>[]) {
+        if (parameter.type case final type? when parameter.functionTypedSuffix == null) _annotation(type, context);
+      }
       _locals(callback.body, context);
     }
   }

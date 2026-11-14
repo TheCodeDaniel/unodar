@@ -1,0 +1,2 @@
+input.dart:8:3: error[E023]: 'delay()' runs inside a widget callback (Watch's callback → flash()), where it would stop every button and timer while it waits.
+  = help: Time things with an Every widget instead, keeping state in a top-level variable between ticks.

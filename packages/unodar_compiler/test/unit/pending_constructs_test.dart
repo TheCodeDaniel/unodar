@@ -19,9 +19,6 @@ void main() {
 
   const header = "import 'package:unodar/unodar.dart';\n\n";
   const pending = <String, String>{
-    // Plan step 6.
-    'Watch': 'final count = Signal<int>(0);\n\n'
-        'void main() => runDevice(Device(board: Uno(), children: [Watch(count, (v) {})]));\n',
     // Plan step 8 (also golden e003_widget_method).
     'Led.set': 'final led = Led(pin: 13);\n\n'
         'void main() => runDevice(Device(board: Uno(), children: [led, '

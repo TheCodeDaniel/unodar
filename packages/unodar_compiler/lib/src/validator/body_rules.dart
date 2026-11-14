@@ -284,7 +284,7 @@ final class ExpressionTypeRule implements ValidationRule {
         if (expression is SimpleIdentifier && widgetClassOf(type) != null) return false;
         // A signal used as a value: E024. A signal's constructor: E024 checks its type argument, and its initial
         // value is an ordinary expression. A read of a signal whose type is unsupported: E009 at its declaration.
-        if (expression is SimpleIdentifier && isSignalType(type)) return false;
+        if (isSignalType(type) && signalCreation(expression) == null) return false;
         if (signalCreation(expression) != null) return true;
         if (signalOfValue(expression) != null && irTypeOf(type) == null) return false;
         // A widget constructor: E021/E022 decide where it may appear; its arguments are ordinary expressions.
@@ -370,7 +370,13 @@ final class ArgumentRule implements ValidationRule {
       if (cls == null || constructor == null) continue;
       _check(ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), cls.dartName,
           creation.argumentList, context,
-          skip: widgetCreation(creation) == null ? null : isCallbackArgument);
+          skip: widgetCreation(creation) == null
+              ? null
+              : (argument) =>
+                  isCallbackArgument(argument) ||
+                  (isSignalArgument(argument) &&
+                      (context.api.widgetOfType(creation.staticType)?.signals ?? const [])
+                          .contains(argument.correspondingParameter?.name)));
     }
   }
 
@@ -379,7 +385,7 @@ final class ArgumentRule implements ValidationRule {
     final positional = function.positionalParameters;
     var index = 0;
     for (final argument in list.arguments) {
-      if (skip != null && skip(argument)) continue; // A widget callback is not a C++ argument.
+      if (skip != null && skip(argument)) continue; // Widget callbacks and signals are not C++ arguments.
       final ApiParameter parameter;
       if (argument is NamedArgument) {
         final named = function.namedParameter(argument.name.lexeme);

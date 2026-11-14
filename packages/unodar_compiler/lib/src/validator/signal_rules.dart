@@ -56,18 +56,41 @@ final class SignalRule implements ValidationRule {
       _checkValueType(creation, context);
     }
 
-    // Values: a signal name anywhere but before `.value`.
+    // Values: a signal anywhere but before `.value` or as a widget's signal argument (`Watch(count, …)`), which
+    // must be the name of a top-level signal.
+    final signals = {
+      for (final variable in topLevelVariables(unit))
+        if (topLevelSignal(variable) != null)
+          if (variable.declaredFragment?.element case final element?) element,
+    };
+    Element? globalOf(Expression expression) => switch (expression) {
+          SimpleIdentifier() => switch (referenceOf(expression)) {
+              GlobalReference(:final element) => element,
+              _ => null,
+            },
+          _ => null,
+        };
     for (final root in allRootExpressions(unit)) {
       walkExpression(root, (expression) {
-        if (expression is SimpleIdentifier && isSignalType(expression.staticType)) {
-          final reference = referenceOf(expression);
-          final element = reference is GlobalReference ? reference.element : null;
-          if (element != null && !rejected.contains(element)) {
-            context.report(Diagnostics.signalUse(expression.name, context.at(expression)));
+        if (!isSignalType(expression.staticType) || signalCreation(expression) != null) {
+          return expressionIssue(expression) == null;
+        }
+        final element = globalOf(expression);
+        if (rejected.contains(element)) return false; // Reported at its declaration.
+        final argument = argumentOf(expression);
+        if (argument != null && isSignalArgument(argument)) {
+          if (!signals.contains(element)) {
+            final creation = argument.parent!.parent! as InstanceCreationExpression;
+            context.report(Diagnostics.signalArgument(argument.correspondingParameter!.name!,
+                widgetClassOf(creation.staticType)?.name ?? 'the widget', context.at(expression)));
           }
           return false;
         }
-        return expressionIssue(expression) == null;
+        if (element != null || expression is! SimpleIdentifier) {
+          final name = expression is SimpleIdentifier ? expression.name : expression.toSource();
+          context.report(Diagnostics.signalUse(name, context.at(expression)));
+        }
+        return false;
       });
     }
 

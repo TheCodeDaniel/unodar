@@ -1,0 +1,6 @@
+input.dart:9:24: error[E012]: unsupported widget callback: its parameter is optional or named.
+  = help: Write a plain closure without parameters, `() { … }`; it runs to the end inside loop().
+input.dart:10:24: error[E012]: unsupported widget callback: it is async.
+  = help: Write a plain closure without parameters, `() { … }`; it runs to the end inside loop().
+input.dart:12:23: error[E012]: a closure is not supported in this version. Functions can only be declared at the top level.
+  = help: Declare a top-level function and call it directly.

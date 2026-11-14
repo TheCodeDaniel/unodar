@@ -1,0 +1,4 @@
+input.dart:9:25: error[E009]: the type 'num' is not supported in this version. Only int, double, bool, Uint8, Uint16, and Int16 are supported.
+  = help: Use one of the supported types; see docs/SUBSET.md.
+input.dart:10:28: error[E009]: the type 'num' is not supported in this version. Only int, double, bool, Uint8, Uint16, and Int16 are supported.
+  = help: Use one of the supported types; see docs/SUBSET.md.
