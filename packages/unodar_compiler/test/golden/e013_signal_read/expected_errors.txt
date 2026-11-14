@@ -1,0 +1,6 @@
+input.dart:15:42: error[E013]: 'next()' may run before or after 'count.value' is read in the generated C++, but Dart always evaluates left to right.
+  = help: Store the call's result in a local variable first, e.g. `final value = next();`.
+input.dart:16:28: error[E013]: 'next()' may run before or after 'count.value' is read in the generated C++, but Dart always evaluates left to right.
+  = help: Store the call's result in a local variable first, e.g. `final value = next();`.
+input.dart:17:13: error[E002]: the `*=` operator is not supported in this version.
+  = help: Write the assignment out in full, e.g. `x = x * y;`. Only `=`, `+=`, and `-=` are supported.

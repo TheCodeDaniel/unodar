@@ -1,0 +1,6 @@
+input.dart:4:7: error[E022]: the Watch 'unlisted' is not listed in Device.children, so its callback would never run when 'count' changes.
+  = help: Add `unlisted` to `children: [...]` in main().
+input.dart:16:11: error[E022]: the widget 'listed' is listed in Device.children more than once.
+  = help: List each widget once; the children order is the order of setup and polling.
+input.dart:20:31: error[E022]: a widget (Watch) can only be a top-level `final` or be written directly in Device.children.
+  = help: Declare it at the top level, e.g. `final watch = Watch(…);`, and list it in children.

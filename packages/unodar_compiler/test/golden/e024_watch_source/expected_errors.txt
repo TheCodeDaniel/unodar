@@ -1,0 +1,4 @@
+input.dart:4:5: error[E024]: the signal 'total' must be declared `final`.
+  = help: Write `final total = Signal<int>(0);`. Signals are created once, as global variables.
+input.dart:11:17: error[E024]: the signal of Watch must be the name of a top-level signal.
+  = help: Declare the signal at the top level, e.g. `final count = Signal<int>(0);`, and pass its name.

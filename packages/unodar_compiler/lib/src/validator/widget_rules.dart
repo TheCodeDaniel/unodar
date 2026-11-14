@@ -1,10 +1,12 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
@@ -173,8 +175,17 @@ final class CallbackRule implements ValidationRule {
   void check(CompilationUnit unit, ValidationContext context) {
     for (final callback in widgetCallbacks(unit)) {
       final body = callback.body;
+      // `Watch`'s callback takes the value: `void Function(T value)`. Every other callback takes nothing.
+      final declared = switch (callback.parent) {
+        NamedArgument(:final correspondingParameter) => correspondingParameter?.type,
+        _ => (callback as Argument).correspondingParameter?.type,
+      };
+      final expected = declared is FunctionType ? declared.formalParameters.length : 0;
+      final parameters = callback.parameters?.parameters ?? const <FormalParameter>[];
       final problems = [
-        if (callback.parameters?.parameters.isNotEmpty ?? false) 'it takes parameters',
+        if (parameters.length != expected)
+          expected == 0 ? 'it takes parameters' : 'it does not take exactly $expected parameter',
+        if (parameters.any((p) => !p.isRequiredPositional)) 'its parameter is optional or named',
         if (callback.typeParameters != null) 'it has type parameters',
         if (body.isAsynchronous) 'it is async',
         if (body.isGenerator) 'it is a generator',
@@ -229,9 +240,16 @@ final class WidgetChildrenRule implements ValidationRule {
     }
     if (childrenElements(device) == null) return; // E021: the list is not readable.
     for (final variable in topLevelVariables(unit)) {
-      if (topLevelWidget(variable) != null && !listed.contains(variable)) {
-        context.report(Diagnostics.widgetNotInChildren(variable.name.lexeme, context.at(variable.name)));
-      }
+      final creation = topLevelWidget(variable);
+      if (creation == null || listed.contains(variable)) continue;
+      final name = variable.name.lexeme;
+      // A Watch has no object to set up or poll; it is only reached from the delivery of its signal.
+      final signal = widgetClassOf(creation.staticType)?.name == 'Watch'
+          ? creation.argumentList.arguments.where(isSignalArgument).firstOrNull?.argumentExpression
+          : null;
+      context.report(signal is SimpleIdentifier
+          ? Diagnostics.watchNotInChildren(name, signal.name, context.at(variable.name))
+          : Diagnostics.widgetNotInChildren(name, context.at(variable.name)));
     }
   }
 }

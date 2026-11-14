@@ -1,0 +1,2 @@
+input.dart:3:21: error[E015]: the initializer of top-level variable 'early' refers to 'count', which is declared later.
+  = help: Move the declaration of 'count' above 'early'.

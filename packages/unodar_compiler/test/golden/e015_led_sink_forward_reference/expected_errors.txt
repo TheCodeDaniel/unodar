@@ -1,0 +1,2 @@
+input.dart:3:33: error[E015]: the initializer of top-level variable 'status' refers to 'lit', which is declared later.
+  = help: Move the declaration of 'lit' above 'status'.

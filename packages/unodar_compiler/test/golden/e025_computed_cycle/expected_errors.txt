@@ -1,0 +1,2 @@
+input.dart:11:13: error[E025]: this write closes a cycle: isOdd reads count → Watch(isOdd) → count, so the Watch could run again after every delivery.
+  = help: Write 'count' where the change starts, e.g. in a Button callback, or derive the value with a Computed.

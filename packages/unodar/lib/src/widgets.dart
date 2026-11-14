@@ -4,6 +4,8 @@
 // object from `unodar_widgets.h`, each callback a plain function, and `runDevice` a generated `setup()` and
 // `loop()`. Constructors are `external` and not `const`, so there is exactly one way to write a widget.
 
+import 'signals.dart';
+
 /// Runs [device]: the compiler turns this call into the program's `setup()` and `loop()`.
 ///
 /// Only as the single statement of `main()`: `void main() => runDevice(Device(board: Uno(), children: [...]));`.
@@ -28,14 +30,18 @@ final class Uno extends Board {
   external Uno();
 }
 
-/// Something on the board that the generated `loop()` drives: [Led], [Button], [Every].
+/// Something on the board that the generated `loop()` drives: [Led], [Button], [Every], [Watch].
 abstract final class Widget {}
 
 /// An LED (or any output) on [pin] (0–19: D0–D13, A0–A5). It starts off (LOW).
 ///
 /// Declare it as a top-level `final` to switch it from callbacks: `final led = Led(pin: 13);`.
+///
+/// With [on], a `Signal<bool>` declared above it, the LED follows the signal instead: it takes the signal's value at
+/// the end of `setup()` and whenever the signal changes, and its methods cannot be called (the signal is the only
+/// thing that drives it): `final led = Led(pin: 13, on: alarm);`.
 final class Led extends Widget {
-  external Led({required int pin});
+  external Led({required int pin, ReadonlySignal<bool>? on});
 
   /// Switches the LED on (HIGH).
   external void on();
@@ -45,6 +51,9 @@ final class Led extends Widget {
 
   /// Switches the LED on if it is off, and off if it is on.
   external void toggle();
+
+  /// Switches the LED on if [on] is true, and off if it is false: `led.set(count.value > 3);`.
+  external void set(bool on);
 }
 
 /// A push button on [pin] (0–19), wired between the pin and GND (the internal pull-up is used, no resistor).
@@ -63,4 +72,15 @@ final class Button extends Widget {
 /// `loop()` passes, one per pass. The callback is a closure without parameters; it must not call `delay()`.
 final class Every extends Widget {
   external Every(Duration interval, void Function() callback);
+}
+
+/// Runs [callback] with the value of [signal] when it changes, and once with its initial value at the end of
+/// `setup()`.
+///
+/// [signal] is the name of a top-level signal declared above the Watch. Changes are delivered at the end of each
+/// `loop()` pass, after every [Button] and [Every] has been polled: the callback runs at most once per pass, with the
+/// latest value. The callback is a closure with one parameter, the value: `Watch(count, (v) { … })`. It must not
+/// call `delay()`, and it must not write [signal], directly or through other Watches (a cycle).
+final class Watch<T> extends Widget {
+  external Watch(ReadonlySignal<T> signal, void Function(T value) callback);
 }

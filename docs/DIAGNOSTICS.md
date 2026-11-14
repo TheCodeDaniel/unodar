@@ -82,7 +82,9 @@ A call must resolve to a function declared at the top level of this file, to a u
 `package:unodar` (see "Calling the unodar API" in `docs/SUBSET.md`), or to a method of `Serial`, of a bound object,
 or of an external object. This includes undefined functions (the analyzer would call this an "undefined name";
 unodar reports E003 instead when the call is a statement of its own) and method calls on numbers (`x.abs()`). A
-method that the binding does not declare is a Dart error (E007). The suggestion points to the escape hatch,
+method that the binding does not declare is a Dart error (E007). A widget method that `package:unodar` declares
+but this compiler version does not support yet is E003 too ("the Led method '…' is not supported in this
+version"). The suggestion points to the escape hatch,
 `cpp('…')`, for Arduino functions unodar does not wrap yet.
 
 ```dart
@@ -252,7 +254,8 @@ Only `int`, `double`, `bool`, `Uint8`, `Uint16`, `Int16` (and `void` as a return
 declared types (variables, parameters, return types) and for the inferred static type of any expression, so
 `flag ? 1 : 2.5` (type `num`) is rejected. `String` is rejected everywhere except a string literal passed to
 `Serial.print`/`println`; any other type passed there is rejected too. Binding types outside a top-level `final`
-are E018 instead. Nullable types get their own wording. Also used for `==`/`!=` between a
+are E018 instead. Signal type arguments follow the same list: `Signal<String>`, `Signal<num>`, `Signal<int?>` are
+E009. Nullable types get their own wording. Also used for `==`/`!=` between a
 `bool` and a number: Dart says they are never equal, C++ says `true == 1`.
 
 ```dart
@@ -275,7 +278,7 @@ input.dart:8:17: error[E009]: the type 'num' is not supported in this version. O
 ```
 
 (Golden tests: `test/golden/e009_nullable_type`, `e009_unsupported_type`, `e009_types`,
-`e009_bool_number_comparison`, `e009_string_variable`.)
+`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`, `e009_watch_parameter`.)
 
 ## E010: Constant out of range
 
@@ -359,16 +362,19 @@ input.dart:6:13: error[E012]: a function reference ('pulse') is not supported in
   = help: Call the function instead, e.g. `pulse()`.
 ```
 
+A `Watch` callback takes exactly one parameter, the value (the analyzer checks its type, E007), and otherwise
+follows the same rules. The closure of a `Computed` is the one other allowed closure; its body is checked by E026.
+
 (Golden tests: `test/golden/e012_closure`, `e012_function_reference`, `e012_local_function`,
-`e012_widget_callbacks`.)
+`e012_widget_callbacks`, `e012_watch_callback`.)
 
 ## E013: Evaluation order differs in C++
 
 Dart evaluates operands and arguments left to right; C++ leaves the order unspecified. Within one operator's
 operands, one call's argument list, or the two sides of `+=`/`-=`, two calls of any kind may not sit next to each
 other (your functions, Arduino functions such as `micros() - micros()`, methods such as `Wire.read() + Wire.read()`),
-and a call to a user function may not sit next to a read of a mutable top-level variable (the call might change
-it). A call nested inside another call's argument is fine. `&&`, `||`, and `?:` fix the order and are always fine.
+and a call to a user function may not sit next to a read of a mutable top-level variable or of a signal's `.value`
+(the call might change it). A call nested inside another call's argument is fine. `&&`, `||`, and `?:` fix the order and are always fine.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -393,14 +399,16 @@ input.dart:13:17: error[E013]: 'next()' may run before or after 'count' is read 
 ```
 
 (Golden tests: `test/golden/e013_call_and_global`, `e013_two_calls`, `e013_arguments`, `e013_compound_assignment`,
-`e013_api_calls`, `e013_method_calls`.)
+`e013_api_calls`, `e013_method_calls`, `e013_signal_read`.)
 
 ## E014: Reserved name
 
 A user-declared name (top-level variable, function, parameter, or local) that would collide with C++ or the Arduino
 core in the generated code: a C++ keyword, a unodar API name, an Arduino core or avr-libc function or macro, an
 ALL-CAPS name, or a name reserved by C/C++ or unodar (`_t` suffix, `__`, `$`, `_` plus upper-case, `unodar_`
-prefix). See the Names section of `docs/SUBSET.md`.
+prefix). See the Names section of `docs/SUBSET.md`. Also a top-level widget whose generated callback would get the
+same C++ name as the callback of a widget written in `children`: a `Button` named `button_0` and the first inline
+`Button` would both have `unodar_button_0_onPressed` (only reported when that inline widget exists).
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -426,14 +434,14 @@ input.dart:8:7: error[E014]: 'and' cannot be used as a name: it is a C++ keyword
 ```
 
 (Golden tests: `test/golden/e014_all_caps`, `e014_arduino_name`, `e014_cpp_keyword`, `e014_api_name`,
-`e014_reserved_pattern`.)
+`e014_reserved_pattern`, `e014_generated_name`, `e014_watch_parameter`.)
 
 ## E015: Top-level initializer is not a compile-time constant
 
 Every top-level variable needs an initializer made only of literals, unodar constants, `const` variables declared
 **above** it, `Uint8(…)`/`Uint16(…)`/`Int16(…)` of constants, and supported operators. The constructor arguments of
-a bound object (`final link = SoftSerial(10, 11);`) follow the same rule; widget arguments are checked by E022
-instead, except for declaration order (a widget's arguments are emitted in its C++ declaration). C++ initializes globals before
+a bound object (`final link = SoftSerial(10, 11);`) and the initial value of a signal (`Signal(analogRead(A0))` is
+rejected) follow the same rule; widget arguments are checked by E022 instead, except for declaration order (a widget's arguments are emitted in its C++ declaration). C++ initializes globals before
 `setup()` runs and needs declarations before use, while Dart initializes them lazily, so anything else could run
 in a different order. Compute other values in `setup()`.
 
@@ -458,8 +466,12 @@ input.dart:6:15: error[E015]: the initializer of top-level variable 'b' refers t
   = help: Move the declaration of 'c' above 'b'.
 ```
 
+A widget's signal argument (the source of a `Watch`, the `on:` of a `Led`) must be declared above the widget, for
+the same reason.
+
 (Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
-`e015_widget_forward_reference`.)
+`e015_widget_forward_reference`, `e015_signal_initial_value`,
+`e015_watch_forward_reference`, `e015_led_sink_forward_reference`.)
 
 ## E016: Recursive function
 
@@ -620,7 +632,8 @@ input.dart:6:7: error[E020]: the C++ text uses 'malloc', which allocates on the 
 
 ## E021: Widget program shape
 
-A widget program has `main()` and no `setup()`/`loop()`; a sketch with `setup()`/`loop()` has no widgets. Also
+A widget program has `main()` and no `setup()`/`loop()`; a sketch with `setup()`/`loop()` has no widgets and no
+signals (`Signal`, `Computed`, `Watch`: changes are delivered by the generated `loop()`, so they would never be). Also
 rejected: `runDevice` anywhere but `main()`; a `Device` whose `board` is not `Uno()` or whose `children` is not a
 list literal of widgets (no spreads, collection `if`/`for`, or other values); a `serialBaud:` that is not a
 compile-time constant (a negative one is E004); and `Serial.begin` in a widget program, because the generated
@@ -642,7 +655,7 @@ input.dart:7:6: error[E021]: a widget program cannot also declare 'loop()': main
 ```
 
 (Golden tests: `test/golden/e021_main_and_loop`, `e021_widgets_without_main`, `e021_device_arguments`,
-`e021_device_children`, `e021_serial_begin`.)
+`e021_device_children`, `e021_serial_begin`, `e021_signal_in_sketch`.)
 
 ## E022: Widget rules
 
@@ -650,9 +663,12 @@ A widget (`Led`, `Button`, `Every`) is a top-level `final` or is written directl
 anywhere else (a local variable, inside a callback, a non-`final` variable) it is rejected. Its arguments are
 compile-time constants: the pin like any constant, the interval a `Duration(…)` with constant arguments adding up
 to a whole number of milliseconds from 1 to 2147483647. Each pin belongs to one widget. Every top-level widget is
-listed in `children` exactly once, or it would never be set up and polled. A top-level widget's callback may only
+listed in `children` exactly once, or it would never be set up and polled (a `Watch`, which has nothing to set up
+or poll, would never run when its signal changes, and its message says so). A top-level widget's callback may only
 use widgets declared above it. A widget handle can only be listed in `children` or used to call its methods
-(`led.toggle()`); it cannot be stored, compared, or passed.
+(`led.toggle()`); it cannot be stored, compared, or passed. `Watch` is a widget and follows all of these rules. A
+`Led` bound to a signal (`Led(pin: 13, on: flag)`) is driven only by that signal, so calling `on()`, `off()`,
+`toggle()` or `set()` on it is rejected.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -677,12 +693,12 @@ input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
 ```
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
-`e022_declaration_order`, `e022_handle_uses`, `e022_durations`.)
+`e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`, `e022_bound_led`.)
 
 ## E023: `delay()` in a widget callback
 
 Widget callbacks run inside the generated `loop()`, which polls every button and timer. `delay()` would stop all of
-them while it waits, so it is rejected in a callback, and in any of your functions that a callback calls, directly
+them while it waits, so it is rejected in a callback (including a `Watch` callback), and in any of your functions that a callback calls, directly
 or through other functions. Plain `setup()`/`loop()` sketches keep `delay()`.
 
 ```dart
@@ -714,4 +730,118 @@ input.dart:7:3: error[E023]: 'delay()' runs inside a widget callback (Button's o
   = help: Time things with an Every widget instead, keeping state in a top-level variable between ticks.
 ```
 
-(Golden tests: `test/golden/e023_delay_direct`, `e023_delay_indirect`.)
+(Golden tests: `test/golden/e023_delay_direct`, `e023_delay_indirect`, `e023_delay_watch`.)
+
+## E024: Signal misuse
+
+A signal (`Signal`, `Computed`) is a top-level `final` initialized by its constructor, and it is used only through
+`.value`. Rejected: a non-`final` or `const` signal, a signal created anywhere else (a local, a callback), a signal
+used as a value (stored in another variable, compared, passed, printed, returned), a local, parameter or return
+value of a signal type, and a `Watch` whose first argument is not the name of a top-level signal. The C++ signal is
+a global, allocated once; anything else would need references or the heap. Uses of a declaration that was already
+rejected are not reported again, and a signal used as a value is not also E009.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+final count = Signal<int>(0);
+var total = Signal<int>(0);
+
+void main() => runDevice(
+      Device(
+        board: Uno(),
+        children: [
+          Button(
+              pin: 2,
+              onPressed: () {
+                Serial.println(count);
+              }),
+        ],
+      ),
+    );
+```
+
+```text
+input.dart:4:5: error[E024]: the signal 'total' must be declared `final`.
+  = help: Write `final total = Signal<int>(0);`. Signals are created once, as global variables.
+input.dart:13:32: error[E024]: the signal 'count' is used as a value; a signal can only be read or written through `.value`.
+  = help: Write `count.value`.
+```
+
+(Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`, `e024_watch_source`, `e024_led_sink`,
+`e024_computed_placement`.)
+
+## E025: Reactive cycle
+
+A `Watch` callback writes, directly or through functions it calls, the signal it watches, or a signal whose Watches
+lead back to it (`Watch(a)` writes `b`, `Watch(b)` writes `a`). Changes are delivered once per `loop()` pass, so such
+a program would deliver on every pass for ever. A Computed counts as depending on what it reads, so a Watch of a
+Computed that writes one of its signals is a cycle too (`isOdd reads count → Watch(isOdd) → count`; the message then
+says the Watch *could* run again, since it repeats only while the Computed's value keeps changing). Each cycle is
+reported once, at its first write in source order, with the path from the Watch.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+final count = Signal<int>(0);
+
+void bump(int v) {
+  count.value = v + 1;
+}
+
+void main() => runDevice(
+      Device(
+        board: Uno(),
+        children: [
+          Watch(count, (v) {
+            bump(v);
+          }),
+        ],
+      ),
+    );
+```
+
+```text
+input.dart:6:3: error[E025]: this write closes a cycle: Watch(count) → bump() → count, so the Watch would run again after every delivery.
+  = help: Write 'count' where the change starts, e.g. in a Button callback, or derive the value with a Computed.
+```
+
+(Golden tests: `test/golden/e025_self_write`, `e025_cycle`, `e025_indirect`, `e025_computed_cycle`.)
+
+## E026: `Computed` rules
+
+The closure of a `Computed` is a single `=>` expression over `.value` of signals and Computeds declared above it,
+literals, constants (`const` and `final` values), `Uint8(…)`/`Uint16(…)`/`Int16(…)`, and the subset's operators.
+Rejected: a block, async or generator body, any call (including `analogRead`), a mutable top-level variable (the
+Computed would not see it change), and a signal or Computed declared below it or itself (which is also what rules
+out cycles). An assignment is E002, as anywhere inside an expression.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+int offset = 5;
+final count = Signal<int>(0);
+final total = Computed(() => count.value + offset);
+final twice = Computed(() => later.value * 2);
+final later = Signal<int>(0);
+
+void main() => runDevice(
+      Device(
+        board: Uno(),
+        children: [
+          Every(Duration(seconds: 1), () {
+            Serial.println(total.value + twice.value);
+          }),
+        ],
+      ),
+    );
+```
+
+```text
+input.dart:5:44: error[E026]: a Computed can only read signals and Computeds declared above it, and constants; 'offset' is a mutable variable, so the Computed would not see it change.
+  = help: Make 'offset' a Signal, or a `const`.
+input.dart:6:30: error[E026]: a Computed can only read signals and Computeds declared above it; 'later' is declared on line 7.
+  = help: Move the declaration of 'later' above 'twice'.
+```
+
+(Golden tests: `test/golden/e026_computed_body`, `e026_computed_reads`.)

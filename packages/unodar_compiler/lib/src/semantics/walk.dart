@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 
 import 'elements.dart';
+import 'signals.dart';
 import 'widgets.dart';
 
 /// Traversal of the user's program in the shape the subset understands. Every validator rule and the lowering
@@ -177,6 +178,10 @@ List<Expression> childExpressions(Expression expression) => switch (expression) 
           condition,
           thenExpression,
           elseExpression,
+        ],
+      // A Computed's closure: its single expression is compiled, so every expression rule checks it.
+      FunctionExpression() when isComputedClosure(expression) => [
+          if (computedExpression(expression) case final body?) body,
         ],
       MethodInvocation(:final argumentList) || InstanceCreationExpression(:final argumentList) => [
           for (final argument in argumentList.arguments) argument.argumentExpression,

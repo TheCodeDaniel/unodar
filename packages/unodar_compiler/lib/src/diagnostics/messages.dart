@@ -37,6 +37,14 @@ abstract final class Diagnostics {
                 "`cpp('$cppExample;');`. See docs/SUBSET.md for the unodar API.",
       );
 
+  /// A method of a widget that `package:unodar` declares but this compiler version does not support yet (E003).
+  static Diagnostic unsupportedWidgetMethod(String widget, String method, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unknownFunction,
+        location: at,
+        message: "the $widget method '$method' is not supported in this version.",
+        suggestion: 'See "Widgets" in docs/SUBSET.md for the methods each widget supports.',
+      );
+
   static Diagnostic argumentOutOfRange(
     String value,
     String parameter,
@@ -486,6 +494,15 @@ abstract final class Diagnostics {
         suggestion: 'Add `$name` to `children: [...]` in main().',
       );
 
+  /// A Watch is not set up or polled: it only runs when its signal changes, from the generated delivery.
+  static Diagnostic watchNotInChildren(String name, String signal, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the Watch '$name' is not listed in Device.children, so its callback would never run when '$signal' "
+            'changes.',
+        suggestion: 'Add `$name` to `children: [...]` in main().',
+      );
+
   static Diagnostic widgetListedTwice(String name, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,
@@ -514,6 +531,99 @@ abstract final class Diagnostics {
         location: at,
         message: "$position of the widget type '$type' is not supported. Widgets can only be top-level `final`s.",
         suggestion: 'Use the top-level widget directly instead of passing it around.',
+      );
+
+  static Diagnostic signalNotFinal(String name, String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: "the signal '$name' must be declared `final`.",
+        suggestion: 'Write `$example`. Signals are created once, as global variables.',
+      );
+
+  static Diagnostic signalCreationPosition(String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: 'a signal can only be created as the initializer of a top-level `final`.',
+        suggestion: 'Declare it at the top level, e.g. `$example`, and read or write its `.value` here.',
+      );
+
+  static Diagnostic signalUse(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: "the signal '$name' is used as a value; a signal can only be read or written through `.value`.",
+        suggestion: 'Write `$name.value`.',
+      );
+
+  static Diagnostic boundWidgetMethod(String widget, String name, String signal, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the $widget '$name' follows the signal '$signal', so its methods cannot be called.",
+        suggestion: 'Write the signal instead, e.g. `$signal.value = true;`.',
+      );
+
+  static Diagnostic signalArgument(String parameter, String widget, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: 'the $parameter of $widget must be the name of a top-level signal.',
+        suggestion: 'Declare the signal at the top level, e.g. `final count = Signal<int>(0);`, and pass its name.',
+      );
+
+  /// [path] is `Watch(count) → bump() → count`.
+  /// Through a Computed, the Watch runs again only when the Computed's value changes, hence "could".
+  static Diagnostic reactiveCycle(String path, String signal, SourceLocation at, {bool throughComputed = false}) =>
+      Diagnostic(
+        code: DiagnosticCode.reactiveCycle,
+        location: at,
+        message:
+            'this write closes a cycle: $path, so the Watch ${throughComputed ? 'could' : 'would'} run again after '
+            'every delivery.',
+        suggestion: "Write '$signal' where the change starts, e.g. in a Button callback, or derive the value with a "
+            'Computed.',
+      );
+
+  static Diagnostic computedBody(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: 'the closure of a Computed must be a single expression, `() => …`.',
+        suggestion: 'Write it as `() => expression`: no statements, no async.',
+      );
+
+  static Diagnostic computedCall(String call, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: "a Computed cannot call '$call': it may only read signals, Computeds and constants, so that it can "
+            'be evaluated at any time.',
+        suggestion: 'Store the value in a Signal from a Button or Every callback, and compute from that signal.',
+      );
+
+  static Diagnostic computedMutable(String variable, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: "a Computed can only read signals and Computeds declared above it, and constants; '$variable' is a "
+            'mutable variable, so the Computed would not see it change.',
+        suggestion: "Make '$variable' a Signal, or a `const`.",
+      );
+
+  static Diagnostic computedForward(String computed, String signal, int line, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: "a Computed can only read signals and Computeds declared above it; '$signal' is declared on line "
+            '$line.',
+        suggestion: "Move the declaration of '$signal' above '$computed'.",
+      );
+
+  static Diagnostic computedSelf(String computed, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: "a Computed cannot read itself ('$computed').",
+        suggestion: 'Compute it from signals and Computeds declared above it.',
+      );
+
+  static Diagnostic signalTypePosition(String position, String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: "$position of the signal type '$type' is not supported. Signals can only be top-level `final`s.",
+        suggestion: 'Use the top-level signal and its `.value` directly instead of passing it around.',
       );
 
   /// [path] is `Button's onPressed → blink()`.

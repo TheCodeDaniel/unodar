@@ -1,0 +1,6 @@
+input.dart:4:22: error[E015]: the initializer of top-level variable 'level' is not a compile-time constant.
+  = help: Use only literals, unodar constants, and `const` variables declared above it; assign other values in setup().
+input.dart:5:22: error[E015]: the initializer of top-level variable 'count' is not a compile-time constant.
+  = help: Use only literals, unodar constants, and `const` variables declared above it; assign other values in setup().
+input.dart:6:22: error[E015]: the initializer of top-level variable 'limit' refers to 'maximum', which is declared later.
+  = help: Move the declaration of 'maximum' above 'limit'.

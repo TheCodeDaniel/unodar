@@ -1,0 +1,4 @@
+input.dart:5:7: error[E014]: 'button_0' cannot be used as a name: its callback would have the same C++ name, unodar_button_0_onPressed, as the callback of the Button on line 22.
+  = help: Rename it, e.g. `button0`.
+input.dart:11:7: error[E014]: 'every_0' cannot be used as a name: its callback would have the same C++ name, unodar_every_0_callback, as the callback of the Every on line 32.
+  = help: Rename it, e.g. `every0`.

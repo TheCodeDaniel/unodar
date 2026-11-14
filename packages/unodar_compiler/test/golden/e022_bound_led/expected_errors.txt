@@ -1,0 +1,4 @@
+input.dart:16:24: error[E022]: the Led 'status' follows the signal 'lit', so its methods cannot be called.
+  = help: Write the signal instead, e.g. `lit.value = true;`.
+input.dart:17:24: error[E022]: the Led 'status' follows the signal 'lit', so its methods cannot be called.
+  = help: Write the signal instead, e.g. `lit.value = true;`.

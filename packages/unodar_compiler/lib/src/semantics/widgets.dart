@@ -5,6 +5,7 @@ import 'package:analyzer/dart/element/type.dart';
 import '../api/api_resolution.dart';
 import 'constant_evaluator.dart';
 import 'elements.dart';
+import 'signals.dart';
 
 /// The static widget tree (docs/SUBSET.md "Widgets: runDevice"), read from `main()` without running it.
 ///
@@ -187,11 +188,15 @@ InstanceCreationExpression? widgetOfCallback(FunctionExpression closure) {
 /// `Every`'s callback). Callbacks are not C++ constructor arguments.
 bool isCallbackArgument(Argument argument) => argument.correspondingParameter?.type is FunctionType;
 
-/// The arguments of a widget constructor that are passed to C++ (all but the callbacks), in source order.
+/// The arguments of a widget constructor that are passed to C++ (all but the callbacks and the signal arguments),
+/// in source order.
 List<Argument> cppArgumentsOf(InstanceCreationExpression creation) => [
       for (final argument in creation.argumentList.arguments)
-        if (!isCallbackArgument(argument)) argument,
+        if (isCppConstructorArgument(argument)) argument,
     ];
+
+/// Whether [argument] of a widget constructor is passed to its C++ constructor: neither a callback nor a signal.
+bool isCppConstructorArgument(Argument argument) => !isCallbackArgument(argument) && !isSignalArgument(argument);
 
 /// The callback closure of a widget constructor, or null.
 FunctionExpression? callbackOf(InstanceCreationExpression creation) => [

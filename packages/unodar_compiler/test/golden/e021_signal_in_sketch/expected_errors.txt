@@ -1,0 +1,4 @@
+input.dart:3:15: error[E021]: a signal can only be used in a widget program, which has `void main() => runDevice(…)` instead of setup() and loop().
+  = help: Describe the device in main(), e.g. `void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, and remove setup() and loop(); or use pinMode() and digitalWrite() directly.
+input.dart:12:17: error[E021]: a signal can only be used in a widget program, which has `void main() => runDevice(…)` instead of setup() and loop().
+  = help: Describe the device in main(), e.g. `void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`, and remove setup() and loop(); or use pinMode() and digitalWrite() directly.

@@ -105,10 +105,20 @@ final class IrGlobal extends IrGlobalDeclaration {
 /// A statically allocated object of a bound C++ class: `Servo servo;`, `SoftwareSerial link(10, 11);`. Its
 /// constructor arguments are constant expressions, in C++ parameter order.
 final class IrBoundObject extends IrGlobalDeclaration {
-  const IrBoundObject({required super.name, required this.cppClass, this.arguments = const [], required super.line});
+  const IrBoundObject({
+    required super.name,
+    required this.cppClass,
+    this.templateArgument,
+    this.arguments = const [],
+    required super.line,
+  });
 
   /// The C++ class name, possibly qualified (`ns::Name`).
   final String cppClass;
+
+  /// The template argument of a class template, as an IR type the target names (`unodar::Signal<int32_t>`), or
+  /// null for a plain class.
+  final IrType? templateArgument;
   final List<IrExpression> arguments;
 }
 

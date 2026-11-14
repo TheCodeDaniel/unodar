@@ -1,0 +1,2 @@
+input.dart:7:3: error[E025]: this write closes a cycle: Watch(a) → b → Watch(b) → c → Watch(c) → a, so the Watch would run again after every delivery.
+  = help: Write 'a' where the change starts, e.g. in a Button callback, or derive the value with a Computed.

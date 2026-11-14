@@ -1,0 +1,4 @@
+input.dart:5:44: error[E026]: a Computed can only read signals and Computeds declared above it, and constants; 'offset' is a mutable variable, so the Computed would not see it change.
+  = help: Make 'offset' a Signal, or a `const`.
+input.dart:6:30: error[E026]: a Computed can only read signals and Computeds declared above it; 'later' is declared on line 7.
+  = help: Move the declaration of 'later' above 'twice'.

@@ -9,6 +9,7 @@ import '../diagnostics/diagnostics.dart';
 import '../emitter/cpp_names.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/signals.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
 import 'rules.dart';
@@ -26,8 +27,12 @@ final class InitializerRule implements ValidationRule {
       // No initializer: `int? x;` and `var x;` are E009, `late`/`external` E005, anything else an analyzer error.
       if (initializer == null) continue;
       if (subexpressions(initializer).any((e) => expressionIssue(e) != null)) continue; // Reported as E002/E012.
-      // A widget handle used as a value is E022.
-      if (subexpressions(initializer).any((e) => e is SimpleIdentifier && widgetClassOf(e.staticType) != null)) {
+      // A Computed: its expression is checked by E026 (what it may read, in which order), not as a constant.
+      if (computedCreation(initializer) != null) continue;
+      // A widget handle used as a value is E022, a signal used as a value E024.
+      if (subexpressions(initializer).any((e) =>
+          e is SimpleIdentifier &&
+          (widgetClassOf(e.staticType) != null || (isSignalType(e.staticType) && !_isSignalArgumentName(e))))) {
         continue;
       }
       // A bound object (`final link = SoftSerial(10, 11);`): each constructor argument must be constant. Any other
@@ -36,7 +41,11 @@ final class InitializerRule implements ValidationRule {
       // A widget's arguments are constant-checked by E022; only the declaration order is checked here, because they
       // are emitted in its C++ declaration.
       final isWidget = widgetCreation(initializer) != null;
-      if (isWidget) {
+      final signal = signalCreation(initializer);
+      if (signal != null) {
+        // A signal (`final count = Signal(0);`): its initial value must be constant (E015).
+        values = [signalInitialValue(signal)];
+      } else if (isWidget) {
         values = [
           for (final a in (initializer as InstanceCreationExpression).argumentList.arguments) a.argumentExpression
         ];
@@ -78,6 +87,7 @@ final class ReservedNameRule implements ValidationRule {
     for (final variable in topLevelVariables(unit)) {
       checkName(variable.name);
     }
+    _checkGeneratedCallbackNames(unit, context);
     // A binding class's Dart name is not emitted, but it may not shadow a unodar binding (`Servo`).
     for (final declaration in bindingClassDeclarations(unit)) {
       final name = declaration.namePart.typeName;
@@ -89,6 +99,12 @@ final class ReservedNameRule implements ValidationRule {
     for (final function in compiledFunctions(unit)) {
       if (!isEntryPoint(function)) checkName(function.name);
       for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
+        if (parameter.name case final name?) checkName(name);
+      }
+    }
+    // A Watch callback's parameter becomes a C++ parameter.
+    for (final callback in widgetCallbacks(unit)) {
+      for (final parameter in callback.parameters?.parameters ?? const <FormalParameter>[]) {
         if (parameter.name case final name?) checkName(name);
       }
     }
@@ -105,6 +121,40 @@ final class ReservedNameRule implements ValidationRule {
       }
     }
   }
+}
+
+/// A top-level widget whose callback would get the same C++ name as the callback of a widget written in
+/// `Device.children`: `button_0`'s is `unodar_button_0_onPressed`, and so is that of the first inline `Button`
+/// (object `unodar_button_0`). Reported at the top-level widget, the name the user chose (E014); only real clashes
+/// are reported, so `button_0` stays usable for a Led or when there is no inline Button.
+void _checkGeneratedCallbackNames(CompilationUnit unit, ValidationContext context) {
+  final device = deviceOf(unit);
+  if (device == null) return;
+  final inline = <String, InstanceCreationExpression>{
+    for (final child in widgetChildren(device, unit))
+      if (child.name.startsWith('unodar_'))
+        if (callbackOf(child.creation) case final closure?) callbackFunctionName(child.name, closure): child.creation,
+  };
+  for (final variable in topLevelVariables(unit)) {
+    final closure = switch (topLevelWidget(variable)) { final creation? => callbackOf(creation), null => null };
+    if (closure == null) continue;
+    final name = variable.name.lexeme;
+    final generated = callbackFunctionName(name, closure);
+    final other = inline[generated];
+    if (other == null) continue;
+    context.report(Diagnostics.reservedName(
+        name,
+        'its callback would have the same C++ name, $generated, as the callback of the '
+        '${widgetClassOf(other.staticType)!.name} on line ${context.at(other).line}',
+        withoutUnderscores(name),
+        context.at(variable.name)));
+  }
+}
+
+/// `button_0` → `button0`, `my_led_2` → `myLed2`, `_led_1` → `led1`.
+String withoutUnderscores(String name) {
+  final camel = name.replaceAllMapped(RegExp('_+(.?)'), (match) => match.group(1)!.toUpperCase());
+  return camel.isEmpty ? 'widget' : camel[0].toLowerCase() + camel.substring(1);
 }
 
 /// Why [name] is reserved, and a suggested rename (null if none fits), or null if the name is free.
@@ -176,7 +226,16 @@ final class EvaluationOrderRule implements ValidationRule {
     }
 
     for (final root in allRootExpressions(unit)) {
-      for (final expression in subexpressions(root)) {
+      // Not inside a Computed: it may not call anything (E026), so its operands have no order to keep.
+      final inComputed = <Expression>{};
+      walkExpression(root, (e) {
+        if (e is FunctionExpression && isComputedClosure(e)) {
+          inComputed.addAll(subexpressions(e));
+          return false;
+        }
+        return true;
+      });
+      for (final expression in subexpressions(root).where((e) => !inComputed.contains(e))) {
         switch (expression) {
           case BinaryExpression(:final operator, :final leftOperand, :final rightOperand)
               when operator.type != TokenType.AMPERSAND_AMPERSAND && operator.type != TokenType.BAR_BAR:
@@ -199,6 +258,9 @@ final class EvaluationOrderRule implements ValidationRule {
             !variable.isFinal &&
             !isUnodarElement(variable)) {
           group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
+        } else if (signalOfValue(leftHandSide) != null) {
+          // `count.value += next()` is `count.set(count.value() + next())`: the read and the call are unsequenced.
+          group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
         }
       }
     }
@@ -207,6 +269,12 @@ final class EvaluationOrderRule implements ValidationRule {
   /// `next()`, `Wire.read()`.
   static String _callText(MethodInvocation call) =>
       '${call.target == null ? '' : '${call.target!.toSource()}.'}${call.methodName.name}()';
+}
+
+/// `count` in `Watch(count, …)`: a widget's signal argument, checked for declaration order like other arguments.
+bool _isSignalArgumentName(SimpleIdentifier identifier) {
+  final argument = argumentOf(identifier);
+  return argument != null && isSignalArgument(argument);
 }
 
 bool _mutableGlobal(SimpleIdentifier identifier) => switch (referenceOf(identifier)) {
@@ -225,7 +293,11 @@ final class _Member {
     return _Member(
       calls.firstOrNull,
       calls.where((c) => userFunctionOf(c) != null).firstOrNull,
-      all.whereType<SimpleIdentifier>().where(_mutableGlobal).firstOrNull?.name,
+      // A signal's `.value` is mutable top-level state too.
+      [
+        for (final e in all)
+          if (e is SimpleIdentifier && _mutableGlobal(e)) e.name else if (signalOfValue(e) != null) e.toSource(),
+      ].firstOrNull,
     );
   }
 

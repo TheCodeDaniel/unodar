@@ -40,6 +40,26 @@ void main() {
     expect(_goalProgram, isA<void Function()>());
     expect(_handles, isA<void Function()>());
   });
+
+  // Phase 5 (docs/SUBSET.md "Signals"). Like the widgets, signals are declarations only: never executed here.
+  test('a Signal is a ReadonlySignal and not a widget; a Watch is a widget', () {
+    expect(_isSubtype<Signal<int>, ReadonlySignal<int>>(), isTrue);
+    expect(_isSubtype<Signal<int>, Widget>(), isFalse, reason: 'signals are state, never listed in children');
+    expect(_isSubtype<ReadonlySignal<int>, Signal<int>>(), isFalse, reason: 'read-only signals have no setter');
+    expect(_isSubtype<Watch<int>, Widget>(), isTrue);
+  });
+
+  test('a Computed is a ReadonlySignal, not a Signal (no setter) and not a widget', () {
+    expect(_isSubtype<Computed<bool>, ReadonlySignal<bool>>(), isTrue);
+    expect(_isSubtype<Computed<bool>, Signal<bool>>(), isFalse);
+    expect(_isSubtype<Computed<bool>, Widget>(), isFalse);
+  });
+
+  test('the Phase 5 signal program, Watch callbacks and signal writes type-check', () {
+    expect(_signalProgram, isA<void Function()>());
+    expect(_signalWrites, isA<void Function()>());
+    expect(_staticTypes, isA<void Function()>());
+  });
 }
 
 bool _isSubtype<S, T>() => <S>[] is List<T>;
@@ -70,4 +90,65 @@ void _handles() {
   _led.on();
   _led.off();
   _led.toggle();
+}
+
+// The Phase 5 signal program (docs/SUBSET.md "Signals", without `Computed`, which arrives in plan step 10).
+final _count = Signal<int>(0);
+final _ratio = Signal(0.5);
+final _lit = Signal(true);
+final _level = Signal(Uint8(3));
+final _shown = Led(pin: 12, on: _lit);
+final _logger = Watch(_count, (v) {
+  Serial.println(v);
+});
+
+void _signalProgram() => runDevice(
+      Device(
+        board: Uno(),
+        children: [
+          _shown,
+          _logger,
+          Watch(_ratio, (double r) {
+            _led.set(r > 0.5);
+          }),
+        ],
+      ),
+    );
+
+void _signalWrites() {
+  _count.value = _count.value + 1;
+  _count.value++;
+  _count.value--;
+  _count.value += 2;
+  _count.value -= 2;
+  _ratio.value = _ratio.value / 2;
+  _lit.value = !_lit.value;
+  _level.value = Uint8(_level.value + 1);
+  _led.set(_lit.value);
+}
+
+// Computed (plan step 10): its type is inferred from the expression; Watch and Led(on:) take it like a signal.
+final _isOdd = Computed(() => _count.value % 2 == 1);
+final _percent = Computed(() => _level.value * 100 ~/ 255);
+final _oddLed = Led(pin: 11, on: _isOdd);
+final _oddWatch = Watch(_isOdd, (bool odd) {
+  Serial.println(odd);
+});
+
+// Static types only, including the types inferred from each initial value: these typed list literals stop
+// compiling if a type is wrong.
+void _staticTypes() {
+  final ReadonlySignal<int> readOnly = _count;
+  final List<Object> checked = <Object>[
+    <Signal<int>>[_count],
+    <Signal<double>>[_ratio],
+    <Signal<bool>>[_lit],
+    <Signal<Uint8>>[_level],
+    <int>[readOnly.value],
+    <Widget>[_shown, _logger, _oddLed, _oddWatch],
+    <Computed<bool>>[_isOdd],
+    <Computed<int>>[_percent],
+    <ReadonlySignal<bool>>[_isOdd, _lit],
+  ];
+  checked.clear();
 }

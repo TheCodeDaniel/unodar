@@ -104,4 +104,65 @@ const sizeBudgets = <String, SizeBudget>{
   'widget_button': SizeBudget(baselineFlash: 2662, baselineRam: 208, maxFlash: 3500, maxRam: 219),
   // widget_every: three timers and their callbacks.
   'widget_every': SizeBudget(baselineFlash: 2392, baselineRam: 218, maxFlash: 3150, maxRam: 229),
+
+  // Fix found in Phase 5 step 4, 2026-11-14, same tool versions and limit rule; a first measurement of a new golden.
+  // bound_object_conversion: a Led whose pin is `Uint8(ledPin)` (the conversion is parenthesized in the C++
+  // declaration) and an Every; like widget_led plus a timer, no Serial.
+  'bound_object_conversion': SizeBudget(baselineFlash: 940, baselineRam: 19, maxFlash: 1250, maxRam: 30),
+
+  // Phase 5, 2026-11-14, same tool versions and limit rule. First measured with their goldens and reviewed together
+  // in step 12: all 35 positive goldens (Phases 1-5) re-measured equal to their baselines, so no limit changes.
+  //
+  // RAM is all static (arduino-cli's `data`), read per symbol with avr-nm and, for the anonymous bytes, with
+  // `avr-objdump -s -j .data`. Signal objects are the value plus a 1-byte mark (static_asserted in
+  // test/runtime/signals/signals.ino): Signal<int>/<double> 5 B, <Int16>/<Uint16> 3 B, <bool>/<Uint8> 2 B. A watched
+  // Computed<T> is a Signal<T> (its last delivered value); an unwatched Computed has no symbol (dropped by the
+  // linker). A Watch, a bound Led's binding, and unodar_deliver() have no symbol: 0 B. Programs that print with
+  // println also keep "\r\n\0" (3 B) in .data, and .data is padded to an even size (0-1 B). Per signal golden:
+  //   signal_state 232 B   Serial (157 B object + 18 B vtable) + core (9 B: timer0_millis 4, timer0_overflow_count
+  //                        4, timer0_fract 1) + Button 7 + Every 8 + signals
+  //                        count 5, ratio 5 (double), depth 3 (Int16), lit 2 (bool), level 2 (Uint8) = 17 B;
+  //                        plus 16 B of anonymous .data after the last symbol, read with `avr-objdump -s -j .data`:
+  //                        "nan\0inf\0ovf\0" (12 B, Print::printFloat's literals, kept in RAM by the core),
+  //                        "\r\n\0" (3 B, Print::println's line end) and 1 NUL byte that pads .data to an even
+  //                        size. Proof: without the one `Serial.print(ratio.value)` the build measures 220 B, and
+  //                        the three float strings are gone from the dump.
+  //   watch 206 B          Serial + core + two Buttons 14 + count 5 + "\r\n\0" 3; no symbol for either Watch: a
+  //                        Watch is 0 B
+  //   watch_order 210 B    Serial + core + Button 7 + three signals 15 + "\r\n\0" 3 + 1 padding byte; four
+  //                        Watches, 0 B
+  //   watch_chain 210 B    as watch_order: three Signal<int> 15 B, three Watches 0 B
+  //   led_set 202 B        Serial + core + Led 2 + Button 7 + count 5 + "\r\n\0" 3
+  //   led_sink 202 B       Serial + core + two Leds 4 + Button 7 + lit 2 + armed 2 + "\r\n\0" 3 + pad
+  //   watch_wildcard_parameter 23 B   core + Led 2 + Button 7 + count 5 (no Serial)
+  //   computed 214 B       Serial + core + Button 7 + count 5 + level 2 + 16 B of strings (as signal_state); its four
+  //                        Computeds are unwatched: 0 B
+  //   computed_watch 216 B Serial + core + count 5 + other 5 + isOdd 2 (watched) + Led 2 + two Buttons 14 + "\r\n\0"
+  //                        and the padding byte
+  'signal_state': SizeBudget(baselineFlash: 4134, baselineRam: 232, maxFlash: 5400, maxRam: 243),
+  // watch, watch_order: unodar_deliver() (snapshot, then dispatch) and Watch callbacks with a parameter.
+  'watch': SizeBudget(baselineFlash: 2686, baselineRam: 206, maxFlash: 3500, maxRam: 217),
+  'watch_order': SizeBudget(baselineFlash: 2744, baselineRam: 210, maxFlash: 3600, maxRam: 221),
+  // watch_chain: three Watches writing along a -> b -> c (a function on the way), no cycle (E025 passes it).
+  'watch_chain': SizeBudget(baselineFlash: 2780, baselineRam: 210, maxFlash: 3650, maxRam: 221),
+  // led_set: Led.set(bool) from a Watch (the maintainer's target example); RAM: Serial + core + Led 2 + Button 7 +
+  // count 5.
+  'led_set': SizeBudget(baselineFlash: 2632, baselineRam: 202, maxFlash: 3450, maxRam: 213),
+  // led_sink: two Leds bound to Signal<bool>s (one inline) and a Watch; RAM: Serial + core + Leds 4 + Button 7 +
+  // lit 2 + armed 2; a bound Led costs nothing beyond its own 2 B.
+  'led_sink': SizeBudget(baselineFlash: 2326, baselineRam: 202, maxFlash: 3050, maxRam: 213),
+  // watch_wildcard_parameter: a Watch callback `(_) { led.toggle(); }`, no Serial; RAM: core + Led 2 + Button 7 +
+  // count 5.
+  'watch_wildcard_parameter': SizeBudget(baselineFlash: 1250, baselineRam: 23, maxFlash: 1650, maxRam: 34),
+  // computed: four Computeds read from a callback (pull: one compute function each). RAM: Serial + core + Button 7 +
+  // count 5 + level 2 + 16 B of .data strings (float printing, println); avr-nm shows no symbol for any of the four
+  // Computed objects: one that nothing watches is dropped by the linker, 0 B.
+  'computed': SizeBudget(baselineFlash: 4054, baselineRam: 214, maxFlash: 5300, maxRam: 225),
+  // computed_watch: a watched Computed<bool> (re-evaluated in unodar_deliver()) with a Watch and a bound Led. RAM:
+  // Serial + core + count 5 + other 5 + isOdd 2 (a watched Computed has its object: the last delivered value and
+  // the mark, as a Signal of its type) + Led 2 + two Buttons 14 + "\r\n\0" and the .data padding byte.
+  'computed_watch': SizeBudget(baselineFlash: 3274, baselineRam: 216, maxFlash: 4300, maxRam: 227),
+  // counter: examples/counter, the Phase 5 goal program (step 13); first measurement. RAM (avr-nm): Serial 175 +
+  // core 9 + count 5 + isOdd 2 (watched by the Led) + Led 2 + two Buttons 14 + "\r\n\0" 3.
+  'counter': SizeBudget(baselineFlash: 2894, baselineRam: 210, maxFlash: 3800, maxRam: 221),
 };

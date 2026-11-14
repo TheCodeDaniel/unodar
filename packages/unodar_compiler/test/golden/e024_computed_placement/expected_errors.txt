@@ -1,0 +1,6 @@
+input.dart:4:5: error[E024]: the signal 'loose' must be declared `final`.
+  = help: Write `final loose = Computed(() => count.value + 1);`. Signals are created once, as global variables.
+input.dart:5:7: error[E009]: the type 'num' is not supported in this version. Only int, double, bool, Uint8, Uint16, and Int16 are supported.
+  = help: Use one of the supported types; see docs/SUBSET.md.
+input.dart:14:31: error[E024]: a signal can only be created as the initializer of a top-level `final`.
+  = help: Declare it at the top level, e.g. `final inner = Computed(() => count.value);`, and read or write its `.value` here.

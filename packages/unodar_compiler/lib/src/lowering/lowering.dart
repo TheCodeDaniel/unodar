@@ -9,6 +9,7 @@ import '../frontend/frontend.dart';
 import '../ir/ir.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
@@ -54,14 +55,19 @@ final class _Lowerer {
     final children = device == null ? const <WidgetChild>[] : widgetChildren(device, source.unit);
     final globals = [
       for (final variable in topLevelVariables(source.unit))
-        if (!_isExternal(variable)) _global(variable),
+        if (!_isExternal(variable) && !_isObjectlessWidget(variable.initializer)) _global(variable),
       // Widgets written in Device.children, after the top-level variables, in list order.
       for (final child in children)
-        if (identical(child.element, child.creation)) _widgetObject(child.name, child.creation),
+        if (identical(child.element, child.creation) && !_isObjectlessWidget(child.creation))
+          _widgetObject(child.name, child.creation),
     ];
     final names = {for (final (name, creation) in acceptedWidgets(source.unit)) creation: name};
     final bodies = <(int, IrFunction Function())>[
       for (final function in compiledFunctions(source.unit)) (function.offset, () => _function(function)),
+      // A Computed's function, at its declaration.
+      for (final variable in topLevelVariables(source.unit))
+        if (computedCreation(variable.initializer) case final creation? when topLevelSignal(variable) != null)
+          (variable.offset, () => _compute(variable, creation)),
       for (final callback in widgetCallbacks(source.unit))
         (
           callback.offset,
@@ -104,6 +110,11 @@ final class _Lowerer {
     return IrFunction(
       name: name,
       line: _line(closure),
+      // A Watch callback takes the value (`void unodar_watch_0_callback(int32_t v)`).
+      parameters: [
+        for (final parameter in closure.parameters?.parameters ?? const <FormalParameter>[])
+          IrParameter(parameter.name!.lexeme, _type(parameter.declaredFragment?.element.type, parameter)),
+      ],
       body: switch (body) {
         BlockFunctionBody(:final block) => _statements(block.statements),
         ExpressionFunctionBody(:final expression) => [_statementLevel(expression)],
@@ -121,9 +132,11 @@ final class _Lowerer {
         api.widgetOfType(child.creation.staticType) ?? (throw LoweringError('unregistered widget ${child.name}'));
     final device = deviceOfMain(main)!;
     final baud = namedArgument(device, 'serialBaud');
+    final deliver = _delivery(line, children);
     final serial = api.object('Serial')!;
     final begin = api.classOf(serial).method('begin')!;
     return [
+      if (deliver != null) deliver,
       IrFunction(name: 'setup', line: line, isEntryPoint: true, body: [
         // Opens Serial first, so that callbacks can print straight away (docs/SUBSET.md "The program").
         if (_usesSerial)
@@ -132,8 +145,11 @@ final class _Lowerer {
                   receiver: serial.cppName),
               line: baud == null ? line : _line(baud)),
         for (final child in children)
-          IrExpressionStatement(IrCall(widget(child).setup, const [], receiver: child.name),
-              line: _line(child.element)),
+          if (widget(child).hasObject)
+            IrExpressionStatement(IrCall(widget(child).setup, const [], receiver: child.name),
+                line: _line(child.element)),
+        // Delivers every signal's initial value (docs/SUBSET.md "When changes are delivered").
+        if (deliver != null) IrExpressionStatement(IrCall(deliver.name, const []), line: line),
       ]),
       IrFunction(name: 'loop', line: line, isEntryPoint: true, body: [
         // `if (button.pressed()) { unodar_button_onPressed(); }`
@@ -151,8 +167,109 @@ final class _Lowerer {
               ],
               line: _line(child.element),
             ),
+        if (deliver != null) IrExpressionStatement(IrCall(deliver.name, const []), line: line),
       ]),
     ];
+  }
+
+  /// A Watch is not a C++ object (its callback is called from `unodar_deliver()`).
+  bool _isObjectlessWidget(Expression? expression) {
+    final creation = widgetCreation(expression);
+    return creation != null && !(api.widgetOfType(creation.staticType)?.hasObject ?? true);
+  }
+
+  /// `unodar_deliver()`, or null when no signal is observed (by a Watch or a bound Led) (docs/SUBSET.md "When changes are delivered"). First, for
+  /// every watched signal in declaration order, its mark is taken and its value read into locals; then the Watches
+  /// of every changed signal run, signals in declaration order, Watches in `children` order, each with the value
+  /// taken first. A write made by a Watch is therefore delivered in the next pass. A watched Computed is
+  /// re-evaluated in the first half, after the signals it reads, so every Computed is settled before any observer
+  /// runs.
+  IrFunction? _delivery(int line, List<WidgetChild> children) {
+    // signal → its observers in children order: a Watch's callback, or a bound widget's sink (`led.set`).
+    final watches = <String, List<(IrCall Function(IrExpression value), WidgetChild)>>{};
+    for (final child in children) {
+      final widget = api.widgetOfType(child.creation.staticType)!;
+      for (final argument in child.creation.argumentList.arguments) {
+        if (!isSignalArgument(argument)) continue;
+        final source = argument.argumentExpression as SimpleIdentifier;
+        final IrCall Function(IrExpression) observer;
+        if (!widget.hasObject) {
+          final closure = callbackOf(child.creation) ?? (throw LoweringError('no callback for ${child.name}'));
+          final name = callbackFunctionName(child.name, closure);
+          observer = (value) => IrCall(name, [value]);
+        } else {
+          final sink = widget.sink ?? (throw LoweringError('${widget.className} has no sink'));
+          observer = (value) => IrCall(sink, [value], receiver: child.name);
+        }
+        (watches[source.name] ??= []).add((observer, child));
+      }
+    }
+    if (watches.isEmpty) return null;
+    // Top-level signals and Computeds in declaration order (which is also an order of their dependencies: a
+    // Computed only reads what is declared above it, E026).
+    final nodes = [
+      for (final variable in topLevelVariables(source.unit))
+        if (topLevelSignal(variable) case final creation?) (variable, creation),
+    ];
+    final byName = {for (final (variable, creation) in nodes) variable.name.lexeme: creation};
+    // The signals a Computed depends on, through the Computeds it reads.
+    final dependencies = <String, Set<String>>{};
+    Set<String> signalsOf(String name) => dependencies[name] ??= switch (byName[name]) {
+          final creation? when computedCreation(creation) != null => {
+              for (final read in computedReads(creation)) ...signalsOf(read),
+            },
+          _ => {name},
+        };
+    // Watched nodes, and every signal a watched Computed depends on (its mark decides the re-evaluation).
+    final needed = {
+      for (final name in watches.keys) ...[name, if (computedCreation(byName[name]) != null) ...signalsOf(name)],
+    };
+    String changed(String signal) => 'unodar_${signal}_changed';
+    String value(String signal) => 'unodar_${signal}_value';
+    IrExpression anyChanged(Iterable<String> signals) => signals
+        .map<IrExpression>((s) => IrVariable(changed(s), IrType.bool_))
+        .reduce((a, b) => IrBinary(IrBinaryOp.or, a, b, IrType.bool_));
+    final snapshot = <IrStatement>[];
+    final dispatch = <IrStatement>[];
+    for (final (variable, creation) in nodes) {
+      final name = variable.name.lexeme;
+      if (!needed.contains(name)) continue;
+      final type = _type(signalValueType(creation.staticType), creation);
+      final at = _line(variable.name);
+      if (computedCreation(creation) != null) {
+        // Re-evaluated when a signal it reads changed (always, if it reads none); `set()` marks it only if the value
+        // differs from the one it last delivered.
+        final recompute = IrExpressionStatement(
+            IrCall('set', [IrCall(computeFunctionName(name), const [], type: type)], receiver: name),
+            line: at);
+        final signals = signalsOf(name);
+        snapshot.add(signals.isEmpty ? recompute : IrIf(anyChanged(signals), [recompute], line: at));
+      }
+      snapshot
+        ..add(IrLocal(
+            name: changed(name),
+            type: IrType.bool_,
+            storage: IrStorage.final_,
+            initializer: IrCall('take', const [], receiver: name, type: IrType.bool_),
+            line: at))
+        ..add(IrLocal(
+            name: value(name),
+            type: type,
+            storage: IrStorage.final_,
+            initializer: IrCall('value', const [], receiver: name, type: type),
+            line: at));
+      if (watches[name] case final observers?) {
+        dispatch.add(IrIf(
+          IrVariable(changed(name), IrType.bool_),
+          [
+            for (final (observer, watch) in observers)
+              IrExpressionStatement(observer(IrVariable(value(name), type)), line: _line(watch.element)),
+          ],
+          line: at,
+        ));
+      }
+    }
+    return IrFunction(name: 'unodar_deliver', line: line, body: [...snapshot, ...dispatch]);
   }
 
   /// `external final TwoWire Wire;` names an existing C++ object: nothing is emitted for it.
@@ -185,6 +302,18 @@ final class _Lowerer {
   IrGlobalDeclaration _global(VariableDeclaration variable) {
     final initializer = variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'));
     if (widgetCreation(initializer) case final creation?) return _widgetObject(variable.name.lexeme, creation);
+    if (topLevelSignal(variable) case final creation?) {
+      // `final count = Signal<int>(0);` → `unodar::Signal<int32_t> count(0);` (docs/SUBSET.md "Signals"). A Computed's
+      // object holds the value it last delivered, starting at T's zero: `unodar::Signal<bool> isOdd(false);`.
+      final type = _type(signalValueType(creation.staticType), creation);
+      return IrBoundObject(
+        name: variable.name.lexeme,
+        cppClass: 'unodar::Signal',
+        templateArgument: type,
+        arguments: [signalCreation(creation) != null ? _expression(signalInitialValue(creation)) : _zero(type)],
+        line: _line(variable.name),
+      );
+    }
     final cls = api.classOfType(variable.declaredFragment?.element.type);
     if (cls != null) {
       // A bound object: `final link = SoftSerial(10, 11);` → `SoftwareSerial link(10, 11);`.
@@ -328,10 +457,61 @@ final class _Lowerer {
               PostfixExpression(operand: SimpleIdentifier(:final name), :final operator)
           when isIncrementOrDecrement(expression):
         return IrIncrement(name, decrement: operator.type == TokenType.MINUS_MINUS, line: line);
+      // Signal writes: `count.value = e` → `count.set(e)`; `+=`, `-=`, `++`, `--` → `count.set(count.value() ± e)`.
+      case AssignmentExpression(:final leftHandSide, :final operator, :final rightHandSide)
+          when signalOfValue(leftHandSide) != null:
+        final signal = signalOfValue(leftHandSide)!;
+        final value = _expression(rightHandSide);
+        return _signalSet(
+            signal,
+            switch (operator.type) {
+              TokenType.EQ => value,
+              TokenType.PLUS_EQ => IrBinary(IrBinaryOp.add, _signalRead(signal), value, _typeOf(expression)),
+              TokenType.MINUS_EQ => IrBinary(IrBinaryOp.subtract, _signalRead(signal), value, _typeOf(expression)),
+              _ => throw LoweringError('unsupported assignment ${expression.toSource()}'),
+            },
+            line);
+      case PrefixExpression(:final operand, :final operator) || PostfixExpression(:final operand, :final operator)
+          when isIncrementOrDecrement(expression) && signalOfValue(operand) != null:
+        final signal = signalOfValue(operand)!;
+        final type = _type(signalValueTypeOfName(signal), operand);
+        final one = type == IrType.float32 ? const IrDoubleLiteral(1) : const IrIntLiteral(1);
+        final op = operator.type == TokenType.MINUS_MINUS ? IrBinaryOp.subtract : IrBinaryOp.add;
+        return _signalSet(signal, IrBinary(op, _signalRead(signal), one, type), line);
       default:
         throw LoweringError('unsupported statement-level expression ${expression.toSource()}');
     }
   }
+
+  /// `count.value()`; for a Computed its expression, `unodar_isOdd_compute()`, so a read is never out of date.
+  IrCall _signalRead(SimpleIdentifier signal) {
+    final type = _type(signalValueTypeOfName(signal), signal);
+    return isComputedName(signal)
+        ? IrCall(computeFunctionName(signal.name), const [], type: type)
+        : IrCall('value', const [], receiver: signal.name, type: type);
+  }
+
+  /// `bool unodar_isOdd_compute() { return …; }` for `final isOdd = Computed(() => …);`.
+  IrFunction _compute(VariableDeclaration variable, InstanceCreationExpression creation) {
+    final expression =
+        computedExpression(computedClosure(creation)!) ?? (throw LoweringError('Computed body of ${variable.name}'));
+    return IrFunction(
+      name: computeFunctionName(variable.name.lexeme),
+      line: _line(variable.name),
+      returnType: _type(signalValueType(creation.staticType), creation),
+      body: [IrReturn(_expression(expression), line: _line(expression))],
+    );
+  }
+
+  static IrExpression _zero(IrType type) => switch (type) {
+        IrType.bool_ => const IrBoolLiteral(false),
+        IrType.float32 => const IrDoubleLiteral(0),
+        _ => const IrIntLiteral(0),
+      };
+
+  /// `count.set(value);`.
+  IrStatement _signalSet(SimpleIdentifier signal, IrExpression value, int line) =>
+      IrExpressionStatement(IrCall('set', [value], receiver: signal.name), line: line);
 
   // -------------------------------------------------------------------------------------------------------------
   // Expressions
@@ -371,6 +551,8 @@ final class _Lowerer {
         );
       case MethodInvocation():
         return _call(expression);
+      case PrefixedIdentifier() || PropertyAccess() when signalOfValue(expression) != null:
+        return _signalRead(signalOfValue(expression)!);
       // `Every`'s interval, validated (E022): its length in milliseconds.
       case InstanceCreationExpression() when isWidgetInterval(expression):
         return switch (intervalOf(expression, const ConstantEvaluator())) {

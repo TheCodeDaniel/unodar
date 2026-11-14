@@ -1,0 +1,8 @@
+input.dart:5:14: error[E024]: the signal 'count' is used as a value; a signal can only be read or written through `.value`.
+  = help: Write `count.value`.
+input.dart:14:32: error[E024]: the signal 'count' is used as a value; a signal can only be read or written through `.value`.
+  = help: Write `count.value`.
+input.dart:15:21: error[E024]: the signal 'count' is used as a value; a signal can only be read or written through `.value`.
+  = help: Write `count.value`.
+input.dart:15:30: error[E024]: the signal 'other' is used as a value; a signal can only be read or written through `.value`.
+  = help: Write `other.value`.

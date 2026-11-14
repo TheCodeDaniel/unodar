@@ -8,6 +8,7 @@ import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
@@ -74,13 +75,14 @@ final class StatementRule implements ValidationRule {
         break;
       case AssignmentExpression(:final operator) when !supportedAssignmentOperators.contains(operator.type):
         unsupported('the `${operator.lexeme}` operator', compoundAssignmentHelp);
-      case AssignmentExpression(:final leftHandSide) when leftHandSide is! SimpleIdentifier:
+      case AssignmentExpression(:final leftHandSide)
+          when leftHandSide is! SimpleIdentifier && !_isSignalWrite(leftHandSide):
         unsupported('an assignment to `${leftHandSide.toSource()}`', 'Assign to a variable name.');
       case AssignmentExpression():
         break;
       case PrefixExpression(:final operand) || PostfixExpression(:final operand)
           when isIncrementOrDecrement(expression):
-        if (operand is! SimpleIdentifier) {
+        if (operand is! SimpleIdentifier && !_isSignalWrite(operand)) {
           unsupported('`++`/`--` on `${operand.toSource()}`', 'Apply `++` and `--` to a variable name.');
         }
       case ThrowExpression():
@@ -91,6 +93,10 @@ final class StatementRule implements ValidationRule {
     }
   }
 }
+
+/// `count.value` as an assignment target (`count.value = e`, `count.value++`). Whether `count` itself may be used is
+/// for the signal rule (E024); a read-only signal has no setter, which the analyzer reports (E007).
+bool _isSignalWrite(Expression target) => signalOfValue(target) != null;
 
 /// Expression kinds and operators in value positions (E002), closures and function references (E012).
 final class ExpressionRule implements ValidationRule {
@@ -162,6 +168,9 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     // A widget is allowed where E022 says (top-level `final`, or in Device.children); Device and Uno only in main().
     case InstanceCreationExpression(:final staticType) when widgetClassOf(staticType) != null:
       return null;
+    // A signal is created where E024 says (a top-level `final` initializer) and only in a widget program (E021).
+    case InstanceCreationExpression() when signalObjectCreation(expression) != null:
+      return null;
     case InstanceCreationExpression(:final staticType)
         when isUnodarClass(staticType, 'Device') || isUnodarClass(staticType, 'Uno'):
       final name = isUnodarClass(staticType, 'Device') ? 'Device(…)' : 'Uno()';
@@ -174,12 +183,17 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
               'Only Uint8(…), Uint16(…), Int16(…), and binding classes can be constructed in this version.');
     case FunctionExpression() when widgetOfCallback(expression) != null:
       return null; // A widget callback: its body is compiled like a function body (CallbackRule checks its shape).
+    case FunctionExpression() when isComputedClosure(expression):
+      return null; // A Computed's closure: E026 checks its body, every expression rule its expression.
     case FunctionExpression():
       return Diagnostics.closure;
     case FunctionReference():
       return (at) => Diagnostics.functionReference(expression.function.toSource(), at);
     case AssignmentExpression():
       return e002('an assignment inside an expression', 'Assign in a statement of its own, then use the variable.');
+    // `count.value`: a signal read (where the signal may be used is for E024).
+    case PrefixedIdentifier() || PropertyAccess() when signalOfValue(expression) != null:
+      return null;
     case PrefixedIdentifier() || PropertyAccess():
       return e002("a property access ('${expression.toSource()}')",
           'Properties and methods of values are not supported in this version.');
@@ -270,12 +284,17 @@ final class ExpressionTypeRule implements ValidationRule {
         if (bindingClassOf(type) != null) return false;
         // A widget handle used as a value: E022.
         if (expression is SimpleIdentifier && widgetClassOf(type) != null) return false;
+        // A signal used as a value: E024. A signal's constructor: E024 checks its type argument, and its initial
+        // value is an ordinary expression. A read of a signal whose type is unsupported: E009 at its declaration.
+        if (isSignalType(type) && signalObjectCreation(expression) == null) return false;
+        if (signalObjectCreation(expression) != null) return true;
+        if (signalOfValue(expression) != null && irTypeOf(type) == null) return false;
         // A widget constructor: E021/E022 decide where it may appear; its arguments are ordinary expressions.
         if (expression is InstanceCreationExpression && widgetClassOf(type) != null) return true;
         // `Every`'s interval: a Duration whose int arguments are checked like any other expression.
         if (isWidgetInterval(expression)) return true;
-        // A widget callback: its body is checked as a root of its own.
-        if (expression is FunctionExpression) return false;
+        // A widget callback: its body is checked as a root of its own. A Computed's expression is a child here.
+        if (expression is FunctionExpression) return isComputedClosure(expression);
         if (type == null || irTypeOf(type) == null) {
           if (type != null) {
             context.report(
@@ -306,8 +325,16 @@ final class ApiCallRule implements ValidationRule {
     for (final call in allCalls(unit)) {
       if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null || isCppCall(call)) continue;
       if (isRunDeviceCall(call)) continue; // E021, from ExpressionRule.
-      // A method of a misplaced widget (a local): reported at its declaration (E022).
-      if (call.target != null && widgetClassOf(call.target!.staticType) != null) continue;
+      // A method of a misplaced widget (a local): reported at its declaration (E022). A method of an accepted
+      // top-level widget that the registry does not support (declared in package:unodar ahead of its compiler
+      // step) falls through to E003 below.
+      if (call.target case final target? when widgetClassOf(target.staticType) != null) {
+        final variable = target is SimpleIdentifier ? topLevelDeclarationOf(target, unit) : null;
+        if (variable == null || topLevelWidget(variable) == null) continue;
+        context.report(Diagnostics.unsupportedWidgetMethod(
+            widgetClassOf(target.staticType)!.name!, call.methodName.name, context.at(call.methodName)));
+        continue;
+      }
       // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
       if (call.target != null && bindingClassOf(call.target!.staticType) != null) continue;
       final target = call.target;
@@ -345,7 +372,13 @@ final class ArgumentRule implements ValidationRule {
       if (cls == null || constructor == null) continue;
       _check(ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), cls.dartName,
           creation.argumentList, context,
-          skip: widgetCreation(creation) == null ? null : isCallbackArgument);
+          skip: widgetCreation(creation) == null
+              ? null
+              : (argument) =>
+                  isCallbackArgument(argument) ||
+                  (isSignalArgument(argument) &&
+                      (context.api.widgetOfType(creation.staticType)?.signals ?? const [])
+                          .contains(argument.correspondingParameter?.name)));
     }
   }
 
@@ -354,7 +387,7 @@ final class ArgumentRule implements ValidationRule {
     final positional = function.positionalParameters;
     var index = 0;
     for (final argument in list.arguments) {
-      if (skip != null && skip(argument)) continue; // A widget callback is not a C++ argument.
+      if (skip != null && skip(argument)) continue; // Widget callbacks and signals are not C++ arguments.
       final ApiParameter parameter;
       if (argument is NamedArgument) {
         final named = function.namedParameter(argument.name.lexeme);

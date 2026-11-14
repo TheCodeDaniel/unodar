@@ -1,0 +1,16 @@
+input.dart:4:5: error[E024]: the signal 'total' must be declared `final`.
+  = help: Write `final total = Signal<int>(0);`. Signals are created once, as global variables.
+input.dart:6:10: error[E024]: a parameter of the signal type 'Signal<int>' is not supported. Signals can only be top-level `final`s.
+  = help: Use the top-level signal and its `.value` directly instead of passing it around.
+input.dart:8:1: error[E024]: a return value of the signal type 'Signal<int>' is not supported. Signals can only be top-level `final`s.
+  = help: Use the top-level signal and its `.value` directly instead of passing it around.
+input.dart:8:23: error[E024]: the signal 'count' is used as a value; a signal can only be read or written through `.value`.
+  = help: Write `count.value`.
+input.dart:11:17: error[E024]: a signal can only be created as the initializer of a top-level `final`.
+  = help: Declare it at the top level, e.g. `final local = Signal(1);`, and read or write its `.value` here.
+input.dart:12:3: error[E024]: a local variable of the signal type 'Signal<int>' is not supported. Signals can only be top-level `final`s.
+  = help: Use the top-level signal and its `.value` directly instead of passing it around.
+input.dart:12:23: error[E024]: the signal 'count' is used as a value; a signal can only be read or written through `.value`.
+  = help: Write `count.value`.
+input.dart:24:31: error[E024]: a signal can only be created as the initializer of a top-level `final`.
+  = help: Declare it at the top level, e.g. `final inner = Signal(true);`, and read or write its `.value` here.

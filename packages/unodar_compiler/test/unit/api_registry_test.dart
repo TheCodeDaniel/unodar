@@ -7,6 +7,7 @@ import 'package:unodar_compiler/src/api/api_registry.dart';
 import 'package:unodar_compiler/src/api/api_resolution.dart';
 import 'package:unodar_compiler/src/emitter/target.dart';
 import 'package:unodar_compiler/src/ir/ir.dart';
+import 'package:unodar_compiler/src/semantics/signals.dart';
 
 import '../resolve_snippet.dart';
 import '../test_paths.dart';
@@ -83,14 +84,36 @@ void loop() {}
           if (p.type is FunctionType) p.name
       ];
       expect(callbacks, [if (widget.callback != null) widget.callback], reason: name);
+      // Signal-typed parameters are the row's `signals` (`Led`'s `on`), not C++ constructor arguments either.
+      final signals = [
+        for (final p in constructor.formalParameters)
+          if (isSignalType(p.type)) p.name
+      ];
+      expect(signals, widget.signals, reason: name);
+      if (signals.isNotEmpty) expect(widget.sink, isNotNull, reason: '$name needs a sink method for its signal');
       expect([
         for (final p in constructor.formalParameters)
-          if (p.type is! FunctionType) (p.name, p.isNamed)
+          if (p.type is! FunctionType && !isSignalType(p.type)) (p.name, p.isNamed)
       ], [
         for (final p in cls.constructor!) (p.name, p.isNamed)
       ], reason: name);
     }
     expect(registry.reservedNames, containsAll(['Led', 'runDevice', 'Device', 'Uno', 'unodar']));
+  });
+
+  test('Watch is a widget row without a C++ object or class, whose callback is its function-typed parameter', () {
+    final watch = registry.widget('Watch')!;
+    expect(watch.hasObject, isFalse);
+    expect(watch.poll, isNull);
+    expect(registry.classNamed('Watch'), isNull);
+    final constructor = (unodar['Watch'] as ClassElement).constructors.single;
+    expect([
+      for (final p in constructor.formalParameters)
+        if (p.type is FunctionType) p.name
+    ], [
+      watch.callback
+    ]);
+    expect(registry.reservedNames, containsAll(['Watch', 'Signal', 'ReadonlySignal']));
   });
 
   test('every registered constant is a const in package:unodar', () {

@@ -1,0 +1,8 @@
+input.dart:6:24: error[E026]: the closure of a Computed must be a single expression, `() => …`.
+  = help: Write it as `() => expression`: no statements, no async.
+input.dart:9:31: error[E026]: a Computed cannot call 'readSensor()': it may only read signals, Computeds and constants, so that it can be evaluated at any time.
+  = help: Store the value in a Signal from a Button or Every callback, and compute from that signal.
+input.dart:10:33: error[E026]: a Computed cannot call 'analogRead()': it may only read signals, Computeds and constants, so that it can be evaluated at any time.
+  = help: Store the value in a Signal from a Button or Every callback, and compute from that signal.
+input.dart:11:44: error[E026]: a Computed cannot read itself ('again').
+  = help: Compute it from signals and Computeds declared above it.
