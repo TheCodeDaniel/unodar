@@ -135,4 +135,7 @@ const sizeBudgets = <String, SizeBudget>{
   // led_sink: two Leds bound to Signal<bool>s (one inline) and a Watch; RAM: Serial + core + Leds 4 + Button 7 +
   // lit 2 + armed 2; a bound Led costs nothing beyond its own 2 B.
   'led_sink': SizeBudget(baselineFlash: 2326, baselineRam: 202, maxFlash: 3050, maxRam: 213),
+  // watch_wildcard_parameter: a Watch callback `(_) { led.toggle(); }`, no Serial; RAM: core + Led 2 + Button 7 +
+  // count 5.
+  'watch_wildcard_parameter': SizeBudget(baselineFlash: 1250, baselineRam: 23, maxFlash: 1650, maxRam: 34),
 };

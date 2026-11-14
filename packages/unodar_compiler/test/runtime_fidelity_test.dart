@@ -502,6 +502,45 @@ void main() {
       });
     });
 
+    group('a Watch callback with a `_` parameter (golden watch_wildcard_parameter, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      const pins = ['D2=low@300', 'D2=open@500'];
+
+      Future<List<String>> highs(String headerText) async {
+        final result =
+            await Compiler().compile(fromPackage('test', 'golden', 'watch_wildcard_parameter', 'input.dart'));
+        if (result is! CompileSuccess) fail('watch_wildcard_parameter did not compile with unodar: $result');
+        final build =
+            await compileSketch('watch_wildcard_parameter', result.cpp, files: {'unodar_widgets.h': headerText});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        final run = await simulate(build.hexPath, pins: pins, until: null, cycles: 600 * 16000);
+        printOnFailure(run.pinLog.join('\n'));
+        return [
+          for (final line in run.pinLog)
+            if (line.endsWith(' D13 high') || line.endsWith(' D13 low')) line
+        ];
+      }
+
+      test('the callback runs at the setup delivery (LED on) and after the press (LED off)', () async {
+        gate.check();
+        final changes = await highs(header);
+        // LOW at begin(), HIGH from the setup delivery, LOW 50 ms after the press settles at 300 ms.
+        expect(changes.map((l) => l.split(' ').last), ['low', 'high', 'low']);
+        expect(double.parse(changes[1].split(' ').first), lessThan(1));
+        expect(double.parse(changes[2].split(' ').first), allOf(greaterThanOrEqualTo(349), lessThan(352)));
+      });
+
+      test('negative control: with no initial delivery the LED is not lit at boot', () async {
+        gate.check();
+        expect(header, contains('value_(initial), changed_(true)'));
+        final changes =
+            await highs(header.replaceAll('value_(initial), changed_(true)', 'value_(initial), changed_(false)'));
+        expect(changes.map((l) => l.split(' ').last), ['low', 'high']);
+        expect(double.parse(changes[1].split(' ').first), greaterThan(300));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.
