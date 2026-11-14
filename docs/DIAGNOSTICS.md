@@ -404,7 +404,9 @@ input.dart:13:17: error[E013]: 'next()' may run before or after 'count' is read 
 A user-declared name (top-level variable, function, parameter, or local) that would collide with C++ or the Arduino
 core in the generated code: a C++ keyword, a unodar API name, an Arduino core or avr-libc function or macro, an
 ALL-CAPS name, or a name reserved by C/C++ or unodar (`_t` suffix, `__`, `$`, `_` plus upper-case, `unodar_`
-prefix). See the Names section of `docs/SUBSET.md`.
+prefix). See the Names section of `docs/SUBSET.md`. Also a top-level widget whose generated callback would get the
+same C++ name as the callback of a widget written in `children`: a `Button` named `button_0` and the first inline
+`Button` would both have `unodar_button_0_onPressed` (only reported when that inline widget exists).
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -430,7 +432,7 @@ input.dart:8:7: error[E014]: 'and' cannot be used as a name: it is a C++ keyword
 ```
 
 (Golden tests: `test/golden/e014_all_caps`, `e014_arduino_name`, `e014_cpp_keyword`, `e014_api_name`,
-`e014_reserved_pattern`.)
+`e014_reserved_pattern`, `e014_generated_name`.)
 
 ## E015: Top-level initializer is not a compile-time constant
 

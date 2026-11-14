@@ -78,6 +78,7 @@ final class ReservedNameRule implements ValidationRule {
     for (final variable in topLevelVariables(unit)) {
       checkName(variable.name);
     }
+    _checkGeneratedCallbackNames(unit, context);
     // A binding class's Dart name is not emitted, but it may not shadow a unodar binding (`Servo`).
     for (final declaration in bindingClassDeclarations(unit)) {
       final name = declaration.namePart.typeName;
@@ -105,6 +106,40 @@ final class ReservedNameRule implements ValidationRule {
       }
     }
   }
+}
+
+/// A top-level widget whose callback would get the same C++ name as the callback of a widget written in
+/// `Device.children`: `button_0`'s is `unodar_button_0_onPressed`, and so is that of the first inline `Button`
+/// (object `unodar_button_0`). Reported at the top-level widget, the name the user chose (E014); only real clashes
+/// are reported, so `button_0` stays usable for a Led or when there is no inline Button.
+void _checkGeneratedCallbackNames(CompilationUnit unit, ValidationContext context) {
+  final device = deviceOf(unit);
+  if (device == null) return;
+  final inline = <String, InstanceCreationExpression>{
+    for (final child in widgetChildren(device, unit))
+      if (child.name.startsWith('unodar_'))
+        if (callbackOf(child.creation) case final closure?) callbackFunctionName(child.name, closure): child.creation,
+  };
+  for (final variable in topLevelVariables(unit)) {
+    final closure = switch (topLevelWidget(variable)) { final creation? => callbackOf(creation), null => null };
+    if (closure == null) continue;
+    final name = variable.name.lexeme;
+    final generated = callbackFunctionName(name, closure);
+    final other = inline[generated];
+    if (other == null) continue;
+    context.report(Diagnostics.reservedName(
+        name,
+        'its callback would have the same C++ name, $generated, as the callback of the '
+        '${widgetClassOf(other.staticType)!.name} on line ${context.at(other).line}',
+        withoutUnderscores(name),
+        context.at(variable.name)));
+  }
+}
+
+/// `button_0` → `button0`, `my_led_2` → `myLed2`, `_led_1` → `led1`.
+String withoutUnderscores(String name) {
+  final camel = name.replaceAllMapped(RegExp('_+(.?)'), (match) => match.group(1)!.toUpperCase());
+  return camel.isEmpty ? 'widget' : camel[0].toLowerCase() + camel.substring(1);
 }
 
 /// Why [name] is reserved, and a suggested rename (null if none fits), or null if the name is free.

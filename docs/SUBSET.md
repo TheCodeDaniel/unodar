@@ -212,6 +212,9 @@ collide with C++ or the Arduino core (E014):
   `unodar_` (reserved for generated helpers, widgets written inside `children`, and callbacks).
 - `unodar`, the C++ namespace of the widget runtime, and the widget and signal names `Led`, `Button`, `Every`,
   `Watch`, `Device`, `Uno`, `runDevice`, `Signal`, `Computed`, `ReadonlySignal` (unodar API names).
+- A top-level widget name whose callback would get the same C++ name as that of a widget written in `children`:
+  `final button_0 = Button(…)` next to an inline `Button` (both callbacks would be `unodar_button_0_onPressed`).
+  Write `button0` instead; Dart style already prefers it.
 
 The Dart names of binding classes and their methods are not emitted (the C++ names come from the annotations), so
 they are not checked.
