@@ -123,4 +123,6 @@ const sizeBudgets = <String, SizeBudget>{
   // watch, watch_order: unodar_deliver() (snapshot, then dispatch) and Watch callbacks with a parameter.
   'watch': SizeBudget(baselineFlash: 2686, baselineRam: 206, maxFlash: 3500, maxRam: 217),
   'watch_order': SizeBudget(baselineFlash: 2744, baselineRam: 210, maxFlash: 3600, maxRam: 221),
+  // watch_chain: three Watches writing along a -> b -> c (a function on the way), no cycle (E025 passes it).
+  'watch_chain': SizeBudget(baselineFlash: 2780, baselineRam: 210, maxFlash: 3650, maxRam: 221),
 };

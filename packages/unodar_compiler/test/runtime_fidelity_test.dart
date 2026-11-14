@@ -363,6 +363,50 @@ void main() {
       });
     });
 
+    group('Watch chain without a cycle (golden watch_chain, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      const pins = ['D2=low@300', 'D2=open@500'];
+
+      Future<String> run(String cpp) async {
+        final build = await compileSketch('watch_chain', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, pins: pins, until: null, cycles: 700 * 16000)).serial;
+      }
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'watch_chain', 'input.dart'));
+        if (result is! CompileSuccess) fail('watch_chain did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      test('each step of a -> b -> c is delivered once, one pass later, and the program is then quiet', () async {
+        gate.check();
+        expect(
+            await run(await generated()),
+            'a 0\r\nb 0\r\nc 0\r\n' // setup: every signal starts changed
+            'b 100\r\n' // pass 1: the Watch of a wrote b
+            'c 1000\r\n' // pass 2: the Watch of b wrote c (copyToC)
+            'a 1\r\nb 101\r\nc 1010\r\n'); // one press: one pass per step, then nothing more
+      });
+
+      test('negative control: without the snapshot, the chain collapses into one pass', () async {
+        gate.check();
+        var cpp = await generated();
+        for (final s in ['a', 'b', 'c']) {
+          for (final line in [
+            '  const bool unodar_${s}_changed = $s.take();\n',
+            '  const int32_t unodar_${s}_value = $s.value();\n'
+          ]) {
+            expect(cpp, contains(line), reason: 'the generated code changed; update the negative control');
+            cpp = cpp.replaceAll(line, '');
+          }
+          cpp = cpp.replaceAll('unodar_${s}_changed', '$s.take()').replaceAll('unodar_${s}_value', '$s.value()');
+        }
+        expect(await run(cpp), 'a 0\r\nb 100\r\nc 1000\r\na 1\r\nb 101\r\nc 1010\r\n');
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

@@ -552,6 +552,15 @@ abstract final class Diagnostics {
         suggestion: 'Declare the signal at the top level, e.g. `final count = Signal<int>(0);`, and pass its name.',
       );
 
+  /// [path] is `Watch(count) → bump() → count`.
+  static Diagnostic reactiveCycle(String path, String signal, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.reactiveCycle,
+        location: at,
+        message: 'this write closes a cycle: $path, so the Watch would run again after every delivery.',
+        suggestion: "Write '$signal' where the change starts, e.g. in a Button callback, or derive the value with a "
+            'Computed.',
+      );
+
   static Diagnostic signalTypePosition(String position, String type, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.signalMisuse,
         location: at,

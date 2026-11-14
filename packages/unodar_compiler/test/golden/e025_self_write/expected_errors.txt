@@ -1,0 +1,4 @@
+input.dart:11:13: error[E025]: this write closes a cycle: Watch(count) → count, so the Watch would run again after every delivery.
+  = help: Write 'count' where the change starts, e.g. in a Button callback, or derive the value with a Computed.
+input.dart:15:15: error[E025]: this write closes a cycle: Watch(level) → level, so the Watch would run again after every delivery.
+  = help: Write 'level' where the change starts, e.g. in a Button callback, or derive the value with a Computed.

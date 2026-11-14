@@ -1,4 +1,5 @@
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
 
 import '../diagnostics/diagnostics.dart';
@@ -144,5 +145,188 @@ final class SignalRule implements ValidationRule {
       _ => null,
     };
     context.report(typeDiagnostic(valueType, context.at(explicit ?? declared ?? creation)));
+  }
+}
+
+/// No reactive cycles (E025): a Watch may not write, directly or through the functions it calls, the signal it
+/// watches, and Watches may not write each other's signals in a circle. Under once-per-pass delivery such a program
+/// would deliver on every pass for ever.
+///
+/// The graph has an edge from signal S to signal T when a Watch of S writes T; each edge keeps the write found first
+/// by a breadth-first search from the first such Watch in source order (so its function path is the shortest). Each
+/// strongly connected component with a cycle is reported once: the shortest cycle through its first signal in
+/// declaration order, at that cycle's first write in source order, with the path rotated to end at that write.
+final class ReactiveCycleRule implements ValidationRule {
+  const ReactiveCycleRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    final device = deviceOf(unit);
+    if (device == null) return;
+    final signals = [
+      for (final variable in topLevelVariables(unit))
+        if (topLevelSignal(variable) != null) variable.name.lexeme,
+    ];
+    final functions = {for (final f in compiledFunctions(unit)) f.declaredFragment?.element: f};
+
+    // Watches in source order, with the name of the signal they watch.
+    final watches = <(String, FunctionExpression)>[];
+    for (final (_, creation) in acceptedWidgets(unit)) {
+      if (widgetClassOf(creation.staticType)?.name != 'Watch') continue;
+      final source = creation.argumentList.arguments.where(isSignalArgument).firstOrNull?.argumentExpression;
+      final callback = callbackOf(creation);
+      if (source is! SimpleIdentifier || callback == null || !signals.contains(source.name)) continue;
+      watches.add((source.name, callback));
+    }
+    watches.sort((x, y) => x.$2.offset.compareTo(y.$2.offset));
+
+    final edges = <String, Map<String, _Write>>{};
+    for (final (source, callback) in watches) {
+      final queue = <(FunctionBody, String)>[(callback.body, 'Watch($source)')];
+      final seen = <FunctionDeclaration>{};
+      while (queue.isNotEmpty) {
+        final (body, path) = queue.removeAt(0);
+        final visitor = _WriteVisitor(functions)..visit(body);
+        for (final (target, node) in visitor.writes) {
+          if (!signals.contains(target)) continue;
+          (edges[source] ??= {}).putIfAbsent(target, () => _Write(node, path));
+        }
+        for (final function in visitor.callees) {
+          if (seen.add(function)) queue.add((function.functionExpression.body, '$path → ${function.name.lexeme}()'));
+        }
+      }
+    }
+
+    for (final component in _components(signals, edges)) {
+      final first = component.first;
+      final cycle = _shortestCycle(first, component.toSet(), edges);
+      if (cycle == null) continue;
+      // cycle: [(from, to, write)], from == first for the first edge, to == first for the last.
+      var reported = 0;
+      for (var i = 1; i < cycle.length; i++) {
+        if (cycle[i].$3.node.offset < cycle[reported].$3.node.offset) reported = i;
+      }
+      final rotated = [...cycle.sublist(reported + 1), ...cycle.sublist(0, reported + 1)];
+      final path = rotated.map((e) => '${e.$3.path} → ${e.$2}').join(' → ');
+      final write = cycle[reported];
+      context.report(Diagnostics.reactiveCycle(path, write.$2, context.at(write.$3.node)));
+    }
+  }
+
+  /// Strongly connected components in declaration order of their first signal (Tarjan), each in declaration order.
+  static List<List<String>> _components(List<String> signals, Map<String, Map<String, _Write>> edges) {
+    final index = <String, int>{};
+    final low = <String, int>{};
+    final stack = <String>[];
+    final onStack = <String>{};
+    final result = <List<String>>[];
+    void connect(String v) {
+      index[v] = low[v] = index.length;
+      stack.add(v);
+      onStack.add(v);
+      for (final w in edges[v]?.keys ?? const <String>[]) {
+        if (!index.containsKey(w)) {
+          connect(w);
+          low[v] = low[v]! < low[w]! ? low[v]! : low[w]!;
+        } else if (onStack.contains(w)) {
+          low[v] = low[v]! < index[w]! ? low[v]! : index[w]!;
+        }
+      }
+      if (low[v] == index[v]) {
+        final component = <String>[];
+        String w;
+        do {
+          w = stack.removeLast();
+          onStack.remove(w);
+          component.add(w);
+        } while (w != v);
+        component.sort((x, y) => signals.indexOf(x).compareTo(signals.indexOf(y)));
+        result.add(component);
+      }
+    }
+
+    for (final signal in signals) {
+      if (!index.containsKey(signal)) connect(signal);
+    }
+    result.sort((x, y) => signals.indexOf(x.first).compareTo(signals.indexOf(y.first)));
+    return result;
+  }
+
+  /// The shortest cycle from [start] back to itself within [component], as edges, or null if there is none.
+  static List<(String, String, _Write)>? _shortestCycle(
+      String start, Set<String> component, Map<String, Map<String, _Write>> edges) {
+    final previous = <String, (String, _Write)>{};
+    final queue = [start];
+    while (queue.isNotEmpty) {
+      final v = queue.removeAt(0);
+      for (final MapEntry(key: w, value: write) in (edges[v] ?? const <String, _Write>{}).entries) {
+        if (!component.contains(w)) continue;
+        if (w == start) {
+          final cycle = <(String, String, _Write)>[(v, w, write)];
+          var at = v;
+          while (at != start) {
+            final (from, edge) = previous[at]!;
+            cycle.insert(0, (from, at, edge));
+            at = from;
+          }
+          return cycle;
+        }
+        if (!previous.containsKey(w) && w != start) {
+          previous[w] = (v, write);
+          queue.add(w);
+        }
+      }
+    }
+    return null;
+  }
+}
+
+/// A write of a signal reached from a Watch: the write itself, and the path to it (`Watch(count) → bump()`).
+final class _Write {
+  _Write(this.node, this.path);
+
+  final Expression node;
+  final String path;
+}
+
+/// The signal writes (`count.value = …`, `count.value++`) and the user functions called in one body, in source
+/// order.
+final class _WriteVisitor extends RecursiveAstVisitor<void> {
+  _WriteVisitor(this.functions);
+
+  final Map<Element?, FunctionDeclaration> functions;
+  final writes = <(String, Expression)>[];
+  final callees = <FunctionDeclaration>[];
+
+  void visit(AstNode node) => node.accept(this);
+
+  @override
+  void visitAssignmentExpression(AssignmentExpression node) {
+    if (signalOfValue(node.leftHandSide) case final signal?) writes.add((signal.name, node));
+    super.visitAssignmentExpression(node);
+  }
+
+  @override
+  void visitPostfixExpression(PostfixExpression node) {
+    if (isIncrementOrDecrement(node)) {
+      if (signalOfValue(node.operand) case final signal?) writes.add((signal.name, node));
+    }
+    super.visitPostfixExpression(node);
+  }
+
+  @override
+  void visitPrefixExpression(PrefixExpression node) {
+    if (isIncrementOrDecrement(node)) {
+      if (signalOfValue(node.operand) case final signal?) writes.add((signal.name, node));
+    }
+    super.visitPrefixExpression(node);
+  }
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (functions[userFunctionOf(node)] case final function?) {
+      if (!callees.contains(function)) callees.add(function);
+    }
+    super.visitMethodInvocation(node);
   }
 }

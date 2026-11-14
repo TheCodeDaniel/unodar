@@ -26,7 +26,8 @@ enum DiagnosticCode {
   widgetProgram('E021', 'Widget program shape (main() with setup/loop, widgets without runDevice, Device arguments)'),
   widgetRule('E022', 'Widget rules (placement, constant arguments, pins, children, declaration order, handles)'),
   delayInCallback('E023', '`delay()` in a widget callback, directly or through a called function'),
-  signalMisuse('E024', 'Signal misuse (placement, value uses, signal-typed locals/parameters/returns, Watch source)');
+  signalMisuse('E024', 'Signal misuse (placement, value uses, signal-typed locals/parameters/returns, Watch source)'),
+  reactiveCycle('E025', 'Reactive cycle: a Watch writes the signal it watches, or Watches write signals in a cycle');
 
   const DiagnosticCode(this.id, this.summary);
 
