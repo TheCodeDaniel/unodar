@@ -537,10 +537,8 @@ after the other, never at the same time. A program with signals ends every pass 
 
 ## Signals
 
-**Status: implemented on the `phase-5` branch except delivering a `Computed` (`docs/PLAN.md` step 11).** `Signal`,
-`.value`, `Watch`, delivery, the cycle check, `led.set(b)`, `Led(on: …)` and `Computed` reads compile and are tested
-in avr8js. Until step 11, a `Watch` or a bound `Led` of a Computed is rejected (E024, "cannot be delivered … in this
-version"); watch the signals it reads instead.
+**Status: implemented on the `phase-5` branch** (`docs/PLAN.md` steps 3–11): every construct below compiles and is
+tested in avr8js. The size-budget review, the example program and the final docs pass follow (steps 12–14).
 
 A **signal** holds a value and tells the widgets that watch it when the value changes. Signals are statically
 allocated globals: no heap, no listener lists, no function pointers. Everything about who watches what is known at
@@ -712,7 +710,9 @@ delivered, as with Flutter's `ValueNotifier`. Doubles compare as in Dart: writin
 
 A Watch callback may not write the signal it watches, directly or through functions it calls, and Watches may not
 write each other's signals in a circle (`Watch(a)` writes `b`, `Watch(b)` writes `a`): E025, with the path. Such a
-program would deliver on every pass for ever. Write a signal where the change starts (in a Button or Every
+program would deliver on every pass for ever. A Watch of a Computed that writes one of the signals the Computed
+reads is a cycle too (`isOdd reads count → Watch(isOdd) → count`), even though it repeats only while the Computed
+keeps changing. Write a signal where the change starts (in a Button or Every
 callback), or derive the value with a `Computed`. Because the watch graph has no cycles, the program is quiet again
 after a bounded number of passes following any input.
 

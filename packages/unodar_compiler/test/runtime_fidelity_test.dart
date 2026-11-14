@@ -575,6 +575,63 @@ void main() {
       });
     });
 
+    group('delivering a Computed (golden computed_watch, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      // +1 (D2) at 300 ms, +2 (D3) at 800 ms, +1 (D2) at 1300 ms; each stable after the press, released 200 ms later.
+      const pins = ['D2=low@300', 'D2=open@500', 'D3=low@800', 'D3=open@1000', 'D2=low@1300', 'D2=open@1500'];
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'computed_watch', 'input.dart'));
+        if (result is! CompileSuccess) fail('computed_watch did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<({String serial, List<String> pinLog})> run(String cpp) async {
+        final build = await compileSketch('computed_watch', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return simulate(build.hexPath, pins: pins, until: null, cycles: 1600 * 16000);
+      }
+
+      List<double> changes(List<String> log, String state) => [
+            for (final line in log)
+              if (line.endsWith(' D13 $state')) double.parse(line.split(' ').first)
+          ];
+
+      test('re-evaluated before any observer runs, delivered only when its value changes; the Led follows it',
+          () async {
+        gate.check();
+        final result = await run(await generated());
+        printOnFailure(result.pinLog.join('\n'));
+        expect(
+            result.serial,
+            'count 0\r\nodd false false\r\nother 0\r\n' // setup delivery
+            'count 1\r\nodd true true\r\nother 1\r\n' // +1: isOdd settled before its observers, in declaration order
+            'count 3\r\n' // +2: isOdd is still true, so it is not delivered
+            'count 4\r\nodd false false\r\nother 2\r\n'); // +1
+        expect(changes(result.pinLog, 'high'), [allOf(greaterThanOrEqualTo(349), lessThan(352))]);
+        expect(changes(result.pinLog, 'low'), [lessThan(1), allOf(greaterThanOrEqualTo(1349), lessThan(1352))]);
+      });
+
+      test('negative control: re-evaluating after the observers ran delivers isOdd one pass late, after other',
+          () async {
+        gate.check();
+        final cpp = await generated();
+        const recompute = '    isOdd.set(unodar_isOdd_compute());\n';
+        expect(cpp, contains(recompute), reason: 'the generated code changed; update the negative control');
+        var late = cpp.replaceFirst(recompute, '');
+        final deliver = late.indexOf('void unodar_deliver() {');
+        final end = late.indexOf('\n}\n', deliver);
+        late = late.replaceRange(end, end, '\n  if (unodar_count_changed) { isOdd.set(unodar_isOdd_compute()); }');
+        expect(
+            (await run(late)).serial,
+            'count 0\r\nodd false false\r\nother 0\r\n'
+            'count 1\r\nother 1\r\nodd true true\r\n'
+            'count 3\r\n'
+            'count 4\r\nother 2\r\nodd false false\r\n');
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

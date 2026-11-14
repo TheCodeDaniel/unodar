@@ -85,10 +85,6 @@ final class SignalRule implements ValidationRule {
           if (!signals.contains(element)) {
             context.report(
                 Diagnostics.signalArgument(argument.correspondingParameter!.name!, widget, context.at(expression)));
-          } else if (isComputedType(expression.staticType)) {
-            // Interim (plan step 10): delivering a Computed arrives in step 11.
-            context.report(Diagnostics.computedNotDeliverable(
-                (expression as SimpleIdentifier).name, widget, context.at(expression)));
           }
           return false;
         }
@@ -206,19 +202,39 @@ final class ReactiveCycleRule implements ValidationRule {
       }
     }
 
+    // A Computed depends on what it reads: an edge from each read (a signal or a Computed above it) to the Computed.
+    // A Watch of a Computed that writes one of its inputs closes a cycle through it.
+    for (final variable in topLevelVariables(unit)) {
+      final creation = computedCreation(variable.initializer);
+      if (creation == null || topLevelSignal(variable) == null) continue;
+      final name = variable.name.lexeme;
+      for (final read in computedReads(creation)) {
+        // Only reads declared above it: a read of itself or of something below is E026, and would make a cycle
+        // without a write.
+        if (signals.indexOf(read) case final i when i >= 0 && i < signals.indexOf(name)) {
+          (edges[read] ??= {}).putIfAbsent(name, () => _Write.read());
+        }
+      }
+    }
+
     for (final component in _components(signals, edges)) {
       final first = component.first;
       final cycle = _shortestCycle(first, component.toSet(), edges);
       if (cycle == null) continue;
-      // cycle: [(from, to, write)], from == first for the first edge, to == first for the last.
-      var reported = 0;
-      for (var i = 1; i < cycle.length; i++) {
-        if (cycle[i].$3.node.offset < cycle[reported].$3.node.offset) reported = i;
+      // cycle: [(from, to, edge)], from == first for the first edge, to == first for the last. Every cycle has a
+      // write: a Computed only reads what is declared above it. The earliest write is reported.
+      int? reported;
+      for (var i = 0; i < cycle.length; i++) {
+        final node = cycle[i].$3.node;
+        if (node != null && (reported == null || node.offset < cycle[reported].$3.node!.offset)) reported = i;
       }
-      final rotated = [...cycle.sublist(reported + 1), ...cycle.sublist(0, reported + 1)];
-      final path = rotated.map((e) => '${e.$3.path} → ${e.$2}').join(' → ');
-      final write = cycle[reported];
-      context.report(Diagnostics.reactiveCycle(path, write.$2, context.at(write.$3.node)));
+      final at = reported!;
+      final rotated = [...cycle.sublist(at + 1), ...cycle.sublist(0, at + 1)];
+      final path =
+          rotated.map((e) => e.$3.node == null ? '${e.$2} reads ${e.$1}' : '${e.$3.path} → ${e.$2}').join(' → ');
+      final write = cycle[at];
+      context.report(Diagnostics.reactiveCycle(path, write.$2, context.at(write.$3.node!),
+          throughComputed: cycle.any((e) => e.$3.node == null)));
     }
   }
 
@@ -290,11 +306,16 @@ final class ReactiveCycleRule implements ValidationRule {
   }
 }
 
-/// A write of a signal reached from a Watch: the write itself, and the path to it (`Watch(count) → bump()`).
+/// An edge of the reactive graph: a write of a signal reached from a Watch (the write itself, and the path to it,
+/// `Watch(count) → bump()`), or a Computed reading a signal or Computed ([node] null).
 final class _Write {
-  _Write(this.node, this.path);
+  _Write(Expression this.node, this.path);
 
-  final Expression node;
+  _Write.read()
+      : node = null,
+        path = '';
+
+  final Expression? node;
   final String path;
 }
 

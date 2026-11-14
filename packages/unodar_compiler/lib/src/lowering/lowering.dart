@@ -181,7 +181,9 @@ final class _Lowerer {
   /// `unodar_deliver()`, or null when no signal is observed (by a Watch or a bound Led) (docs/SUBSET.md "When changes are delivered"). First, for
   /// every watched signal in declaration order, its mark is taken and its value read into locals; then the Watches
   /// of every changed signal run, signals in declaration order, Watches in `children` order, each with the value
-  /// taken first. A write made by a Watch is therefore delivered in the next pass.
+  /// taken first. A write made by a Watch is therefore delivered in the next pass. A watched Computed is
+  /// re-evaluated in the first half, after the signals it reads, so every Computed is settled before any observer
+  /// runs.
   IrFunction? _delivery(int line, List<WidgetChild> children) {
     // signal → its observers in children order: a Watch's callback, or a bound widget's sink (`led.set`).
     final watches = <String, List<(IrCall Function(IrExpression value), WidgetChild)>>{};
@@ -203,38 +205,71 @@ final class _Lowerer {
       }
     }
     if (watches.isEmpty) return null;
-    final observed = [
+    // Top-level signals and Computeds in declaration order (which is also an order of their dependencies: a
+    // Computed only reads what is declared above it, E026).
+    final nodes = [
       for (final variable in topLevelVariables(source.unit))
-        if (topLevelSignal(variable) case final creation? when watches.containsKey(variable.name.lexeme))
-          (variable.name.lexeme, _type(signalValueType(creation.staticType), creation), _line(variable.name)),
+        if (topLevelSignal(variable) case final creation?) (variable, creation),
     ];
+    final byName = {for (final (variable, creation) in nodes) variable.name.lexeme: creation};
+    // The signals a Computed depends on, through the Computeds it reads.
+    final dependencies = <String, Set<String>>{};
+    Set<String> signalsOf(String name) => dependencies[name] ??= switch (byName[name]) {
+          final creation? when computedCreation(creation) != null => {
+              for (final read in computedReads(creation)) ...signalsOf(read),
+            },
+          _ => {name},
+        };
+    // Watched nodes, and every signal a watched Computed depends on (its mark decides the re-evaluation).
+    final needed = {
+      for (final name in watches.keys) ...[name, if (computedCreation(byName[name]) != null) ...signalsOf(name)],
+    };
     String changed(String signal) => 'unodar_${signal}_changed';
     String value(String signal) => 'unodar_${signal}_value';
-    return IrFunction(name: 'unodar_deliver', line: line, body: [
-      for (final (signal, type, at) in observed) ...[
-        IrLocal(
-            name: changed(signal),
+    IrExpression anyChanged(Iterable<String> signals) => signals
+        .map<IrExpression>((s) => IrVariable(changed(s), IrType.bool_))
+        .reduce((a, b) => IrBinary(IrBinaryOp.or, a, b, IrType.bool_));
+    final snapshot = <IrStatement>[];
+    final dispatch = <IrStatement>[];
+    for (final (variable, creation) in nodes) {
+      final name = variable.name.lexeme;
+      if (!needed.contains(name)) continue;
+      final type = _type(signalValueType(creation.staticType), creation);
+      final at = _line(variable.name);
+      if (computedCreation(creation) != null) {
+        // Re-evaluated when a signal it reads changed (always, if it reads none); `set()` marks it only if the value
+        // differs from the one it last delivered.
+        final recompute = IrExpressionStatement(
+            IrCall('set', [IrCall(computeFunctionName(name), const [], type: type)], receiver: name),
+            line: at);
+        final signals = signalsOf(name);
+        snapshot.add(signals.isEmpty ? recompute : IrIf(anyChanged(signals), [recompute], line: at));
+      }
+      snapshot
+        ..add(IrLocal(
+            name: changed(name),
             type: IrType.bool_,
             storage: IrStorage.final_,
-            initializer: IrCall('take', const [], receiver: signal, type: IrType.bool_),
-            line: at),
-        IrLocal(
-            name: value(signal),
+            initializer: IrCall('take', const [], receiver: name, type: IrType.bool_),
+            line: at))
+        ..add(IrLocal(
+            name: value(name),
             type: type,
             storage: IrStorage.final_,
-            initializer: IrCall('value', const [], receiver: signal, type: type),
-            line: at),
-      ],
-      for (final (signal, type, at) in observed)
-        IrIf(
-          IrVariable(changed(signal), IrType.bool_),
+            initializer: IrCall('value', const [], receiver: name, type: type),
+            line: at));
+      if (watches[name] case final observers?) {
+        dispatch.add(IrIf(
+          IrVariable(changed(name), IrType.bool_),
           [
-            for (final (observer, watch) in watches[signal]!)
-              IrExpressionStatement(observer(IrVariable(value(signal), type)), line: _line(watch.element)),
+            for (final (observer, watch) in observers)
+              IrExpressionStatement(observer(IrVariable(value(name), type)), line: _line(watch.element)),
           ],
           line: at,
-        ),
-    ]);
+        ));
+      }
+    }
+    return IrFunction(name: 'unodar_deliver', line: line, body: [...snapshot, ...dispatch]);
   }
 
   /// `external final TwoWire Wire;` names an existing C++ object: nothing is emitted for it.

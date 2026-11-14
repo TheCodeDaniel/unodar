@@ -769,14 +769,16 @@ input.dart:13:32: error[E024]: the signal 'count' is used as a value; a signal c
 ```
 
 (Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`, `e024_watch_source`, `e024_led_sink`,
-`e024_computed_placement`, and until step 11 `e024_watch_computed`.)
+`e024_computed_placement`.)
 
 ## E025: Reactive cycle
 
 A `Watch` callback writes, directly or through functions it calls, the signal it watches, or a signal whose Watches
 lead back to it (`Watch(a)` writes `b`, `Watch(b)` writes `a`). Changes are delivered once per `loop()` pass, so such
-a program would deliver on every pass for ever. Each cycle is reported once, at its first write in source order,
-with the path from the Watch.
+a program would deliver on every pass for ever. A Computed counts as depending on what it reads, so a Watch of a
+Computed that writes one of its signals is a cycle too (`isOdd reads count → Watch(isOdd) → count`; the message then
+says the Watch *could* run again, since it repeats only while the Computed's value keeps changing). Each cycle is
+reported once, at its first write in source order, with the path from the Watch.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -804,7 +806,7 @@ input.dart:6:3: error[E025]: this write closes a cycle: Watch(count) → bump() 
   = help: Write 'count' where the change starts, e.g. in a Button callback, or derive the value with a Computed.
 ```
 
-(Golden tests: `test/golden/e025_self_write`, `e025_cycle`, `e025_indirect`.)
+(Golden tests: `test/golden/e025_self_write`, `e025_cycle`, `e025_indirect`, `e025_computed_cycle`.)
 
 ## E026: `Computed` rules
 

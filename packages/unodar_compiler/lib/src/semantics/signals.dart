@@ -120,3 +120,40 @@ bool isComputedName(SimpleIdentifier name) => isComputedType(_typeOfName(name));
 
 /// The C++ function a Computed becomes: `unodar_isOdd_compute`.
 String computeFunctionName(String computed) => 'unodar_${computed}_compute';
+
+/// The names of the signals and Computeds a Computed's expression reads directly (`count` in
+/// `Computed(() => count.value % 2 == 1)`), in source order, without repeats.
+List<String> computedReads(InstanceCreationExpression creation) {
+  final closure = computedClosure(creation);
+  final expression = closure == null ? null : computedExpression(closure);
+  if (expression == null) return const [];
+  final reads = <String>[];
+  void visit(Expression e) {
+    if (signalOfValue(e) case final signal?) {
+      if (!reads.contains(signal.name)) reads.add(signal.name);
+      return;
+    }
+    for (final child in _children(e)) {
+      visit(child);
+    }
+  }
+
+  visit(expression);
+  return reads;
+}
+
+/// The operands of a supported expression (as `childExpressions` in walk.dart, which imports this library).
+List<Expression> _children(Expression expression) => switch (expression) {
+      ParenthesizedExpression(:final expression) => [expression],
+      PrefixExpression(:final operand) => [operand],
+      BinaryExpression(:final leftOperand, :final rightOperand) => [leftOperand, rightOperand],
+      ConditionalExpression(:final condition, :final thenExpression, :final elseExpression) => [
+          condition,
+          thenExpression,
+          elseExpression,
+        ],
+      MethodInvocation(:final argumentList) || InstanceCreationExpression(:final argumentList) => [
+          for (final argument in argumentList.arguments) argument.argumentExpression,
+        ],
+      _ => const [],
+    };

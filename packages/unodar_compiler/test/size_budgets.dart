@@ -142,4 +142,8 @@ const sizeBudgets = <String, SizeBudget>{
   // count 5 + level 2 + 16 B of .data strings (float printing, println); avr-nm shows no symbol for any of the four
   // Computed objects: one that nothing watches is dropped by the linker, 0 B.
   'computed': SizeBudget(baselineFlash: 4054, baselineRam: 214, maxFlash: 5300, maxRam: 225),
+  // computed_watch: a watched Computed<bool> (re-evaluated in unodar_deliver()) with a Watch and a bound Led. RAM:
+  // Serial + core + count 5 + other 5 + isOdd 2 (a watched Computed has its object: the last delivered value and
+  // the mark, as a Signal of its type) + Led 2 + two Buttons 14 + "\r\n\0" and the .data padding byte.
+  'computed_watch': SizeBudget(baselineFlash: 3274, baselineRam: 216, maxFlash: 4300, maxRam: 227),
 };
