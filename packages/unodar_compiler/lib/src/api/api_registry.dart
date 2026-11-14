@@ -294,6 +294,7 @@ final class ApiRegistry {
             ApiFunction('on', cppName: 'on', parameters: []),
             ApiFunction('off', cppName: 'off', parameters: []),
             ApiFunction('toggle', cppName: 'toggle', parameters: []),
+            ApiFunction('set', cppName: 'set', parameters: [ApiParameter('on', type: IrType.bool_, cppType: 'bool')]),
           ]),
           // `onPressed` is a callback, not a C++ constructor argument.
           ApiClass('Button', cppName: 'unodar::Button', constructor: [ApiParameter.widgetPin('pin')], methods: []),

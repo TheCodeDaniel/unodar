@@ -67,11 +67,9 @@ void loop() {}
     }
   });
 
-  // Members that package:unodar declares ahead of their compiler step (Phase 5 plan steps 8 and 9). Until then the
+  // Members that package:unodar declares ahead of their compiler step (Phase 5 plan step 9). Until then the
   // validator rejects them (test/unit/pending_constructs_test.dart); each step removes its entry here.
-  const pendingMethods = {
-    'Led': {'set'}
-  };
+  const pendingMethods = <String, Set<String>>{};
   const pendingParameters = {
     'Led': {'on'}
   };

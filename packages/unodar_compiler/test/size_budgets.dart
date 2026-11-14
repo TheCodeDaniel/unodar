@@ -125,4 +125,7 @@ const sizeBudgets = <String, SizeBudget>{
   'watch_order': SizeBudget(baselineFlash: 2744, baselineRam: 210, maxFlash: 3600, maxRam: 221),
   // watch_chain: three Watches writing along a -> b -> c (a function on the way), no cycle (E025 passes it).
   'watch_chain': SizeBudget(baselineFlash: 2780, baselineRam: 210, maxFlash: 3650, maxRam: 221),
+  // led_set: Led.set(bool) from a Watch (the maintainer's target example); RAM: Serial + core + Led 2 + Button 7 +
+  // count 5.
+  'led_set': SizeBudget(baselineFlash: 2632, baselineRam: 202, maxFlash: 3450, maxRam: 213),
 };

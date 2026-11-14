@@ -407,6 +407,48 @@ void main() {
       });
     });
 
+    group('Led.set from a Watch (golden led_set, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      // Two bouncing presses, stable from 300 ms and 1200 ms.
+      const pins = ['D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@700', 'D2=low@1200', 'D2=open@1600'];
+
+      Future<({String serial, List<String> pinLog})> run(String cpp) async {
+        final build = await compileSketch('led_set', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return simulate(build.hexPath, pins: pins, until: null, cycles: 1800 * 16000);
+      }
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'led_set', 'input.dart'));
+        if (result is! CompileSuccess) fail('led_set did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      List<double> changes(List<String> log, String state) => [
+            for (final line in log)
+              if (line.endsWith(' D13 $state')) double.parse(line.split(' ').first)
+          ];
+
+      test('the initial delivery leaves the LED off; each press switches it to whether the count is odd', () async {
+        gate.check();
+        final result = await run(await generated());
+        printOnFailure(result.pinLog.join('\n'));
+        expect(result.serial, '0\r\n1\r\n2\r\n');
+        // On at press 1 (stable 305 ms + 50 ms debounce), off at press 2 (1200 + 50); millis() may trail by 1 ms.
+        expect(changes(result.pinLog, 'high'), [allOf(greaterThanOrEqualTo(354), lessThan(357))]);
+        expect(changes(result.pinLog, 'low'), [lessThan(1), allOf(greaterThanOrEqualTo(1249), lessThan(1252))]);
+      });
+
+      test('negative control: mapping set() to toggle() lights the LED at boot (the initial delivery)', () async {
+        gate.check();
+        final cpp = await generated();
+        expect(cpp, contains('led.set(unodar_mod(v, 2) == 1);'), reason: 'the generated code changed');
+        final result = await run(cpp.replaceAll('led.set(unodar_mod(v, 2) == 1);', 'led.toggle();'));
+        expect(changes(result.pinLog, 'high').first, lessThan(1), reason: result.pinLog.join('\n'));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.
