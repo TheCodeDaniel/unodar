@@ -471,7 +471,7 @@ the same reason.
 
 (Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
 `e015_widget_forward_reference`, `e015_signal_initial_value`,
-`e015_watch_forward_reference`.)
+`e015_watch_forward_reference`, `e015_led_sink_forward_reference`.)
 
 ## E016: Recursive function
 
@@ -692,7 +692,7 @@ input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
 ```
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
-`e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`.)
+`e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`, `e022_bound_led`.)
 
 ## E023: `delay()` in a widget callback
 
@@ -767,7 +767,7 @@ input.dart:13:32: error[E024]: the signal 'count' is used as a value; a signal c
   = help: Write `count.value`.
 ```
 
-(Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`, `e024_watch_source`.)
+(Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`, `e024_watch_source`, `e024_led_sink`.)
 
 ## E025: Reactive cycle
 

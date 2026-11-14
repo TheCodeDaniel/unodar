@@ -44,6 +44,7 @@ final class Validator {
     DelayInCallbackRule(),
     SignalRule(),
     ReactiveCycleRule(),
+    BoundWidgetMethodRule(),
   ];
 
   final ApiRegistry api;

@@ -1,0 +1,2 @@
+input.dart:11:28: error[E024]: the on of Led must be the name of a top-level signal.
+  = help: Declare the signal at the top level, e.g. `final count = Signal<int>(0);`, and pass its name.

@@ -287,8 +287,9 @@ Each problem is reported once, under the family a user searches by.
 
 ## 8. Steps (one construct per commit, test first)
 
-Steps 5–9 also delete their construct's snippet from `test/unit/pending_constructs_test.dart`, which checks that
-everything declared in step 3 but not yet compiled is rejected with diagnostics, never an internal error. Every
+Steps 5–9 also deleted their construct's snippet from `test/unit/pending_constructs_test.dart`, which checked that
+everything declared in step 3 but not yet compiled was rejected with diagnostics, never an internal error; the file
+was deleted with step 9, when the list became empty. Every
 construct step adds positive and negative goldens first; each positive golden is compiled by arduino-cli,
 gets its first-measurement size budget in the same commit, and passes the no-heap (`avr-nm`) check; each construct
 gets an avr8js behaviour test with a negative control in the same commit (not in a later step, as in Phase 4).
@@ -303,7 +304,7 @@ gets an avr8js behaviour test with a negative control in the same commit (not in
 | 6 | (**done**) `Watch` and delivery: `unodar_deliver()` (emitted only when observed), setup delivery, snapshot, ordering; Watch as a widget (E022), source argument (E024), callback rules (E012, E023) | Goldens `watch`, `watch_order` + negatives; avr8js: initial value printed once, equal write silent, two writes in one callback delivered once, declaration/children order; control: delivery without snapshot |
 | 7 | (**done**) E025 cycle check: write edges from Watch callbacks through the call graph (shared with E016/E023), path in the message | Goldens `e025_self_write`, `e025_cycle`, `e025_indirect`; positive `watch_chain` (A→B→C); avr8js: one press prints A, B, C once each, in order |
 | 8 | (**done**) `Led.set(bool)` on unbound Leds | Golden `led_set` (replaces the interim `e003_widget_method`); avr8js pin log |
-| 9 | `Led(on: signal)` sink; E022 for methods on a bound Led; signal argument declared below (E015) | Golden `led_sink` + negatives; avr8js: pin 13 follows the signal from boot (initial `true` lights it at setup) |
+| 9 | (**done**) `Led(on: signal)` sink; E022 for methods on a bound Led; signal argument declared below (E015) | Golden `led_sink` + negatives; avr8js: pin 13 follows the signal from boot (initial `true` lights it at setup) |
 | — | **Cut line**: steps 10–11 only if D6 includes `Computed` | |
 | 10 | `Computed<T>` declaration and reads (pull: `unodar_c_compute()`); E026 | Goldens `computed` + `e026_*`; avr8js: reads equal the expression right after a write |
 | 11 | Computed in delivery: re-evaluate on changed dependencies, compare with last delivered, Watch and `Led(on:)` on a computed | Golden `computed_watch`; avr8js: 0→2 notifies nothing, observers never see a stale computed; control: delivery that runs observers before re-evaluating |

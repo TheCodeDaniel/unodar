@@ -174,17 +174,29 @@ final class _Lowerer {
     return creation != null && !(api.widgetOfType(creation.staticType)?.hasObject ?? true);
   }
 
-  /// `unodar_deliver()`, or null when no signal is watched (docs/SUBSET.md "When changes are delivered"). First, for
+  /// `unodar_deliver()`, or null when no signal is observed (by a Watch or a bound Led) (docs/SUBSET.md "When changes are delivered"). First, for
   /// every watched signal in declaration order, its mark is taken and its value read into locals; then the Watches
   /// of every changed signal run, signals in declaration order, Watches in `children` order, each with the value
   /// taken first. A write made by a Watch is therefore delivered in the next pass.
   IrFunction? _delivery(int line, List<WidgetChild> children) {
-    final watches = <String, List<(String, WidgetChild)>>{}; // signal → (callback, Watch), in children order
+    // signal → its observers in children order: a Watch's callback, or a bound widget's sink (`led.set`).
+    final watches = <String, List<(IrCall Function(IrExpression value), WidgetChild)>>{};
     for (final child in children) {
-      if (api.widgetOfType(child.creation.staticType)?.hasObject ?? true) continue;
-      final source = child.creation.argumentList.arguments.firstWhere(isSignalArgument).argumentExpression;
-      final closure = callbackOf(child.creation) ?? (throw LoweringError('no callback for ${child.name}'));
-      (watches[(source as SimpleIdentifier).name] ??= []).add((callbackFunctionName(child.name, closure), child));
+      final widget = api.widgetOfType(child.creation.staticType)!;
+      for (final argument in child.creation.argumentList.arguments) {
+        if (!isSignalArgument(argument)) continue;
+        final source = argument.argumentExpression as SimpleIdentifier;
+        final IrCall Function(IrExpression) observer;
+        if (!widget.hasObject) {
+          final closure = callbackOf(child.creation) ?? (throw LoweringError('no callback for ${child.name}'));
+          final name = callbackFunctionName(child.name, closure);
+          observer = (value) => IrCall(name, [value]);
+        } else {
+          final sink = widget.sink ?? (throw LoweringError('${widget.className} has no sink'));
+          observer = (value) => IrCall(sink, [value], receiver: child.name);
+        }
+        (watches[source.name] ??= []).add((observer, child));
+      }
     }
     if (watches.isEmpty) return null;
     final observed = [
@@ -213,8 +225,8 @@ final class _Lowerer {
         IrIf(
           IrVariable(changed(signal), IrType.bool_),
           [
-            for (final (callback, watch) in watches[signal]!)
-              IrExpressionStatement(IrCall(callback, [IrVariable(value(signal), type)]), line: _line(watch.element)),
+            for (final (observer, watch) in watches[signal]!)
+              IrExpressionStatement(observer(IrVariable(value(signal), type)), line: _line(watch.element)),
           ],
           line: at,
         ),

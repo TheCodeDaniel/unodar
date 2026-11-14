@@ -545,6 +545,13 @@ abstract final class Diagnostics {
         suggestion: 'Write `$name.value`.',
       );
 
+  static Diagnostic boundWidgetMethod(String widget, String name, String signal, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the $widget '$name' follows the signal '$signal', so its methods cannot be called.",
+        suggestion: 'Write the signal instead, e.g. `$signal.value = true;`.',
+      );
+
   static Diagnostic signalArgument(String parameter, String widget, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.signalMisuse,
         location: at,

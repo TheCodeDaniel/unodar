@@ -449,6 +449,59 @@ void main() {
       });
     });
 
+    group('Led(on:) follows its signal (golden led_sink, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      const pins = ['D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@700', 'D2=low@1200', 'D2=open@1600'];
+
+      Future<({String serial, List<String> pinLog})> run(String cpp) async {
+        final build = await compileSketch('led_sink', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return simulate(build.hexPath, pins: pins, until: null, cycles: 1800 * 16000);
+      }
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'led_sink', 'input.dart'));
+        if (result is! CompileSuccess) fail('led_sink did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      List<double> changes(List<String> log, String pin, String state) => [
+            for (final line in log)
+              if (line.endsWith(' $pin $state')) double.parse(line.split(' ').first)
+          ];
+
+      test('pin 13 is lit at the end of setup() and follows lit; pin 12 follows armed; the Watch runs after it',
+          () async {
+        gate.check();
+        final result = await run(await generated());
+        printOnFailure(result.pinLog.join('\n'));
+        expect(result.serial, 'true\r\nfalse\r\ntrue\r\n');
+        // D13: LOW at begin(), HIGH from the setup delivery, LOW at press 1 (305 + 50 ms), HIGH at press 2 (1250).
+        expect(changes(result.pinLog, 'D13', 'high'), [lessThan(1), allOf(greaterThanOrEqualTo(1249), lessThan(1252))]);
+        expect(changes(result.pinLog, 'D13', 'low'), [lessThan(1), allOf(greaterThanOrEqualTo(354), lessThan(357))]);
+        // D12: LOW at begin(), HIGH at press 1; press 2 writes an equal `true`: no change.
+        expect(changes(result.pinLog, 'D12', 'high'), [allOf(greaterThanOrEqualTo(354), lessThan(357))]);
+        expect(changes(result.pinLog, 'D12', 'low'), [lessThan(1)]);
+      });
+
+      test('negative control: signals that do not start changed (no initial delivery) leave pin 13 dark at boot',
+          () async {
+        gate.check();
+        // Removing only the unodar_deliver() call at the end of setup() is not observable here: the signal still
+        // starts changed, so the first loop() pass delivers it microseconds later. The wrong model is a signal that
+        // starts unchanged (an addListener-style first value), which never delivers the initial value.
+        expect(header, contains('value_(initial), changed_(true)'));
+        final build = await compileSketch('led_sink', await generated(), files: {
+          'unodar_widgets.h': header.replaceAll('value_(initial), changed_(true)', 'value_(initial), changed_(false)')
+        });
+        expect(build.success, isTrue);
+        final result = await simulate(build.hexPath, pins: pins, until: null, cycles: 1800 * 16000);
+        expect(changes(result.pinLog, 'D13', 'high'), isNot(contains(lessThan(1))), reason: result.pinLog.join('\n'));
+        expect(result.serial, 'false\r\ntrue\r\n');
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

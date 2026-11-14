@@ -7,6 +7,7 @@ import 'package:unodar_compiler/src/api/api_registry.dart';
 import 'package:unodar_compiler/src/api/api_resolution.dart';
 import 'package:unodar_compiler/src/emitter/target.dart';
 import 'package:unodar_compiler/src/ir/ir.dart';
+import 'package:unodar_compiler/src/semantics/signals.dart';
 
 import '../resolve_snippet.dart';
 import '../test_paths.dart';
@@ -67,23 +68,6 @@ void loop() {}
     }
   });
 
-  // Members that package:unodar declares ahead of their compiler step (Phase 5 plan step 9). Until then the
-  // validator rejects them (test/unit/pending_constructs_test.dart); each step removes its entry here.
-  const pendingMethods = <String, Set<String>>{};
-  const pendingParameters = {
-    'Led': {'on'}
-  };
-
-  test('the pending widget members are really declared (so the allowance below cannot go stale)', () {
-    for (final MapEntry(key: name, value: methods) in pendingMethods.entries) {
-      expect((unodar[name] as ClassElement).methods.map((m) => m.name), containsAll(methods), reason: name);
-    }
-    for (final MapEntry(key: name, value: parameters) in pendingParameters.entries) {
-      final constructor = (unodar[name] as ClassElement).constructors.single;
-      expect(constructor.formalParameters.map((p) => p.name), containsAll(parameters), reason: name);
-    }
-  });
-
   test('every widget row matches its Dart class (constructor parameters, methods) and is a unodar:: class', () {
     for (final name in ['Led', 'Button', 'Every']) {
       final widget = registry.widget(name);
@@ -91,10 +75,7 @@ void loop() {}
       final cls = registry.classNamed(widget!.className)!;
       final declaration = unodar[name] as ClassElement;
       expect(cls.cppName, 'unodar::$name');
-      expect([
-        for (final m in declaration.methods)
-          if (!(pendingMethods[name]?.contains(m.name) ?? false)) m.name
-      ], cls.methods.map((m) => m.dartName), reason: name);
+      expect(declaration.methods.map((m) => m.name), cls.methods.map((m) => m.dartName), reason: name);
       final constructor = declaration.constructors.single;
       expect(constructor.isExternal, isTrue, reason: name);
       // Function-typed parameters are callbacks (the row's `callback`), not C++ constructor arguments.
@@ -103,9 +84,16 @@ void loop() {}
           if (p.type is FunctionType) p.name
       ];
       expect(callbacks, [if (widget.callback != null) widget.callback], reason: name);
+      // Signal-typed parameters are the row's `signals` (`Led`'s `on`), not C++ constructor arguments either.
+      final signals = [
+        for (final p in constructor.formalParameters)
+          if (isSignalType(p.type)) p.name
+      ];
+      expect(signals, widget.signals, reason: name);
+      if (signals.isNotEmpty) expect(widget.sink, isNotNull, reason: '$name needs a sink method for its signal');
       expect([
         for (final p in constructor.formalParameters)
-          if (p.type is! FunctionType && !(pendingParameters[name]?.contains(p.name) ?? false)) (p.name, p.isNamed)
+          if (p.type is! FunctionType && !isSignalType(p.type)) (p.name, p.isNamed)
       ], [
         for (final p in cls.constructor!) (p.name, p.isNamed)
       ], reason: name);

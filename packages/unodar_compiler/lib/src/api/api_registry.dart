@@ -164,6 +164,7 @@ final class ApiWidget {
     this.poll,
     this.callback,
     this.signals = const [],
+    this.sink,
     this.hasObject = true,
   });
 
@@ -183,6 +184,10 @@ final class ApiWidget {
   /// The Dart parameters that take a signal (`Watch`'s `signal`). A signal-typed parameter not listed here is not
   /// supported yet, and an argument for it is rejected like an unknown parameter (E004).
   final List<String> signals;
+
+  /// The method that receives the value of its signal when it changes (`Led`'s `set`), for a widget with an object
+  /// and a signal parameter.
+  final String? sink;
 
   /// Whether the widget is a C++ object (declared, started in `setup()`). A `Watch` is not: it is only its callback,
   /// called from the generated `unodar_deliver()`.
@@ -305,7 +310,8 @@ final class ApiRegistry {
               methods: []),
         ],
         widgets: const [
-          ApiWidget('Led'),
+          // `Led(on: flag)` follows the signal: `led.set(value)` in unodar_deliver() (docs/SUBSET.md "Signals").
+          ApiWidget('Led', signals: ['on'], sink: 'set'),
           ApiWidget('Button', poll: 'pressed', callback: 'onPressed'),
           ApiWidget('Every', poll: 'due', callback: 'callback'),
           // No C++ class: a Watch is its callback, run by the generated unodar_deliver() (docs/SUBSET.md "Signals").

@@ -330,3 +330,24 @@ final class _WriteVisitor extends RecursiveAstVisitor<void> {
     super.visitMethodInvocation(node);
   }
 }
+
+/// A widget bound to a signal (`Led(pin: 13, on: lit)`) is driven only by it, so its methods cannot be called (E022).
+final class BoundWidgetMethodRule implements ValidationRule {
+  const BoundWidgetMethodRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    if (deviceOf(unit) == null) return;
+    for (final call in allRootExpressions(unit).expand(subexpressions).whereType<MethodInvocation>()) {
+      final target = call.target;
+      if (target is! SimpleIdentifier) continue;
+      final variable = topLevelDeclarationOf(target, unit);
+      final creation = variable == null ? null : topLevelWidget(variable);
+      if (creation == null) continue;
+      final bound = creation.argumentList.arguments.where(isSignalArgument).firstOrNull?.argumentExpression;
+      if (bound is! SimpleIdentifier) continue;
+      context.report(Diagnostics.boundWidgetMethod(
+          widgetClassOf(creation.staticType)!.name!, target.name, bound.name, context.at(call.methodName)));
+    }
+  }
+}
