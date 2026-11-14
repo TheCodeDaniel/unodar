@@ -104,4 +104,9 @@ const sizeBudgets = <String, SizeBudget>{
   'widget_button': SizeBudget(baselineFlash: 2662, baselineRam: 208, maxFlash: 3500, maxRam: 219),
   // widget_every: three timers and their callbacks.
   'widget_every': SizeBudget(baselineFlash: 2392, baselineRam: 218, maxFlash: 3150, maxRam: 229),
+
+  // Fix found in Phase 5 step 4, 2026-11-14, same tool versions and limit rule; a first measurement of a new golden.
+  // bound_object_conversion: a Led whose pin is `Uint8(ledPin)` (the conversion is parenthesized in the C++
+  // declaration) and an Every; like widget_led plus a timer, no Serial.
+  'bound_object_conversion': SizeBudget(baselineFlash: 940, baselineRam: 19, maxFlash: 1250, maxRam: 30),
 };

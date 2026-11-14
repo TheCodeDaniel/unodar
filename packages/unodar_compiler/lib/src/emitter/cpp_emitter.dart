@@ -76,8 +76,11 @@ final class CppEmitter {
         case IrGlobal(:final storage, :final type, :final name, :final initializer):
           out.writeln('${_declaration(storage, type, name)} = ${_expr(initializer)};');
         case IrBoundObject(:final cppClass, :final name, :final arguments):
-          // No `()` for a no-argument constructor: `Servo servo();` would declare a function.
-          final list = arguments.isEmpty ? '' : '(${arguments.map(_expr).join(', ')})';
+          // No `()` for a no-argument constructor: `Servo servo();` would declare a function. For the same reason
+          // (the "most vexing parse"), a conversion argument is parenthesized: `unodar::Led led(uint8_t(ledPin));`
+          // declares a function `led` taking a uint8_t, `unodar::Led led((uint8_t(ledPin)));` an object.
+          String argument(IrExpression e) => e is IrConvert ? '(${_expr(e)})' : _expr(e);
+          final list = arguments.isEmpty ? '' : '(${arguments.map(argument).join(', ')})';
           out.writeln('$cppClass $name$list;');
       }
     }
