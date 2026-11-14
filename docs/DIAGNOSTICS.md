@@ -768,7 +768,8 @@ input.dart:13:32: error[E024]: the signal 'count' is used as a value; a signal c
   = help: Write `count.value`.
 ```
 
-(Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`, `e024_watch_source`, `e024_led_sink`.)
+(Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`, `e024_watch_source`, `e024_led_sink`,
+`e024_computed_placement`, and until step 11 `e024_watch_computed`.)
 
 ## E025: Reactive cycle
 
@@ -808,9 +809,10 @@ input.dart:6:3: error[E025]: this write closes a cycle: Watch(count) → bump() 
 ## E026: `Computed` rules
 
 The closure of a `Computed` is a single `=>` expression over `.value` of signals and Computeds declared above it,
-literals, constants, `Uint8(…)`/`Uint16(…)`/`Int16(…)`, and the subset's operators. Rejected: a block body, any
-call (including `analogRead`), an assignment, a mutable top-level variable (the Computed would not see it change),
-and a signal or Computed declared below it (which is also what rules out cycles).
+literals, constants (`const` and `final` values), `Uint8(…)`/`Uint16(…)`/`Int16(…)`, and the subset's operators.
+Rejected: a block, async or generator body, any call (including `analogRead`), a mutable top-level variable (the
+Computed would not see it change), and a signal or Computed declared below it or itself (which is also what rules
+out cycles). An assignment is E002, as anywhere inside an expression.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -825,8 +827,8 @@ void main() => runDevice(
       Device(
         board: Uno(),
         children: [
-          Watch(total, (v) {
-            Serial.println(v);
+          Every(Duration(seconds: 1), () {
+            Serial.println(total.value + twice.value);
           }),
         ],
       ),

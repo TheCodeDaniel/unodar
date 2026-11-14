@@ -64,6 +64,10 @@ final class _Lowerer {
     final names = {for (final (name, creation) in acceptedWidgets(source.unit)) creation: name};
     final bodies = <(int, IrFunction Function())>[
       for (final function in compiledFunctions(source.unit)) (function.offset, () => _function(function)),
+      // A Computed's function, at its declaration.
+      for (final variable in topLevelVariables(source.unit))
+        if (computedCreation(variable.initializer) case final creation? when topLevelSignal(variable) != null)
+          (variable.offset, () => _compute(variable, creation)),
       for (final callback in widgetCallbacks(source.unit))
         (
           callback.offset,
@@ -264,12 +268,14 @@ final class _Lowerer {
     final initializer = variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'));
     if (widgetCreation(initializer) case final creation?) return _widgetObject(variable.name.lexeme, creation);
     if (topLevelSignal(variable) case final creation?) {
-      // `final count = Signal<int>(0);` → `unodar::Signal<int32_t> count(0);` (docs/SUBSET.md "Signals").
+      // `final count = Signal<int>(0);` → `unodar::Signal<int32_t> count(0);` (docs/SUBSET.md "Signals"). A Computed's
+      // object holds the value it last delivered, starting at T's zero: `unodar::Signal<bool> isOdd(false);`.
+      final type = _type(signalValueType(creation.staticType), creation);
       return IrBoundObject(
         name: variable.name.lexeme,
         cppClass: 'unodar::Signal',
-        templateArgument: _type(signalValueType(creation.staticType), creation),
-        arguments: [_expression(signalInitialValue(creation))],
+        templateArgument: type,
+        arguments: [signalCreation(creation) != null ? _expression(signalInitialValue(creation)) : _zero(type)],
         line: _line(variable.name),
       );
     }
@@ -442,9 +448,31 @@ final class _Lowerer {
     }
   }
 
-  /// `count.value()`.
-  IrCall _signalRead(SimpleIdentifier signal) =>
-      IrCall('value', const [], receiver: signal.name, type: _type(signalValueTypeOfName(signal), signal));
+  /// `count.value()`; for a Computed its expression, `unodar_isOdd_compute()`, so a read is never out of date.
+  IrCall _signalRead(SimpleIdentifier signal) {
+    final type = _type(signalValueTypeOfName(signal), signal);
+    return isComputedName(signal)
+        ? IrCall(computeFunctionName(signal.name), const [], type: type)
+        : IrCall('value', const [], receiver: signal.name, type: type);
+  }
+
+  /// `bool unodar_isOdd_compute() { return …; }` for `final isOdd = Computed(() => …);`.
+  IrFunction _compute(VariableDeclaration variable, InstanceCreationExpression creation) {
+    final expression =
+        computedExpression(computedClosure(creation)!) ?? (throw LoweringError('Computed body of ${variable.name}'));
+    return IrFunction(
+      name: computeFunctionName(variable.name.lexeme),
+      line: _line(variable.name),
+      returnType: _type(signalValueType(creation.staticType), creation),
+      body: [IrReturn(_expression(expression), line: _line(expression))],
+    );
+  }
+
+  static IrExpression _zero(IrType type) => switch (type) {
+        IrType.bool_ => const IrBoolLiteral(false),
+        IrType.float32 => const IrDoubleLiteral(0),
+        _ => const IrIntLiteral(0),
+      };
 
   /// `count.set(value);`.
   IrStatement _signalSet(SimpleIdentifier signal, IrExpression value, int line) =>

@@ -43,6 +43,7 @@ final class Validator {
     WidgetHandleRule(),
     DelayInCallbackRule(),
     SignalRule(),
+    ComputedRule(),
     ReactiveCycleRule(),
     BoundWidgetMethodRule(),
   ];

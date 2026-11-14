@@ -577,6 +577,52 @@ abstract final class Diagnostics {
             'Computed.',
       );
 
+  static Diagnostic computedBody(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: 'the closure of a Computed must be a single expression, `() => …`.',
+        suggestion: 'Write it as `() => expression`: no statements, no async.',
+      );
+
+  static Diagnostic computedCall(String call, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: "a Computed cannot call '$call': it may only read signals, Computeds and constants, so that it can "
+            'be evaluated at any time.',
+        suggestion: 'Store the value in a Signal from a Button or Every callback, and compute from that signal.',
+      );
+
+  static Diagnostic computedMutable(String variable, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: "a Computed can only read signals and Computeds declared above it, and constants; '$variable' is a "
+            'mutable variable, so the Computed would not see it change.',
+        suggestion: "Make '$variable' a Signal, or a `const`.",
+      );
+
+  static Diagnostic computedForward(String computed, String signal, int line, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: "a Computed can only read signals and Computeds declared above it; '$signal' is declared on line "
+            '$line.',
+        suggestion: "Move the declaration of '$signal' above '$computed'.",
+      );
+
+  static Diagnostic computedSelf(String computed, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.computedRule,
+        location: at,
+        message: "a Computed cannot read itself ('$computed').",
+        suggestion: 'Compute it from signals and Computeds declared above it.',
+      );
+
+  /// Interim (plan step 10): a Computed is delivered from step 11.
+  static Diagnostic computedNotDeliverable(String computed, String widget, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: "the Computed '$computed' cannot be delivered to $widget in this version.",
+        suggestion: 'Watch the signals it reads instead, or read `$computed.value` in another callback.',
+      );
+
   static Diagnostic signalTypePosition(String position, String type, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.signalMisuse,
         location: at,

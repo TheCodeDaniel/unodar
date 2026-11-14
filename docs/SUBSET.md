@@ -537,9 +537,10 @@ after the other, never at the same time. A program with signals ends every pass 
 
 ## Signals
 
-**Status: implemented on the `phase-5` branch except `Computed` (`docs/PLAN.md` steps 10–11).** `Signal`, `.value`,
-`Watch`, delivery, the cycle check, `led.set(b)` and `Led(on: …)` compile and are tested in avr8js. `Computed` is
-specified below but not declared in `package:unodar` yet, so using it is a Dart error (E007) until step 10.
+**Status: implemented on the `phase-5` branch except delivering a `Computed` (`docs/PLAN.md` step 11).** `Signal`,
+`.value`, `Watch`, delivery, the cycle check, `led.set(b)`, `Led(on: …)` and `Computed` reads compile and are tested
+in avr8js. Until step 11, a `Watch` or a bound `Led` of a Computed is rejected (E024, "cannot be delivered … in this
+version"); watch the signals it reads instead.
 
 A **signal** holds a value and tells the widgets that watch it when the value changes. Signals are statically
 allocated globals: no heap, no listener lists, no function pointers. Everything about who watches what is known at
@@ -723,7 +724,7 @@ final percent = Computed(() => level.value * 100 ~/ 1023);
 ```
 
 - The closure is a single `=>` expression of a supported type. It may use `.value` of signals and Computeds
-  declared **above** it, literals, constants (`const` variables, unodar constants), `Uint8(…)`/`Uint16(…)`/
+  declared **above** it, literals, constants (`const` and `final` values, unodar constants), `Uint8(…)`/`Uint16(…)`/
   `Int16(…)`, and the operators of the subset. Anything else is E026: a block body, any call (including
   `analogRead`), an assignment, or a mutable top-level variable (the Computed would not see it change).
 - Since a Computed only reads what is declared above it, there can be no cycles.

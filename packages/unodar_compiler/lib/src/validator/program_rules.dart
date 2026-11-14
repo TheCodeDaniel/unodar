@@ -27,6 +27,8 @@ final class InitializerRule implements ValidationRule {
       // No initializer: `int? x;` and `var x;` are E009, `late`/`external` E005, anything else an analyzer error.
       if (initializer == null) continue;
       if (subexpressions(initializer).any((e) => expressionIssue(e) != null)) continue; // Reported as E002/E012.
+      // A Computed: its expression is checked by E026 (what it may read, in which order), not as a constant.
+      if (computedCreation(initializer) != null) continue;
       // A widget handle used as a value is E022, a signal used as a value E024.
       if (subexpressions(initializer).any((e) =>
           e is SimpleIdentifier &&
@@ -224,7 +226,16 @@ final class EvaluationOrderRule implements ValidationRule {
     }
 
     for (final root in allRootExpressions(unit)) {
-      for (final expression in subexpressions(root)) {
+      // Not inside a Computed: it may not call anything (E026), so its operands have no order to keep.
+      final inComputed = <Expression>{};
+      walkExpression(root, (e) {
+        if (e is FunctionExpression && isComputedClosure(e)) {
+          inComputed.addAll(subexpressions(e));
+          return false;
+        }
+        return true;
+      });
+      for (final expression in subexpressions(root).where((e) => !inComputed.contains(e))) {
         switch (expression) {
           case BinaryExpression(:final operator, :final leftOperand, :final rightOperand)
               when operator.type != TokenType.AMPERSAND_AMPERSAND && operator.type != TokenType.BAR_BAR:

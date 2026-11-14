@@ -169,7 +169,7 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     case InstanceCreationExpression(:final staticType) when widgetClassOf(staticType) != null:
       return null;
     // A signal is created where E024 says (a top-level `final` initializer) and only in a widget program (E021).
-    case InstanceCreationExpression() when signalCreation(expression) != null:
+    case InstanceCreationExpression() when signalObjectCreation(expression) != null:
       return null;
     case InstanceCreationExpression(:final staticType)
         when isUnodarClass(staticType, 'Device') || isUnodarClass(staticType, 'Uno'):
@@ -183,6 +183,8 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
               'Only Uint8(…), Uint16(…), Int16(…), and binding classes can be constructed in this version.');
     case FunctionExpression() when widgetOfCallback(expression) != null:
       return null; // A widget callback: its body is compiled like a function body (CallbackRule checks its shape).
+    case FunctionExpression() when isComputedClosure(expression):
+      return null; // A Computed's closure: E026 checks its body, every expression rule its expression.
     case FunctionExpression():
       return Diagnostics.closure;
     case FunctionReference():
@@ -284,15 +286,15 @@ final class ExpressionTypeRule implements ValidationRule {
         if (expression is SimpleIdentifier && widgetClassOf(type) != null) return false;
         // A signal used as a value: E024. A signal's constructor: E024 checks its type argument, and its initial
         // value is an ordinary expression. A read of a signal whose type is unsupported: E009 at its declaration.
-        if (isSignalType(type) && signalCreation(expression) == null) return false;
-        if (signalCreation(expression) != null) return true;
+        if (isSignalType(type) && signalObjectCreation(expression) == null) return false;
+        if (signalObjectCreation(expression) != null) return true;
         if (signalOfValue(expression) != null && irTypeOf(type) == null) return false;
         // A widget constructor: E021/E022 decide where it may appear; its arguments are ordinary expressions.
         if (expression is InstanceCreationExpression && widgetClassOf(type) != null) return true;
         // `Every`'s interval: a Duration whose int arguments are checked like any other expression.
         if (isWidgetInterval(expression)) return true;
-        // A widget callback: its body is checked as a root of its own.
-        if (expression is FunctionExpression) return false;
+        // A widget callback: its body is checked as a root of its own. A Computed's expression is a child here.
+        if (expression is FunctionExpression) return isComputedClosure(expression);
         if (type == null || irTypeOf(type) == null) {
           if (type != null) {
             context.report(

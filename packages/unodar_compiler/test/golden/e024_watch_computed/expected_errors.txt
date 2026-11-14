@@ -1,0 +1,4 @@
+input.dart:12:28: error[E024]: the Computed 'isOdd' cannot be delivered to Led in this version.
+  = help: Watch the signals it reads instead, or read `isOdd.value` in another callback.
+input.dart:13:17: error[E024]: the Computed 'isOdd' cannot be delivered to Watch in this version.
+  = help: Watch the signals it reads instead, or read `isOdd.value` in another callback.

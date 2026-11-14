@@ -541,6 +541,40 @@ void main() {
       });
     });
 
+    group('Computed reads evaluate the expression (golden computed, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      const pins = ['D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@700', 'D2=low@1200', 'D2=open@1600'];
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'computed', 'input.dart'));
+        if (result is! CompileSuccess) fail('computed did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<String> run(String cpp) async {
+        final build = await compileSketch('computed', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, pins: pins, until: null, cycles: 1800 * 16000)).serial;
+      }
+
+      test('right after the writes, every Computed equals its expression, as in Dart', () async {
+        gate.check();
+        // Press 1: count 1, level Uint8(250): isOdd true, scaled 1 * 3 + 250 - 1 = 252, half 0.5, label 252.
+        // Press 2: count 2, level Uint8(300) = 44: false, 2 * 3 + 44 - 1 = 49, 1.0, label -49.
+        expect(await run(await generated()), 'true 252 0.50 252\r\nfalse 49 1.00 -49\r\n');
+      });
+
+      test('negative control: reading the stored value instead of evaluating is out of date', () async {
+        gate.check();
+        final cpp = await generated();
+        const read = 'Serial.print(unodar_isOdd_compute() ?';
+        expect(cpp, contains(read), reason: 'the generated code changed; update the negative control');
+        final serial = await run(cpp.replaceAll(read, 'Serial.print(isOdd.value() ?'));
+        expect(serial, startsWith('false 252 '), reason: serial);
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

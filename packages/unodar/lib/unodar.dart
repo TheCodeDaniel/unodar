@@ -11,7 +11,7 @@
 /// * Bindings: [Wire] (I²C) and [Servo].
 /// * Interop: [CppClass], [CppHeader], [CppName], [CppType], [CppInclude], and the escape hatch [cpp].
 /// * Widgets: [runDevice], [Device], [Uno], [Led], [Button], [Every], [Watch].
-/// * Signals: [Signal], [ReadonlySignal].
+/// * Signals: [Signal], [Computed], [ReadonlySignal].
 ///
 /// See docs/SUBSET.md for the supported Dart subset.
 library;

@@ -37,7 +37,7 @@ final class SignalRule implements ValidationRule {
     final rejected = <Element>{};
     final accepted = <InstanceCreationExpression>{};
     for (final variable in topLevelVariables(unit)) {
-      final creation = signalCreation(variable.initializer);
+      final creation = signalObjectCreation(variable.initializer);
       if (creation == null) continue;
       if (topLevelSignal(variable) != null) {
         accepted.add(creation);
@@ -73,17 +73,22 @@ final class SignalRule implements ValidationRule {
         };
     for (final root in allRootExpressions(unit)) {
       walkExpression(root, (expression) {
-        if (!isSignalType(expression.staticType) || signalCreation(expression) != null) {
+        if (!isSignalType(expression.staticType) || signalObjectCreation(expression) != null) {
           return expressionIssue(expression) == null;
         }
         final element = globalOf(expression);
         if (rejected.contains(element)) return false; // Reported at its declaration.
         final argument = argumentOf(expression);
         if (argument != null && isSignalArgument(argument)) {
+          final creation = argument.parent!.parent! as InstanceCreationExpression;
+          final widget = widgetClassOf(creation.staticType)?.name ?? 'the widget';
           if (!signals.contains(element)) {
-            final creation = argument.parent!.parent! as InstanceCreationExpression;
-            context.report(Diagnostics.signalArgument(argument.correspondingParameter!.name!,
-                widgetClassOf(creation.staticType)?.name ?? 'the widget', context.at(expression)));
+            context.report(
+                Diagnostics.signalArgument(argument.correspondingParameter!.name!, widget, context.at(expression)));
+          } else if (isComputedType(expression.staticType)) {
+            // Interim (plan step 10): delivering a Computed arrives in step 11.
+            context.report(Diagnostics.computedNotDeliverable(
+                (expression as SimpleIdentifier).name, widget, context.at(expression)));
           }
           return false;
         }
@@ -116,7 +121,7 @@ final class SignalRule implements ValidationRule {
         for (final variable in list?.variables ?? const <VariableDeclaration>[]) {
           final type = variable.declaredFragment?.element.type;
           // A signal created in a local is reported once, as a misplaced creation.
-          if (!isSignalType(type) || signalCreation(variable.initializer) != null) continue;
+          if (!isSignalType(type) || signalObjectCreation(variable.initializer) != null) continue;
           context.report(Diagnostics.signalTypePosition(
               'a local variable', displayType(type!), context.at(list!.type ?? variable.name)));
         }
@@ -124,7 +129,7 @@ final class SignalRule implements ValidationRule {
     }
   }
 
-  static bool _isCreation(Expression expression) => signalCreation(expression) != null;
+  static bool _isCreation(Expression expression) => signalObjectCreation(expression) != null;
 
   /// `final local = Signal(1);` for a creation in a local's initializer, else `final value = Signal(…);`.
   static String _example(InstanceCreationExpression creation) {
@@ -138,7 +143,11 @@ final class SignalRule implements ValidationRule {
   static void _checkValueType(InstanceCreationExpression creation, ValidationContext context) {
     final valueType = signalValueType(creation.staticType);
     if (valueType == null || irTypeOf(valueType) != null) return;
-    if (irTypeOf(signalInitialValue(creation).staticType) == null) return;
+    // The value it is computed from: the initial value, or a Computed's expression.
+    final value = signalCreation(creation) != null
+        ? signalInitialValue(creation)
+        : switch (computedClosure(creation)) { final closure? => computedExpression(closure), null => null };
+    if (value == null || irTypeOf(value.staticType) == null) return;
     final explicit = creation.constructorName.type.typeArguments?.arguments.singleOrNull;
     final declared = switch (creation.parent) {
       VariableDeclaration(parent: VariableDeclarationList(:final type?)) => type,
@@ -348,6 +357,57 @@ final class BoundWidgetMethodRule implements ValidationRule {
       if (bound is! SimpleIdentifier) continue;
       context.report(Diagnostics.boundWidgetMethod(
           widgetClassOf(creation.staticType)!.name!, target.name, bound.name, context.at(call.methodName)));
+    }
+  }
+}
+
+/// A Computed's closure is one expression over the `.value` of signals and Computeds declared above it, literals,
+/// and constants (`const` and `final` values, which cannot change): no calls, no mutable variables (E026). Reading
+/// only what is declared above also rules out cycles. Every other expression rule checks the expression as usual.
+final class ComputedRule implements ValidationRule {
+  const ComputedRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    if (deviceOf(unit) == null) return; // E021 (or E008).
+    final variables = topLevelVariables(unit).toList();
+    final order = [for (final v in variables) v.declaredFragment?.element];
+    for (final (index, variable) in variables.indexed) {
+      final creation = computedCreation(variable.initializer);
+      if (creation == null || topLevelSignal(variable) == null) continue; // Misplaced: E024.
+      final closure = computedClosure(creation);
+      if (closure == null) continue; // A function reference: E012.
+      final expression = computedExpression(closure);
+      if (expression == null) {
+        context.report(Diagnostics.computedBody(context.at(closure)));
+        continue;
+      }
+      final name = variable.name.lexeme;
+      walkExpression(expression, (e) {
+        if (expressionIssue(e) != null) return false; // E002/E012.
+        if (e is MethodInvocation) {
+          context.report(Diagnostics.computedCall('${e.methodName.name}()', context.at(e.methodName)));
+          return false;
+        }
+        if (signalOfValue(e) case final signal?) {
+          final read = switch (referenceOf(signal)) { GlobalReference(:final element) => element, _ => null };
+          final at = order.indexOf(read);
+          if (at == index) {
+            context.report(Diagnostics.computedSelf(name, context.at(e)));
+          } else if (at > index) {
+            context.report(
+                Diagnostics.computedForward(name, signal.name, context.at(variables[at].name).line, context.at(e)));
+          }
+          return false;
+        }
+        if (e is SimpleIdentifier) {
+          if (referenceOf(e) case GlobalReference(isMutable: true)) {
+            context.report(Diagnostics.computedMutable(e.name, context.at(e)));
+          }
+          return false;
+        }
+        return true;
+      });
     }
   }
 }

@@ -49,6 +49,12 @@ void main() {
     expect(_isSubtype<Watch<int>, Widget>(), isTrue);
   });
 
+  test('a Computed is a ReadonlySignal, not a Signal (no setter) and not a widget', () {
+    expect(_isSubtype<Computed<bool>, ReadonlySignal<bool>>(), isTrue);
+    expect(_isSubtype<Computed<bool>, Signal<bool>>(), isFalse);
+    expect(_isSubtype<Computed<bool>, Widget>(), isFalse);
+  });
+
   test('the Phase 5 signal program, Watch callbacks and signal writes type-check', () {
     expect(_signalProgram, isA<void Function()>());
     expect(_signalWrites, isA<void Function()>());
@@ -121,6 +127,14 @@ void _signalWrites() {
   _led.set(_lit.value);
 }
 
+// Computed (plan step 10): its type is inferred from the expression; Watch and Led(on:) take it like a signal.
+final _isOdd = Computed(() => _count.value % 2 == 1);
+final _percent = Computed(() => _level.value * 100 ~/ 255);
+final _oddLed = Led(pin: 11, on: _isOdd);
+final _oddWatch = Watch(_isOdd, (bool odd) {
+  Serial.println(odd);
+});
+
 // Static types only, including the types inferred from each initial value: these typed list literals stop
 // compiling if a type is wrong.
 void _staticTypes() {
@@ -131,7 +145,10 @@ void _staticTypes() {
     <Signal<bool>>[_lit],
     <Signal<Uint8>>[_level],
     <int>[readOnly.value],
-    <Widget>[_shown, _logger],
+    <Widget>[_shown, _logger, _oddLed, _oddWatch],
+    <Computed<bool>>[_isOdd],
+    <Computed<int>>[_percent],
+    <ReadonlySignal<bool>>[_isOdd, _lit],
   ];
   checked.clear();
 }

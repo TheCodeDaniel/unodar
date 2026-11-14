@@ -24,20 +24,56 @@ DartType? signalValueType(DartType? type) {
   return type.typeArguments.singleOrNull;
 }
 
+/// Whether [type] is `package:unodar`'s `Computed<T>`.
+bool isComputedType(DartType? type) =>
+    type is InterfaceType && type.element.name == 'Computed' && isUnodarElement(type.element);
+
 /// A `Signal(…)` constructor call, or null.
-InstanceCreationExpression? signalCreation(Expression? expression) =>
-    expression is InstanceCreationExpression && isSignalType(expression.staticType) ? expression : null;
+InstanceCreationExpression? signalCreation(Expression? expression) {
+  if (expression is! InstanceCreationExpression) return null;
+  final type = expression.staticType;
+  return type is InterfaceType && type.element.name == 'Signal' && isUnodarElement(type.element) ? expression : null;
+}
+
+/// A `Computed(…)` constructor call, or null.
+InstanceCreationExpression? computedCreation(Expression? expression) =>
+    expression is InstanceCreationExpression && isComputedType(expression.staticType) ? expression : null;
+
+/// A `Signal(…)` or `Computed(…)` constructor call: the C++ `unodar::Signal<T>` object of a top-level signal.
+InstanceCreationExpression? signalObjectCreation(Expression? expression) =>
+    signalCreation(expression) ?? computedCreation(expression);
+
+/// The closure of a `Computed(…)` if it is written as a closure (`() => …`), else null.
+FunctionExpression? computedClosure(InstanceCreationExpression creation) => switch (creation.argumentList.arguments) {
+      [final FunctionExpression closure] => closure,
+      _ => null,
+    };
+
+/// Whether [closure] is the closure of a `Computed(…)`. Its single expression is compiled (into
+/// `unodar_<name>_compute()`); any other closure outside a widget callback is E012.
+bool isComputedClosure(FunctionExpression closure) {
+  final list = closure.parent;
+  return list is ArgumentList && computedCreation(list.parent as Expression?) != null;
+}
+
+/// The single expression of a Computed's closure (`() => expr`), or null for a block, async or generator body
+/// (E026).
+Expression? computedExpression(FunctionExpression closure) => switch (closure.body) {
+      ExpressionFunctionBody(:final expression, isAsynchronous: false, isGenerator: false) => expression,
+      _ => null,
+    };
 
 /// The initial value of a `Signal(…)` call.
 Expression signalInitialValue(InstanceCreationExpression creation) =>
     creation.argumentList.arguments.single.argumentExpression;
 
-/// A top-level signal: `final count = Signal<int>(0);`. Null if [variable] is not one (E024 decides about the rest).
+/// A top-level signal: `final count = Signal<int>(0);` or `final isOdd = Computed(() => …);`. Null if [variable] is
+/// not one (E024 decides about the rest).
 InstanceCreationExpression? topLevelSignal(VariableDeclaration variable) {
   final list = variable.parent;
   if (list is! VariableDeclarationList || !list.isFinal || list.isConst || list.isLate) return null;
   if (list.parent is! TopLevelVariableDeclaration) return null;
-  return signalCreation(variable.initializer);
+  return signalObjectCreation(variable.initializer);
 }
 
 /// `count.value`: the signal name if [expression] reads or writes a signal's value through a plain name, else null.
@@ -78,3 +114,9 @@ Argument? argumentOf(Expression expression) => switch (expression.parent) {
       ArgumentList() => expression as Argument,
       _ => null,
     };
+
+/// Whether the signal [name] refers to is a Computed.
+bool isComputedName(SimpleIdentifier name) => isComputedType(_typeOfName(name));
+
+/// The C++ function a Computed becomes: `unodar_isOdd_compute`.
+String computeFunctionName(String computed) => 'unodar_${computed}_compute';

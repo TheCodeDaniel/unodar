@@ -138,4 +138,8 @@ const sizeBudgets = <String, SizeBudget>{
   // watch_wildcard_parameter: a Watch callback `(_) { led.toggle(); }`, no Serial; RAM: core + Led 2 + Button 7 +
   // count 5.
   'watch_wildcard_parameter': SizeBudget(baselineFlash: 1250, baselineRam: 23, maxFlash: 1650, maxRam: 34),
+  // computed: four Computeds read from a callback (pull: one compute function each). RAM: Serial + core + Button 7 +
+  // count 5 + level 2 + 16 B of .data strings (float printing, println); avr-nm shows no symbol for any of the four
+  // Computed objects: one that nothing watches is dropped by the linker, 0 B.
+  'computed': SizeBudget(baselineFlash: 4054, baselineRam: 214, maxFlash: 5300, maxRam: 225),
 };

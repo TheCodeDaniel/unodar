@@ -4,7 +4,7 @@
 // `unodar::Signal<T>` per signal and one flat function that delivers changes. Constructors are `external` and not
 // `const`, so there is exactly one way to write a signal.
 
-/// A value that can be watched: a [Signal] (or, from a later step, a `Computed`).
+/// A value that can be watched: a [Signal] or a [Computed].
 ///
 /// Pass one to `Watch(signal, (v) { … })` or `Led(pin: …, on: signal)`. Read it through [value].
 abstract final class ReadonlySignal<T> {
@@ -31,4 +31,19 @@ final class Signal<T> extends ReadonlySignal<T> {
 
   /// Writes the value: `count.value = 3;`, `count.value++;`, `count.value += 2;` (statements only).
   external set value(T value);
+}
+
+/// A value derived from signals: `final isOdd = Computed(() => count.value % 2 == 1);`.
+///
+/// Declare it as a top-level `final` in a widget program. The closure is a single expression (`() => …`) over the
+/// `.value` of signals and Computeds declared above it, literals, constants, and operators: no calls, no mutable
+/// variables. Reading [value] always evaluates the expression, so it is never out of date. A `Watch` or a bound
+/// `Led` of a Computed runs when its value, re-evaluated at the end of a `loop()` pass after one of its signals
+/// changed, differs from the value it last delivered (and once at the end of `setup()`). It cannot be written.
+final class Computed<T> extends ReadonlySignal<T> {
+  /// A Computed of [compute], a closure with a single expression.
+  external Computed(T Function() compute);
+
+  @override
+  external T get value;
 }
