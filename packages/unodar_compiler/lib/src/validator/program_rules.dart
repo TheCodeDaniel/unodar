@@ -9,6 +9,7 @@ import '../diagnostics/diagnostics.dart';
 import '../emitter/cpp_names.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/signals.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
 import 'rules.dart';
@@ -26,8 +27,9 @@ final class InitializerRule implements ValidationRule {
       // No initializer: `int? x;` and `var x;` are E009, `late`/`external` E005, anything else an analyzer error.
       if (initializer == null) continue;
       if (subexpressions(initializer).any((e) => expressionIssue(e) != null)) continue; // Reported as E002/E012.
-      // A widget handle used as a value is E022.
-      if (subexpressions(initializer).any((e) => e is SimpleIdentifier && widgetClassOf(e.staticType) != null)) {
+      // A widget handle used as a value is E022, a signal used as a value E024.
+      if (subexpressions(initializer)
+          .any((e) => e is SimpleIdentifier && (widgetClassOf(e.staticType) != null || isSignalType(e.staticType)))) {
         continue;
       }
       // A bound object (`final link = SoftSerial(10, 11);`): each constructor argument must be constant. Any other
@@ -36,7 +38,11 @@ final class InitializerRule implements ValidationRule {
       // A widget's arguments are constant-checked by E022; only the declaration order is checked here, because they
       // are emitted in its C++ declaration.
       final isWidget = widgetCreation(initializer) != null;
-      if (isWidget) {
+      final signal = signalCreation(initializer);
+      if (signal != null) {
+        // A signal (`final count = Signal(0);`): its initial value must be constant (E015).
+        values = [signalInitialValue(signal)];
+      } else if (isWidget) {
         values = [
           for (final a in (initializer as InstanceCreationExpression).argumentList.arguments) a.argumentExpression
         ];
@@ -234,6 +240,9 @@ final class EvaluationOrderRule implements ValidationRule {
             !variable.isFinal &&
             !isUnodarElement(variable)) {
           group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
+        } else if (signalOfValue(leftHandSide) != null) {
+          // `count.value += next()` is `count.set(count.value() + next())`: the read and the call are unsequenced.
+          group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
         }
       }
     }
@@ -260,7 +269,11 @@ final class _Member {
     return _Member(
       calls.firstOrNull,
       calls.where((c) => userFunctionOf(c) != null).firstOrNull,
-      all.whereType<SimpleIdentifier>().where(_mutableGlobal).firstOrNull?.name,
+      // A signal's `.value` is mutable top-level state too.
+      [
+        for (final e in all)
+          if (e is SimpleIdentifier && _mutableGlobal(e)) e.name else if (signalOfValue(e) != null) e.toSource(),
+      ].firstOrNull,
     );
   }
 

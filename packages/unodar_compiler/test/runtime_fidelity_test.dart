@@ -247,6 +247,46 @@ void main() {
       });
     });
 
+    group('signal state: a Button writes signals, an Every reads them (golden signal_state, compiled by unodar)', () {
+      final source = fromPackage('test', 'golden', 'signal_state', 'input.dart');
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      // Press 1 stable from 300 ms (bouncing first), press 2 from 1200 ms; Every(1 s) prints at 1000 and 2000 ms.
+      const inputs = ['D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@700', 'D2=low@1200', 'D2=open@1600'];
+      const cycles = 2100 * 16000; // 2.1 s at 16 MHz
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(source);
+        if (result is! CompileSuccess) fail('signal_state did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<String> run(String cpp) async {
+        final build = await compileSketch('signal_state', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, pins: inputs, until: null, cycles: cycles)).serial;
+      }
+
+      test('every write form, sized wraparound and a 32-bit Int16 product print exactly as in Dart', () async {
+        gate.check();
+        // Press 1: count 0 + 1 + 10 - 5 - 1 = 5, ratio 1.0, lit true, level Uint8(253), depth Int16(-33000) = 32536.
+        // Press 2: count 10, ratio 2.0, lit false, level Uint8(256) = 0, depth Int16(29536). depth * 1000 is 32-bit.
+        expect(
+            await run(await generated()),
+            'count=5 ratio=1.00 lit=true level=253 depth=32536000\r\n'
+            'count=10 ratio=2.00 lit=false level=0 depth=29536000\r\n');
+      });
+
+      test('negative control: the Int16 read without the 32-bit widening overflows in 16 bits', () async {
+        gate.check();
+        final cpp = await generated();
+        expect(cpp, contains('depth.value() * 1000L'), reason: 'the generated code changed; update the control');
+        final serial = await run(cpp.replaceAll('depth.value() * 1000L', 'depth.value() * 1000'));
+        expect(serial, isNot(contains('depth=32536000')), reason: serial);
+        expect(serial, contains('count=5 ratio=1.00 lit=true level=253 depth='), reason: serial);
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

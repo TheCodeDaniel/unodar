@@ -8,6 +8,7 @@ import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
@@ -74,13 +75,14 @@ final class StatementRule implements ValidationRule {
         break;
       case AssignmentExpression(:final operator) when !supportedAssignmentOperators.contains(operator.type):
         unsupported('the `${operator.lexeme}` operator', compoundAssignmentHelp);
-      case AssignmentExpression(:final leftHandSide) when leftHandSide is! SimpleIdentifier:
+      case AssignmentExpression(:final leftHandSide)
+          when leftHandSide is! SimpleIdentifier && !_isSignalWrite(leftHandSide):
         unsupported('an assignment to `${leftHandSide.toSource()}`', 'Assign to a variable name.');
       case AssignmentExpression():
         break;
       case PrefixExpression(:final operand) || PostfixExpression(:final operand)
           when isIncrementOrDecrement(expression):
-        if (operand is! SimpleIdentifier) {
+        if (operand is! SimpleIdentifier && !_isSignalWrite(operand)) {
           unsupported('`++`/`--` on `${operand.toSource()}`', 'Apply `++` and `--` to a variable name.');
         }
       case ThrowExpression():
@@ -91,6 +93,10 @@ final class StatementRule implements ValidationRule {
     }
   }
 }
+
+/// `count.value` as an assignment target (`count.value = e`, `count.value++`). Whether `count` itself may be used is
+/// for the signal rule (E024); a read-only signal has no setter, which the analyzer reports (E007).
+bool _isSignalWrite(Expression target) => signalOfValue(target) != null;
 
 /// Expression kinds and operators in value positions (E002), closures and function references (E012).
 final class ExpressionRule implements ValidationRule {
@@ -162,6 +168,9 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     // A widget is allowed where E022 says (top-level `final`, or in Device.children); Device and Uno only in main().
     case InstanceCreationExpression(:final staticType) when widgetClassOf(staticType) != null:
       return null;
+    // A signal is created where E024 says (a top-level `final` initializer) and only in a widget program (E021).
+    case InstanceCreationExpression() when signalCreation(expression) != null:
+      return null;
     case InstanceCreationExpression(:final staticType)
         when isUnodarClass(staticType, 'Device') || isUnodarClass(staticType, 'Uno'):
       final name = isUnodarClass(staticType, 'Device') ? 'Device(…)' : 'Uno()';
@@ -180,6 +189,9 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
       return (at) => Diagnostics.functionReference(expression.function.toSource(), at);
     case AssignmentExpression():
       return e002('an assignment inside an expression', 'Assign in a statement of its own, then use the variable.');
+    // `count.value`: a signal read (where the signal may be used is for E024).
+    case PrefixedIdentifier() || PropertyAccess() when signalOfValue(expression) != null:
+      return null;
     case PrefixedIdentifier() || PropertyAccess():
       return e002("a property access ('${expression.toSource()}')",
           'Properties and methods of values are not supported in this version.');
@@ -270,6 +282,11 @@ final class ExpressionTypeRule implements ValidationRule {
         if (bindingClassOf(type) != null) return false;
         // A widget handle used as a value: E022.
         if (expression is SimpleIdentifier && widgetClassOf(type) != null) return false;
+        // A signal used as a value: E024. A signal's constructor: E024 checks its type argument, and its initial
+        // value is an ordinary expression. A read of a signal whose type is unsupported: E009 at its declaration.
+        if (expression is SimpleIdentifier && isSignalType(type)) return false;
+        if (signalCreation(expression) != null) return true;
+        if (signalOfValue(expression) != null && irTypeOf(type) == null) return false;
         // A widget constructor: E021/E022 decide where it may appear; its arguments are ordinary expressions.
         if (expression is InstanceCreationExpression && widgetClassOf(type) != null) return true;
         // `Every`'s interval: a Duration whose int arguments are checked like any other expression.

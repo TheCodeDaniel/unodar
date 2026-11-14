@@ -5,6 +5,7 @@ import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
 import '../semantics/elements.dart';
+import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
@@ -199,6 +200,7 @@ final class DeclaredTypeRule implements ValidationRule {
     final annotation = list.type;
     if (isBindingType(annotation?.type)) return; // E018 decides where a binding type may appear.
     if (widgetClassOf(annotation?.type) != null) return; // E022 decides where a widget type may appear.
+    if (isSignalType(annotation?.type)) return; // E024 decides where a signal type may appear (E009: its `T`).
     if (annotation != null) {
       _annotation(annotation, context);
       return;
@@ -214,7 +216,7 @@ final class DeclaredTypeRule implements ValidationRule {
 
   void _annotation(TypeAnnotation annotation, ValidationContext context, {bool allowVoid = false}) {
     final type = annotation.type;
-    if (type == null || isBindingType(type) || widgetClassOf(type) != null) return;
+    if (type == null || isBindingType(type) || widgetClassOf(type) != null || isSignalType(type)) return;
     final irType = irTypeOf(type);
     if (irType != null && (allowVoid || irType != IrType.void_)) return;
     context.report(typeDiagnostic(type, context.at(annotation)));

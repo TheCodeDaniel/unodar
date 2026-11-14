@@ -3,6 +3,7 @@ import '../diagnostics/diagnostics.dart';
 import '../emitter/target.dart';
 import '../frontend/frontend.dart';
 import 'rules.dart';
+import 'signal_rules.dart';
 
 /// PRD §9.5 step 2: enforces the subset by running every rule and collecting all diagnostics.
 final class Validator {
@@ -41,6 +42,7 @@ final class Validator {
     WidgetOrderRule(),
     WidgetHandleRule(),
     DelayInCallbackRule(),
+    SignalRule(),
   ];
 
   final ApiRegistry api;

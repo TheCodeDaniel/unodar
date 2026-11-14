@@ -539,8 +539,9 @@ after the other, never at the same time. A program with signals ends every pass 
 
 **Status: specified, being implemented on the `phase-5` branch (`docs/PLAN.md` steps 3–11).** `package:unodar`
 declares `Signal`, `ReadonlySignal`, `Watch`, `Led(on:)` and `Led.set` (step 3), so autocomplete and `dart analyze`
-know them; until each construct's compiler step lands, the compiler rejects it with diagnostics (for `led.set(…)`:
-E003, "not supported in this version"). `Computed` is declared in step 10.
+know them. Compiled so far: signals as state (declaring, reading, writing; step 5). Until each remaining construct's
+compiler step lands, the compiler rejects it with diagnostics (for `led.set(…)`: E003, "not supported in this
+version"). `Computed` is declared in step 10.
 
 A **signal** holds a value and tells the widgets that watch it when the value changes. Signals are statically
 allocated globals: no heap, no listener lists, no function pointers. Everything about who watches what is known at

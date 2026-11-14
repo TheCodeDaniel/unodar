@@ -25,7 +25,8 @@ enum DiagnosticCode {
   cppHeap('E020', 'Heap allocation in `cpp()`'),
   widgetProgram('E021', 'Widget program shape (main() with setup/loop, widgets without runDevice, Device arguments)'),
   widgetRule('E022', 'Widget rules (placement, constant arguments, pins, children, declaration order, handles)'),
-  delayInCallback('E023', '`delay()` in a widget callback, directly or through a called function');
+  delayInCallback('E023', '`delay()` in a widget callback, directly or through a called function'),
+  signalMisuse('E024', 'Signal misuse (placement, value uses, signal-typed locals/parameters/returns, Watch source)');
 
   const DiagnosticCode(this.id, this.summary);
 

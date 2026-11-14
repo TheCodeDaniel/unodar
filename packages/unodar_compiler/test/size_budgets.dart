@@ -109,4 +109,12 @@ const sizeBudgets = <String, SizeBudget>{
   // bound_object_conversion: a Led whose pin is `Uint8(ledPin)` (the conversion is parenthesized in the C++
   // declaration) and an Every; like widget_led plus a timer, no Serial.
   'bound_object_conversion': SizeBudget(baselineFlash: 940, baselineRam: 19, maxFlash: 1250, maxRam: 30),
+
+  // Phase 5, 2026-11-14, same tool versions and limit rule; first measurements of new goldens. Signal objects are
+  // the value plus a 1-byte mark (static_asserted in test/runtime/signals/signals.ino and read with avr-nm):
+  //   signal_state 232 B   Serial (157 B object + 18 B vtable) + core (11 B) + Button 7 + Every 8 + signals
+  //                        count 5, ratio 5 (double), depth 3 (Int16), lit 2 (bool), level 2 (Uint8) = 17 B;
+  //                        the other 16 B lie outside these symbols, most likely Print::printFloat's RAM string
+  //                        literals ("nan", "inf", "ovf"): the first widget golden that prints a double.
+  'signal_state': SizeBudget(baselineFlash: 4134, baselineRam: 232, maxFlash: 5400, maxRam: 243),
 };

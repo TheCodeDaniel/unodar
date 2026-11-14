@@ -278,7 +278,7 @@ input.dart:8:17: error[E009]: the type 'num' is not supported in this version. O
 ```
 
 (Golden tests: `test/golden/e009_nullable_type`, `e009_unsupported_type`, `e009_types`,
-`e009_bool_number_comparison`, `e009_string_variable`.)
+`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`.)
 
 ## E010: Constant out of range
 
@@ -399,7 +399,7 @@ input.dart:13:17: error[E013]: 'next()' may run before or after 'count' is read 
 ```
 
 (Golden tests: `test/golden/e013_call_and_global`, `e013_two_calls`, `e013_arguments`, `e013_compound_assignment`,
-`e013_api_calls`, `e013_method_calls`.)
+`e013_api_calls`, `e013_method_calls`, `e013_signal_read`.)
 
 ## E014: Reserved name
 
@@ -470,7 +470,7 @@ A widget's signal argument (the source of a `Watch`, the `on:` of a `Led`) must 
 the same reason.
 
 (Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
-`e015_widget_forward_reference`.)
+`e015_widget_forward_reference`, `e015_signal_initial_value`.)
 
 ## E016: Recursive function
 
@@ -654,7 +654,7 @@ input.dart:7:6: error[E021]: a widget program cannot also declare 'loop()': main
 ```
 
 (Golden tests: `test/golden/e021_main_and_loop`, `e021_widgets_without_main`, `e021_device_arguments`,
-`e021_device_children`, `e021_serial_begin`.)
+`e021_device_children`, `e021_serial_begin`, `e021_signal_in_sketch`.)
 
 ## E022: Widget rules
 
@@ -766,7 +766,7 @@ input.dart:13:32: error[E024]: the signal 'count' is used as a value; a signal c
   = help: Write `count.value`.
 ```
 
-(Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`, `e024_watch_source`.)
+(Golden tests: `test/golden/e024_signal_declarations`, `e024_signal_uses`.)
 
 ## E025: Reactive cycle
 

@@ -9,6 +9,7 @@ import '../frontend/frontend.dart';
 import '../ir/ir.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
@@ -185,6 +186,16 @@ final class _Lowerer {
   IrGlobalDeclaration _global(VariableDeclaration variable) {
     final initializer = variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'));
     if (widgetCreation(initializer) case final creation?) return _widgetObject(variable.name.lexeme, creation);
+    if (topLevelSignal(variable) case final creation?) {
+      // `final count = Signal<int>(0);` → `unodar::Signal<int32_t> count(0);` (docs/SUBSET.md "Signals").
+      return IrBoundObject(
+        name: variable.name.lexeme,
+        cppClass: 'unodar::Signal',
+        templateArgument: _type(signalValueType(creation.staticType), creation),
+        arguments: [_expression(signalInitialValue(creation))],
+        line: _line(variable.name),
+      );
+    }
     final cls = api.classOfType(variable.declaredFragment?.element.type);
     if (cls != null) {
       // A bound object: `final link = SoftSerial(10, 11);` → `SoftwareSerial link(10, 11);`.
@@ -328,10 +339,39 @@ final class _Lowerer {
               PostfixExpression(operand: SimpleIdentifier(:final name), :final operator)
           when isIncrementOrDecrement(expression):
         return IrIncrement(name, decrement: operator.type == TokenType.MINUS_MINUS, line: line);
+      // Signal writes: `count.value = e` → `count.set(e)`; `+=`, `-=`, `++`, `--` → `count.set(count.value() ± e)`.
+      case AssignmentExpression(:final leftHandSide, :final operator, :final rightHandSide)
+          when signalOfValue(leftHandSide) != null:
+        final signal = signalOfValue(leftHandSide)!;
+        final value = _expression(rightHandSide);
+        return _signalSet(
+            signal,
+            switch (operator.type) {
+              TokenType.EQ => value,
+              TokenType.PLUS_EQ => IrBinary(IrBinaryOp.add, _signalRead(signal), value, _typeOf(expression)),
+              TokenType.MINUS_EQ => IrBinary(IrBinaryOp.subtract, _signalRead(signal), value, _typeOf(expression)),
+              _ => throw LoweringError('unsupported assignment ${expression.toSource()}'),
+            },
+            line);
+      case PrefixExpression(:final operand, :final operator) || PostfixExpression(:final operand, :final operator)
+          when isIncrementOrDecrement(expression) && signalOfValue(operand) != null:
+        final signal = signalOfValue(operand)!;
+        final type = _type(signalValueTypeOfName(signal), operand);
+        final one = type == IrType.float32 ? const IrDoubleLiteral(1) : const IrIntLiteral(1);
+        final op = operator.type == TokenType.MINUS_MINUS ? IrBinaryOp.subtract : IrBinaryOp.add;
+        return _signalSet(signal, IrBinary(op, _signalRead(signal), one, type), line);
       default:
         throw LoweringError('unsupported statement-level expression ${expression.toSource()}');
     }
   }
+
+  /// `count.value()`.
+  IrCall _signalRead(SimpleIdentifier signal) =>
+      IrCall('value', const [], receiver: signal.name, type: _type(signalValueTypeOfName(signal), signal));
+
+  /// `count.set(value);`.
+  IrStatement _signalSet(SimpleIdentifier signal, IrExpression value, int line) =>
+      IrExpressionStatement(IrCall('set', [value], receiver: signal.name), line: line);
 
   // -------------------------------------------------------------------------------------------------------------
   // Expressions
@@ -371,6 +411,8 @@ final class _Lowerer {
         );
       case MethodInvocation():
         return _call(expression);
+      case PrefixedIdentifier() || PropertyAccess() when signalOfValue(expression) != null:
+        return _signalRead(signalOfValue(expression)!);
       // `Every`'s interval, validated (E022): its length in milliseconds.
       case InstanceCreationExpression() when isWidgetInterval(expression):
         return switch (intervalOf(expression, const ConstantEvaluator())) {

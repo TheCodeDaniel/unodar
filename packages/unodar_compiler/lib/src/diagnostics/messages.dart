@@ -524,6 +524,34 @@ abstract final class Diagnostics {
         suggestion: 'Use the top-level widget directly instead of passing it around.',
       );
 
+  static Diagnostic signalNotFinal(String name, String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: "the signal '$name' must be declared `final`.",
+        suggestion: 'Write `$example`. Signals are created once, as global variables.',
+      );
+
+  static Diagnostic signalCreationPosition(String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: 'a signal can only be created as the initializer of a top-level `final`.',
+        suggestion: 'Declare it at the top level, e.g. `$example`, and read or write its `.value` here.',
+      );
+
+  static Diagnostic signalUse(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: "the signal '$name' is used as a value; a signal can only be read or written through `.value`.",
+        suggestion: 'Write `$name.value`.',
+      );
+
+  static Diagnostic signalTypePosition(String position, String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.signalMisuse,
+        location: at,
+        message: "$position of the signal type '$type' is not supported. Signals can only be top-level `final`s.",
+        suggestion: 'Use the top-level signal and its `.value` directly instead of passing it around.',
+      );
+
   /// [path] is `Button's onPressed → blink()`.
   static Diagnostic delayInCallback(String path, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.delayInCallback,
