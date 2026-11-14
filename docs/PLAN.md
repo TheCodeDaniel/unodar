@@ -232,25 +232,41 @@ Alternatives and their cost:
   through the call graph (no writes, no hardware calls, no `cpp()`), and dependencies hidden in callees. That is
   the Phase 6+ version once restricted computeds prove insufficient; the restricted rule can only be relaxed later.
 
-## 5. Memory and flash cost (estimates; measured and recorded in step 12)
+## 5. Memory and flash cost (measured in step 12)
 
-AVR has 1-byte alignment, so objects have no padding. Sizes are `static_assert`ed in the runtime test sketch, as for
-Phase 4's Led 2 B, Button 7 B, Every 8 B.
+Step 1 estimated these; step 12 measured them (arduino-cli 1.5.1, arduino:avr 1.8.8, `-fwrapv`, `-Os`, LTO). RAM per
+object is exact: read per symbol with `avr-nm` and `static_assert`ed in `test/runtime/signals/signals.ino`. AVR has
+1-byte alignment, so objects have no padding.
 
-| Object | RAM | Flash (estimate, `-Os`) |
+| Object | RAM (measured) |
+|---|---|
+| `Signal<int>`, `Signal<double>` | **5 B** (value 4 + mark 1) |
+| `Signal<Uint16>`, `Signal<Int16>` | **3 B** |
+| `Signal<bool>`, `Signal<Uint8>` | **2 B** |
+| `Watch` | **0 B** (no symbol: a generated function and a branch) |
+| `Led(on: …)` | **0 B** beyond the Led's own 2 B |
+| `Computed<T>`, watched | **as `Signal<T>`** (its last delivered value and mark; `Computed<bool>` 2 B) |
+| `Computed<T>`, not watched | **0 B** (the linker drops the object; reads call its compute function) |
+| `unodar_deliver()` | **0 B** static (marks and values are locals) |
+
+Flash depends on what the code around it does, so it was measured as the difference between programs that change
+one construct each (a Led and a Button on D2, no Serial; Watch callbacks drive pins so nothing is optimized away):
+
+| Variant | Flash | Difference, and what it includes |
 |---|---|---|
-| `Signal<int>`, `Signal<double>` | **5 B** (value 4 + changed 1) | Write site ~30–40 B (4-byte compare, store, flag); read ~4–8 B |
-| `Signal<Uint16>`, `Signal<Int16>` | **3 B** | Write site ~20 B |
-| `Signal<bool>`, `Signal<Uint8>` | **2 B** | Write site ~12–16 B |
-| `Watch` | **0 B** (no object: a generated function and a branch) | ~10–20 B per Watch plus its body |
-| `Led(on: …)` | **0 B** extra (the Led keeps its 2 B) | ~10 B per bound Led |
-| `Computed<T>` | **as `Signal<T>`** (last delivered value + flag) | Its compute function, ~10 B per read site, ~20–30 B in delivery |
-| `unodar_deliver()` | 0 B static (flags and values are locals) | ~20 B base + ~15–25 B per observed signal |
+| Reference: the press toggles a Led | 1186 B | — |
+| One `Signal<bool>`, written by the press, one Watch | 1224 B | **+38 B**: the signal's write, the Watch, `unodar_deliver()` with one take/branch |
+| The same with a bound Led instead of the Watch | 1252 B | +28 B over the Watch, mostly the extra Led object's `begin()` |
+| One `Signal<int>` (`count.value++`), Watch `led.set(v % 2 == 1)` | 1430 B | +244 B, most of it the 32-bit `%` (`unodar_mod`, avr-libc's 32-bit division) |
+| …plus a second Watch of the same signal | 1486 B | **+56 B** per extra Watch (with its own comparison) |
+| …plus a second watched `Signal<int>` | 1564 B | **+78 B** per extra watched signal (its write, take, value, branch) |
+| …plus a second write site (`count.value = count.value * 3`) | 1526 B | +96 B over one write, including a 32-bit multiply |
+| Watching `Computed(() => count.value % 2 == 1)` instead of `count` | 1464 B | **+34 B** for the re-evaluation in delivery; +2 B RAM for its object |
 
-A signal with no observers gets no delivery code (it keeps its flag byte). Estimate for the goal program: RAM about
-the `widget_button` golden's 208 B + 7 B for two signals; flash about 2662 B + 300–400 B. Alternative: pack the
-changed flags into bit fields, saving up to 7 bits per signal. Cost: bit operations at every write and take, more
-flash; not worth it below dozens of signals.
+So the delivery machinery itself costs tens of bytes; what dominates is the arithmetic the program asks for, as
+everywhere on AVR. The goal program's measurement is recorded with it in step 13. Packing the marks into bit
+fields would save at most 7 bits per signal at the cost of bit operations at every write and take; not worth it
+below dozens of signals.
 
 ## 6. Interaction with Phase 4 (D7)
 
@@ -308,7 +324,7 @@ gets an avr8js behaviour test with a negative control in the same commit (not in
 | — | **Cut line**: steps 10–11 only if D6 includes `Computed` | |
 | 10 | (**done**) `Computed<T>` declaration and reads (pull: `unodar_c_compute()`); E026 | Goldens `computed` + `e026_*`; avr8js: reads equal the expression right after a write |
 | 11 | (**done**) Computed in delivery: re-evaluate on changed dependencies, compare with last delivered, Watch and `Led(on:)` on a computed | Golden `computed_watch`; avr8js: 0→2 notifies nothing, observers never see a stale computed; control: delivery that runs observers before re-evaluating |
-| 12 | Size-budget review (dedicated commit): every Phase 5 budget, RAM per signal golden, the §5 estimates replaced by measurements | `size_budgets.dart` |
+| 12 | (**done**) Size-budget review (dedicated commit): every Phase 5 budget, RAM per signal golden, the §5 estimates replaced by measurements | `size_budgets.dart` |
 | 13 | `examples/counter` (the goal program) with `wokwi/` (two buttons, the L LED, serial monitor), built by `tool/check_arduino.sh` | avr8js on the goal program: bounced presses on D2 and D3, exact serial transcript (`0`, `1`, `2`, `0`; clear at 0 prints nothing) and pin-13 log; negative control |
 | 14 | Final docs pass (README status and known limits, PRD status, PLAN); full check suite; end report | — |
 

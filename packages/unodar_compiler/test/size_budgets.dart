@@ -110,8 +110,15 @@ const sizeBudgets = <String, SizeBudget>{
   // declaration) and an Every; like widget_led plus a timer, no Serial.
   'bound_object_conversion': SizeBudget(baselineFlash: 940, baselineRam: 19, maxFlash: 1250, maxRam: 30),
 
-  // Phase 5, 2026-11-14, same tool versions and limit rule; first measurements of new goldens. Signal objects are
-  // the value plus a 1-byte mark (static_asserted in test/runtime/signals/signals.ino and read with avr-nm):
+  // Phase 5, 2026-11-14, same tool versions and limit rule. First measured with their goldens and reviewed together
+  // in step 12: all 35 positive goldens (Phases 1-5) re-measured equal to their baselines, so no limit changes.
+  //
+  // RAM is all static (arduino-cli's `data`), read per symbol with avr-nm and, for the anonymous bytes, with
+  // `avr-objdump -s -j .data`. Signal objects are the value plus a 1-byte mark (static_asserted in
+  // test/runtime/signals/signals.ino): Signal<int>/<double> 5 B, <Int16>/<Uint16> 3 B, <bool>/<Uint8> 2 B. A watched
+  // Computed<T> is a Signal<T> (its last delivered value); an unwatched Computed has no symbol (dropped by the
+  // linker). A Watch, a bound Led's binding, and unodar_deliver() have no symbol: 0 B. Programs that print with
+  // println also keep "\r\n\0" (3 B) in .data, and .data is padded to an even size (0-1 B). Per signal golden:
   //   signal_state 232 B   Serial (157 B object + 18 B vtable) + core (11 B) + Button 7 + Every 8 + signals
   //                        count 5, ratio 5 (double), depth 3 (Int16), lit 2 (bool), level 2 (Uint8) = 17 B;
   //                        plus 16 B of anonymous .data after the last symbol, read with `avr-objdump -s -j .data`:
@@ -123,6 +130,14 @@ const sizeBudgets = <String, SizeBudget>{
   //                        Watch is 0 B
   //   watch_order 210 B    Serial + core + Button 7 + three signals 15 + "\r\n\0" 3 + 1 padding byte; four
   //                        Watches, 0 B
+  //   watch_chain 210 B    as watch_order: three Signal<int> 15 B, three Watches 0 B
+  //   led_set 202 B        Serial + core + Led 2 + Button 7 + count 5 + "\r\n\0" 3
+  //   led_sink 202 B       Serial + core + two Leds 4 + Button 7 + lit 2 + armed 2 + "\r\n\0" 3 + pad
+  //   watch_wildcard_parameter 23 B   core + Led 2 + Button 7 + count 5 (no Serial)
+  //   computed 214 B       Serial + core + Button 7 + count 5 + level 2 + 16 B of strings (as signal_state); its four
+  //                        Computeds are unwatched: 0 B
+  //   computed_watch 216 B Serial + core + count 5 + other 5 + isOdd 2 (watched) + Led 2 + two Buttons 14 + "\r\n\0"
+  //                        and the padding byte
   'signal_state': SizeBudget(baselineFlash: 4134, baselineRam: 232, maxFlash: 5400, maxRam: 243),
   // watch, watch_order: unodar_deliver() (snapshot, then dispatch) and Watch callbacks with a parameter.
   'watch': SizeBudget(baselineFlash: 2686, baselineRam: 206, maxFlash: 3500, maxRam: 217),
