@@ -82,7 +82,9 @@ A call must resolve to a function declared at the top level of this file, to a u
 `package:unodar` (see "Calling the unodar API" in `docs/SUBSET.md`), or to a method of `Serial`, of a bound object,
 or of an external object. This includes undefined functions (the analyzer would call this an "undefined name";
 unodar reports E003 instead when the call is a statement of its own) and method calls on numbers (`x.abs()`). A
-method that the binding does not declare is a Dart error (E007). The suggestion points to the escape hatch,
+method that the binding does not declare is a Dart error (E007). A widget method that `package:unodar` declares
+but this compiler version does not support yet is E003 too ("the Led method 'set' is not supported in this
+version"). The suggestion points to the escape hatch,
 `cpp('…')`, for Arduino functions unodar does not wrap yet.
 
 ```dart
@@ -102,7 +104,7 @@ input.dart:8:3: error[E003]: unknown function 'tone': it is neither declared in 
   = help: Declare the function in this file, or call the Arduino function through the escape hatch, e.g. `cpp('tone(8, 440);');`. See docs/SUBSET.md for the unodar API.
 ```
 
-(Golden tests: `test/golden/e003_unknown_function`, `e003_method_call`.)
+(Golden tests: `test/golden/e003_unknown_function`, `e003_method_call`, `e003_widget_method`.)
 
 ## E004: Unsupported argument
 

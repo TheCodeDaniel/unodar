@@ -287,7 +287,9 @@ Each problem is reported once, under the family a user searches by.
 
 ## 8. Steps (one construct per commit, test first)
 
-Every construct step adds positive and negative goldens first; each positive golden is compiled by arduino-cli,
+Steps 5–9 also delete their construct's snippet from `test/unit/pending_constructs_test.dart`, which checks that
+everything declared in step 3 but not yet compiled is rejected with diagnostics, never an internal error. Every
+construct step adds positive and negative goldens first; each positive golden is compiled by arduino-cli,
 gets its first-measurement size budget in the same commit, and passes the no-heap (`avr-nm`) check; each construct
 gets an avr8js behaviour test with a negative control in the same commit (not in a later step, as in Phase 4).
 
@@ -295,12 +297,12 @@ gets an avr8js behaviour test with a negative control in the same commit (not in
 |---|---|---|
 | 1 | This plan and the decisions (**done**, 1979f7a) | — |
 | 2 | (**done**) Spec, after the maintainer's answers: SUBSET "Signals" (syntax, pass model, timing, costs, deviations), DIAGNOSTICS E024–E026 and the reworded codes (`docs_test` runs a section's example once its code is registered, so the new sections carry their final examples; no existing example changes, so no `docs/drafts` file), PRD status and §13.3 | `docs_test` stays green |
-| 3 | `packages/unodar`: `ReadonlySignal<T>`, `Signal<T>`, `Watch<T>`, `Led.set`, `Led(on:)` (`Computed` waits for step 10) | `api_surface_test` |
+| 3 | (**done**) `packages/unodar`: `ReadonlySignal<T>`, `Signal<T>`, `Watch<T>`, `Led.set`, `Led(on:)` (`Computed` waits for step 10) | `api_surface_test` |
 | 4 | `runtime/unodar_widgets.h`: `unodar::Signal<T>`, public `Led::set`; re-embed | avr8js runtime sketch: sizes (`static_assert` 5/3/2 B), equal write silent, NaN notifies, take clears, coalescing, a hand-written two-phase delivery with snapshot (a write during delivery waits a pass); negative controls: `set()` without the compare, delivery without the snapshot; header-equality test |
 | 5 | Signal declarations, `.value` reads and writes (no Watch yet): E024 (placement, value uses, types of locals/parameters), E009, E015, E021, E013 | Goldens `signal_state` + negatives; avr8js: presses increment, an `Every` prints the count, a `Signal<Int16>` read stays 32-bit in `* 1000`; control: that read emitted without the widening |
 | 6 | `Watch` and delivery: `unodar_deliver()` (emitted only when observed), setup delivery, snapshot, ordering; Watch as a widget (E022), source argument (E024), callback rules (E012, E023) | Goldens `watch`, `watch_order` + negatives; avr8js: initial value printed once, equal write silent, two writes in one callback delivered once, declaration/children order; control: delivery without snapshot |
 | 7 | E025 cycle check: write edges from Watch callbacks through the call graph (shared with E016/E023), path in the message | Goldens `e025_self_write`, `e025_cycle`, `e025_indirect`; positive `watch_chain` (A→B→C); avr8js: one press prints A, B, C once each, in order |
-| 8 | `Led.set(bool)` on unbound Leds | Golden `led_set`; avr8js pin log |
+| 8 | `Led.set(bool)` on unbound Leds | Golden `led_set` (replaces the interim `e003_widget_method`); avr8js pin log |
 | 9 | `Led(on: signal)` sink; E022 for methods on a bound Led; signal argument declared below (E015) | Golden `led_sink` + negatives; avr8js: pin 13 follows the signal from boot (initial `true` lights it at setup) |
 | — | **Cut line**: steps 10–11 only if D6 includes `Computed` | |
 | 10 | `Computed<T>` declaration and reads (pull: `unodar_c_compute()`); E026 | Goldens `computed` + `e026_*`; avr8js: reads equal the expression right after a write |

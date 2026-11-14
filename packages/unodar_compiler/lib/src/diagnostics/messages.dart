@@ -37,6 +37,14 @@ abstract final class Diagnostics {
                 "`cpp('$cppExample;');`. See docs/SUBSET.md for the unodar API.",
       );
 
+  /// A method of a widget that `package:unodar` declares but this compiler version does not support yet (E003).
+  static Diagnostic unsupportedWidgetMethod(String widget, String method, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unknownFunction,
+        location: at,
+        message: "the $widget method '$method' is not supported in this version.",
+        suggestion: 'See "Widgets" in docs/SUBSET.md for the methods each widget supports.',
+      );
+
   static Diagnostic argumentOutOfRange(
     String value,
     String parameter,

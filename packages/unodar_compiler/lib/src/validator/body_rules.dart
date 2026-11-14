@@ -306,8 +306,16 @@ final class ApiCallRule implements ValidationRule {
     for (final call in allCalls(unit)) {
       if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null || isCppCall(call)) continue;
       if (isRunDeviceCall(call)) continue; // E021, from ExpressionRule.
-      // A method of a misplaced widget (a local): reported at its declaration (E022).
-      if (call.target != null && widgetClassOf(call.target!.staticType) != null) continue;
+      // A method of a misplaced widget (a local): reported at its declaration (E022). A method of an accepted
+      // top-level widget that the registry does not support (declared in package:unodar ahead of its compiler
+      // step) falls through to E003 below.
+      if (call.target case final target? when widgetClassOf(target.staticType) != null) {
+        final variable = target is SimpleIdentifier ? topLevelDeclarationOf(target, unit) : null;
+        if (variable == null || topLevelWidget(variable) == null) continue;
+        context.report(Diagnostics.unsupportedWidgetMethod(
+            widgetClassOf(target.staticType)!.name!, call.methodName.name, context.at(call.methodName)));
+        continue;
+      }
       // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
       if (call.target != null && bindingClassOf(call.target!.staticType) != null) continue;
       final target = call.target;

@@ -1,0 +1,2 @@
+input.dart:13:17: error[E003]: the Led method 'set' is not supported in this version.
+  = help: See "Widgets" in docs/SUBSET.md for the methods each widget supports.
