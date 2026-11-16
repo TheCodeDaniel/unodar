@@ -1,0 +1,4 @@
+input.dart:4:28: error[E015]: the initializer of static field 'total' refers to 'step', which is declared later in the class.
+  = help: Move the declaration of 'step' above 'total'.
+input.dart:6:29: error[E015]: the initializer of static field 'margin' refers to 'limit', which is declared later in the class.
+  = help: Move the declaration of 'limit' above 'margin'.

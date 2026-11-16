@@ -468,6 +468,13 @@ abstract final class Diagnostics {
             "constructor's parameters; set other values from setup() or a callback.",
       );
 
+  static Diagnostic staticForwardReference(String field, String later, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.nonConstantInitializer,
+        location: at,
+        message: "the initializer of static field '$field' refers to '$later', which is declared later in the class.",
+        suggestion: "Move the declaration of '$later' above '$field'.",
+      );
+
   static Diagnostic classForwardReference(String cls, String later, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.nonConstantInitializer,
         location: at,

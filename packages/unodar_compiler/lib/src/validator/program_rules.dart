@@ -90,11 +90,32 @@ final class InitializerRule implements ValidationRule {
 }
 
 /// A static member (`Later.size`) in [root] of a user class declared after [offset]: the node and the class name.
-(Expression, String)? _laterStatic(Expression root, int offset) {
+/// Fields of [exclude] (the class whose own body is checked) are not "a class declared below": see
+/// [_staticDeclaredBelow].
+(Expression, String)? _laterStatic(Expression root, int offset, {Element? exclude}) {
   for (final e in subexpressions(root)) {
     final field = staticFieldOf(e);
     final declared = field?.enclosingElement.firstFragment.nameOffset;
-    if (field != null && declared != null && declared > offset) return (e, field.enclosingElement.name!);
+    if (field != null && field.enclosingElement != exclude && declared != null && declared > offset) {
+      return (e, field.enclosingElement.name!);
+    }
+  }
+  return null;
+}
+
+/// A static field of [cls] that [root] reads (`step` or `Timing.step`) and that is declared below [offset] in the
+/// class: C++ needs a static member's initializer to see what it uses, so it is E015.
+Expression? _staticDeclaredBelow(Expression root, Element? cls, int offset) {
+  for (final e in subexpressions(root)) {
+    final field = switch (e) {
+      SimpleIdentifier() => switch (referenceOf(e)) {
+          FieldReference(:final element) when element.isStatic => element,
+          _ => null,
+        },
+      _ => staticFieldOf(e),
+    };
+    final declared = field?.firstFragment.nameOffset;
+    if (field != null && field.enclosingElement == cls && declared != null && declared > offset) return e;
   }
   return null;
 }
@@ -139,7 +160,8 @@ final class ClassInitializerRule implements ValidationRule {
           return;
         }
         // `Later.size`: a static member of a class declared below this one.
-        if (_laterStatic(root, declaration.offset) case (final node, final name)) {
+        if (_laterStatic(root, declaration.offset, exclude: declaration.declaredFragment?.element)
+            case (final node, final name)) {
           context.report(Diagnostics.classForwardReference(cls, name, context.at(node)));
           return;
         }
@@ -170,7 +192,16 @@ final class ClassInitializerRule implements ValidationRule {
               continue;
             }
             for (final variable in fields.variables) {
-              if (variable.initializer case final initializer?) {
+              final initializer = variable.initializer;
+              if (initializer != null && member.isStatic) {
+                final below = _staticDeclaredBelow(initializer, declaration.declaredFragment?.element, variable.offset);
+                if (below != null) {
+                  final name = below is PrefixedIdentifier ? below.identifier.name : below.toSource();
+                  context.report(Diagnostics.staticForwardReference(variable.name.lexeme, name, context.at(below)));
+                  continue;
+                }
+              }
+              if (initializer != null) {
                 check(initializer,
                     "the initializer of ${member.isStatic ? 'static ' : ''}field '${variable.name.lexeme}'");
               }

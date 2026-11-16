@@ -448,7 +448,7 @@ Every top-level variable needs an initializer made only of literals, unodar cons
 **above** it, `Uint8(…)`/`Uint16(…)`/`Int16(…)` of constants, and supported operators. The constructor arguments of
 a bound object (`final link = SoftSerial(10, 11);`) and the initial value of a signal (`Signal(analogRead(A0))` is
 rejected) follow the same rule, and so do the constructor arguments of an object of your own class, its field
-initializers, its initializer list (which may also use the constructor's parameters), and its static fields; widget arguments are checked by E022 instead, except for declaration order (a widget's arguments are emitted in its C++ declaration). C++ initializes globals before
+initializers, its initializer list (which may also use the constructor's parameters), and its static fields (which may only use the class's static fields declared above them); widget arguments are checked by E022 instead, except for declaration order (a widget's arguments are emitted in its C++ declaration). C++ initializes globals before
 `setup()` runs and needs declarations before use, while Dart initializes them lazily, so anything else could run
 in a different order. Compute other values in `setup()`.
 
@@ -479,7 +479,7 @@ the same reason.
 (Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
 `e015_widget_forward_reference`, `e015_signal_initial_value`,
 `e015_watch_forward_reference`, `e015_led_sink_forward_reference`, `e015_class_initializers`,
-`e015_static_members`, `e015_composition`.)
+`e015_static_members`, `e015_composition`, `e015_static_order`.)
 
 ## E016: Recursive function
 
