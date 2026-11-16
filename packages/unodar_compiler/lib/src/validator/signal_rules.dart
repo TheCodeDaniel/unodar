@@ -443,6 +443,10 @@ final class ComputedRule implements ValidationRule {
           if (access.isMutable) context.report(Diagnostics.computedMutable(e.toSource(), context.at(e)));
           return false;
         }
+        if (staticFieldOf(e) case final field?) {
+          if (!field.isFinal) context.report(Diagnostics.computedMutable(e.toSource(), context.at(e)));
+          return false;
+        }
         if (signalOfValue(e) case final signal?) {
           final read = switch (referenceOf(signal)) { GlobalReference(:final element) => element, _ => null };
           final at = order.indexOf(read);

@@ -33,7 +33,8 @@ final class UnodarConstantReference extends Reference {
   final TopLevelVariableElement element;
 }
 
-/// An instance field of a user class named without `this.` inside one of its methods (`count`).
+/// A field of a user class named without `this.` (or the class name, for a static field) inside the class:
+/// `count`, `limit`.
 final class FieldReference extends Reference {
   const FieldReference(this.element);
 
@@ -41,6 +42,8 @@ final class FieldReference extends Reference {
 
   /// Assignable, so a call could change it between two reads (E013).
   bool get isMutable => !element.isFinal && !element.isConst;
+
+  bool get isStatic => element.isStatic;
 }
 
 /// An explicit getter of a user class named without `this.` inside one of its methods (`big`): a call.
@@ -61,12 +64,12 @@ final class FunctionValueReference extends Reference {
 Reference? referenceOf(SimpleIdentifier identifier) {
   final element = identifier.element ?? _writeElement(identifier);
   if (element is GetterElement && !element.isOriginVariable && isUserClass(element.enclosingElement)) {
-    return element.isStatic ? null : GetterReference(element);
+    return GetterReference(element);
   }
   final variable = element is PropertyAccessorElement ? element.variable : element;
   return switch (variable) {
-    FieldElement(isStatic: false) when isUserClass(variable.enclosingElement) => FieldReference(variable),
-    MethodElement(isStatic: false) when isUserClass(variable.enclosingElement) => FunctionValueReference(variable),
+    FieldElement() when isUserClass(variable.enclosingElement) => FieldReference(variable),
+    MethodElement() when isUserClass(variable.enclosingElement) => FunctionValueReference(variable),
     LocalVariableElement() || FormalParameterElement() => LocalReference(variable as VariableElement),
     TopLevelVariableElement() when isUnodarElement(variable) => UnodarConstantReference(variable),
     TopLevelVariableElement() => GlobalReference(variable),

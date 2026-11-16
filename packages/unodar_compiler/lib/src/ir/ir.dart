@@ -129,9 +129,14 @@ final class IrStruct extends IrGlobalDeclaration {
     required super.name,
     required super.line,
     this.fields = const [],
+    this.staticFields = const [],
     this.constructor,
     this.methods = const [],
   });
+
+  /// Static fields, in declaration order: `static constexpr int32_t limit = 3;` (Dart `static const`),
+  /// `static const …` (`static final`), `static …` (mutable), each also defined after the struct.
+  final List<IrStructField> staticFields;
 
   /// Instance fields, in declaration order.
   final List<IrStructField> fields;
@@ -156,7 +161,7 @@ final class IrStructField {
   final String name;
   final IrType type;
 
-  /// [IrStorage.final_] or [IrStorage.mutable].
+  /// [IrStorage.final_] or [IrStorage.mutable]; a static field may also be [IrStorage.constant].
   final IrStorage storage;
 
   /// The Dart field initializer, a constant (a C++ default member initializer), or null.
@@ -198,7 +203,11 @@ final class IrFunction {
     this.parameters = const [],
     this.isEntryPoint = false,
     this.owner,
+    this.isStatic = false,
   });
+
+  /// A static method of [owner] (`static` in its declaration only).
+  final bool isStatic;
 
   final String name;
 

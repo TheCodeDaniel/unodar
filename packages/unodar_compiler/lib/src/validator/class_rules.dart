@@ -77,10 +77,7 @@ final class ClassRule implements ValidationRule {
       switch (member) {
         case FieldDeclaration(:final fields, :final externalKeyword):
           final names = fields.variables.map((v) => v.name.lexeme).join("', '");
-          if (member.isStatic) {
-            // Interim (Phase 6 step 3): static members land in step 5.
-            feature("a static member ('$names')", 'Declare it at the top level instead.', start);
-          } else if (externalKeyword != null) {
+          if (externalKeyword != null) {
             feature("an external field ('$names')", _externalHelp, start);
           } else if (fields.isLate) {
             feature("a late field ('$names')",
@@ -99,8 +96,6 @@ final class ClassRule implements ValidationRule {
           feature("an operator ('${name.lexeme}')", 'Write a named method instead.', start);
         case MethodDeclaration(:final name, externalKeyword: _?):
           feature("an external member ('${name.lexeme}')", _externalHelp, start);
-        case MethodDeclaration(:final name, isStatic: true):
-          feature("a static member ('${name.lexeme}')", 'Declare it at the top level instead.', start);
         case MethodDeclaration(:final name) when objectMemberNames.contains(name.lexeme):
           feature("overriding '${name.lexeme}'",
               'Remove it; there are no strings or hash maps on the device. Write a method of another name.', start);

@@ -1,0 +1,8 @@
+input.dart:6:24: error[E015]: the initializer of static field 'started' is not a compile-time constant.
+  = help: Use only literals, unodar constants, `const` variables declared above the class, and the constructor's parameters; set other values from setup() or a callback.
+input.dart:7:27: error[E015]: the initializer of static field 'base' is not a compile-time constant.
+  = help: Use only literals, unodar constants, `const` variables declared above the class, and the constructor's parameters; set other values from setup() or a callback.
+input.dart:8:27: error[E015]: the class 'Clock' refers to 'Later', which is declared later.
+  = help: Move the declaration of 'Later' above the class 'Clock'.
+input.dart:11:19: error[E015]: the initializer of top-level variable 'early' refers to 'Later', which is declared later.
+  = help: Move the declaration of 'Later' above 'early'.

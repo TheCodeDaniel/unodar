@@ -392,6 +392,16 @@ final class _Lowerer {
       name: declaration.namePart.typeName.lexeme,
       line: _line(declaration.namePart.typeName),
       fields: fields,
+      staticFields: [
+        for (final variable in staticFields(declaration))
+          IrStructField(
+            name: variable.name.lexeme,
+            type: _type(variable.declaredFragment?.element.type, variable.name),
+            storage: _storage(variable),
+            initializer: _expression(variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'))),
+            line: _line(variable.name),
+          ),
+      ],
       methods: [
         for (final (method, owner) in compiledMethods(source.unit))
           if (owner == declaration) _method(method, owner),
@@ -450,6 +460,7 @@ final class _Lowerer {
         return IrFunction(
           name: method.name.lexeme,
           owner: owner.namePart.typeName.lexeme,
+          isStatic: method.isStatic,
           line: _line(method.firstTokenAfterCommentAndMetadata),
           returnType: returnType,
           parameters: [
@@ -589,7 +600,9 @@ final class _Lowerer {
         return IrIncrement(name, decrement: operator.type == TokenType.MINUS_MINUS, line: line);
       // Field writes: `left.count = e`, `this.count = e`, `+=`, `-=`, `++`, `--` on the C++ member.
       case AssignmentExpression(:final leftHandSide, :final operator, :final rightHandSide)
-          when fieldAccessOf(leftHandSide) != null || thisFieldOf(leftHandSide) != null:
+          when fieldAccessOf(leftHandSide) != null ||
+              thisFieldOf(leftHandSide) != null ||
+              staticFieldOf(leftHandSide) != null:
         final op = switch (operator.type) {
           TokenType.EQ => IrAssignOp.assign,
           TokenType.PLUS_EQ => IrAssignOp.add,
@@ -598,7 +611,8 @@ final class _Lowerer {
         };
         return IrAssign(_fieldTarget(leftHandSide), op, _expression(rightHandSide), line: line);
       case PrefixExpression(:final operand, :final operator) || PostfixExpression(:final operand, :final operator)
-          when isIncrementOrDecrement(expression) && (fieldAccessOf(operand) != null || thisFieldOf(operand) != null):
+          when isIncrementOrDecrement(expression) &&
+              (fieldAccessOf(operand) != null || thisFieldOf(operand) != null || staticFieldOf(operand) != null):
         return IrIncrement(_fieldTarget(operand), decrement: operator.type == TokenType.MINUS_MINUS, line: line);
       // Signal writes: `count.value = e` → `count.set(e)`; `+=`, `-=`, `++`, `--` → `count.set(count.value() ± e)`.
       case AssignmentExpression(:final leftHandSide, :final operator, :final rightHandSide)
@@ -629,6 +643,7 @@ final class _Lowerer {
   /// The C++ lvalue of a field: `left.count`, or `this->count`.
   String _fieldTarget(Expression target) {
     if (thisFieldOf(target) case final field?) return 'this->${field.name}';
+    if (staticFieldOf(target) case final field?) return '${field.enclosingElement.name}::${field.name}';
     final access = fieldAccessOf(target)!;
     return '${access.object.name}.${access.field.name}';
   }
@@ -708,6 +723,10 @@ final class _Lowerer {
         return IrFieldRead(access.object.name!, access.field.name!, _typeOf(expression));
       case PropertyAccess() when thisFieldOf(expression) != null:
         return IrFieldRead(null, thisFieldOf(expression)!.name!, _typeOf(expression));
+      // `Tally.limit` → `Tally::limit`.
+      case PrefixedIdentifier() when staticFieldOf(expression) != null:
+        final field = staticFieldOf(expression)!;
+        return IrVariable('${field.enclosingElement.name}::${field.name}', _typeOf(expression));
       // A getter call: `meter.big` → `meter.big()`, `this.big` → `this->big()`.
       case PrefixedIdentifier(:final prefix, :final identifier) when calleeOf(expression) != null:
         return IrCall(identifier.name, const [], receiver: prefix.name, type: _typeOf(expression));
@@ -787,6 +806,12 @@ final class _Lowerer {
         cppResult: _cppResult(function),
         parameterCppTypes: function.convertsArguments ? [for (final p in function.parameters) p.cppType!] : null,
       );
+    }
+    if (calleeOf(call) case final MethodElement method when method.isStatic && call.target != null) {
+      // `Tally.report()` → `Tally::report()`.
+      return IrCall('${method.enclosingElement!.name}::${method.name}',
+          [for (final a in call.argumentList.arguments) _expression(a.argumentExpression)],
+          type: _typeOf(call));
     }
     if (calleeOf(call) is MethodElement) {
       // A method of the user's class: on an object, on `this`, or (no target) on the current object.

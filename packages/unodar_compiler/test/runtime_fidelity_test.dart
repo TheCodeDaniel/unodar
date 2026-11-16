@@ -721,6 +721,49 @@ void main() {
       });
     });
 
+    group('a static field is one variable for the whole class (golden class_static, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      // Two bouncing presses on D2 (settled at 305 and 1205 ms); the Every ticks at 500, 1000 and 1500 ms.
+      const pins = ['D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@700', 'D2=low@1200', 'D2=open@1600'];
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'class_static', 'input.dart'));
+        if (result is! CompileSuccess) fail('class_static did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<String> run(String cpp) async {
+        final build = await compileSketch('class_static', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, pins: pins, until: null, cycles: 1800 * 16000)).serial;
+      }
+
+      test('created counts the hits of both objects, resets is shared, and static constants fold as in Dart', () async {
+        gate.check();
+        // Press 1: a.count 1, created 1. Tick 1: b.count 1, created 2; report: resets 0, rate * limit 1.5,
+        // twiceLimit 6. Tick 2: b.count 2, created 3. Press 2: a.count 2, created 4. Tick 3: b.count reaches the
+        // limit 3, so 0 and resets 1; created 5.
+        expect(
+            await run(await generated()),
+            '2 1\r\n0 1.50 6\r\n'
+            '3 2\r\n0 1.50 6\r\n'
+            '5 0\r\n1 1.50 6\r\n');
+      });
+
+      test('negative control: with created an instance field, b counts only its own hits', () async {
+        gate.check();
+        final cpp = await generated();
+        const declaration = '  static int32_t created;\n';
+        const definition = 'int32_t Tally::created = 0;\n';
+        expect(cpp, allOf(contains(declaration), contains(definition)),
+            reason: 'the generated code changed; update the negative control');
+        final copied = cpp.replaceFirst(declaration, '  int32_t created = 0;\n').replaceFirst(definition, '');
+        // Tick 1: b.created is 1, not 2 (a's hit is in a.created).
+        expect(await run(copied), startsWith('1 1\r\n0 1.50 6\r\n'));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

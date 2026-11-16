@@ -106,6 +106,16 @@ final class CppEmitter {
   /// member initializer per line. Members are public; Dart privacy is the analyzer's.
   void _struct(StringBuffer out, IrStruct struct, String file) {
     out.writeln('struct ${struct.name} {');
+    for (final field in struct.staticFields) {
+      final declaration = '${target.cppType(field.type)} ${field.name}';
+      out
+        ..writeln('#line ${field.line} $file')
+        ..writeln(switch (field.storage) {
+          IrStorage.constant => '  static constexpr $declaration = ${_expr(field.initializer!)};',
+          IrStorage.final_ => '  static const $declaration;',
+          IrStorage.mutable => '  static $declaration;',
+        });
+    }
     for (final field in struct.fields) {
       final initializer = field.initializer == null ? '' : ' = ${_expr(field.initializer!)}';
       out
@@ -115,7 +125,7 @@ final class CppEmitter {
     for (final method in struct.methods) {
       out
         ..writeln('#line ${method.line} $file')
-        ..writeln('  ${_signature(method, qualified: false)};');
+        ..writeln('  ${method.isStatic ? 'static ' : ''}${_signature(method, qualified: false)};');
     }
     if (struct.constructor case final constructor?) {
       final parameters = constructor.parameters.map((p) => '${target.cppType(p.type)} ${p.name}').join(', ');
@@ -132,6 +142,17 @@ final class CppEmitter {
       }
     }
     out.writeln('};');
+    // The definitions of the static fields (C++11 also needs one for a `constexpr` member that is odr-used).
+    for (final field in struct.staticFields) {
+      final declaration = '${target.cppType(field.type)} ${struct.name}::${field.name}';
+      out
+        ..writeln('#line ${field.line} $file')
+        ..writeln(switch (field.storage) {
+          IrStorage.constant => 'constexpr $declaration;',
+          IrStorage.final_ => 'const $declaration = ${_expr(field.initializer!)};',
+          IrStorage.mutable => '$declaration = ${_expr(field.initializer!)};',
+        });
+    }
   }
 
   /// `int32_t f(int32_t a)`; a method defined outside its struct is qualified, `bool Meter::big()`.
@@ -508,8 +529,9 @@ final class CppEmitter {
       program.globals.any((g) => switch (g) {
             IrGlobal(:final initializer) => _modInExpression(initializer),
             IrBoundObject(:final arguments) => arguments.any(_modInExpression),
-            IrStruct(:final fields, :final constructor) => fields.any((f) => _modInExpression(f.initializer)) ||
-                (constructor?.initializers.any((i) => _modInExpression(i.$2)) ?? false),
+            IrStruct(:final fields, :final staticFields, :final constructor) =>
+              [...fields, ...staticFields].any((f) => _modInExpression(f.initializer)) ||
+                  (constructor?.initializers.any((i) => _modInExpression(i.$2)) ?? false),
           }) ||
       program.functions.any((f) => _modInStatements(f.body));
 

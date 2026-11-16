@@ -82,7 +82,8 @@ final class StatementRule implements ValidationRule {
           when leftHandSide is! SimpleIdentifier &&
               !_isSignalWrite(leftHandSide) &&
               fieldAccessOf(leftHandSide) == null &&
-              thisFieldOf(leftHandSide) == null:
+              thisFieldOf(leftHandSide) == null &&
+              staticFieldOf(leftHandSide) == null:
         unsupported('an assignment to `${leftHandSide.toSource()}`', 'Assign to a variable name.');
       case AssignmentExpression():
         break;
@@ -91,7 +92,8 @@ final class StatementRule implements ValidationRule {
         if (operand is! SimpleIdentifier &&
             !_isSignalWrite(operand) &&
             fieldAccessOf(operand) == null &&
-            thisFieldOf(operand) == null) {
+            thisFieldOf(operand) == null &&
+            staticFieldOf(operand) == null) {
           unsupported('`++`/`--` on `${operand.toSource()}`', 'Apply `++` and `--` to a variable name.');
         }
       case ThrowExpression():
@@ -213,6 +215,9 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
       return null;
     // `this.count`, `meter.big`, `this.big`: a field through `this`, or a getter call.
     case PropertyAccess() when thisFieldOf(expression) != null:
+      return null;
+    // `Tally.limit`: a static field.
+    case PrefixedIdentifier() when staticFieldOf(expression) != null:
       return null;
     case PrefixedIdentifier() || PropertyAccess() when calleeOf(expression) != null:
       return null;

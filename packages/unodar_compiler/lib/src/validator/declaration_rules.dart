@@ -182,7 +182,7 @@ final class DeclaredTypeRule implements ValidationRule {
     for (final declaration in userClassDeclarations(unit).where((c) => c.extendsClause == null)) {
       for (final member in declaration.body.members) {
         switch (member) {
-          case FieldDeclaration(:final fields) when !member.isStatic && !fields.isLate:
+          case FieldDeclaration(:final fields) when !fields.isLate:
             _variables(fields, context);
           case ConstructorDeclaration(name: null, factoryKeyword: null):
             for (final parameter in member.parameters.parameters) {

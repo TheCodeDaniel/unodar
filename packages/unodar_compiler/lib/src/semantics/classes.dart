@@ -91,6 +91,20 @@ Element? _writeElementOf(Expression target) => switch (target.parent) {
       _ => null,
     };
 
+/// The static field `C.limit` names (also as an assignment target), or null. A static field named without the
+/// class (inside the class) is a [FieldReference] of `referenceOf`.
+FieldElement? staticFieldOf(Expression expression) {
+  // A read is a PrefixedIdentifier; the analyzer gives some write targets (`Tally.resets++`) as a PropertyAccess.
+  final (SimpleIdentifier? cls, SimpleIdentifier? property) = switch (expression) {
+    PrefixedIdentifier(:final prefix, :final identifier) => (prefix, identifier),
+    PropertyAccess(target: final SimpleIdentifier target, :final propertyName) => (target, propertyName),
+    _ => (null, null),
+  };
+  if (cls == null || property == null || cls.element is! ClassElement || !isUserClass(cls.element)) return null;
+  final field = _fieldOf(property.element) ?? _fieldOf(_writeElementOf(expression));
+  return field != null && field.isStatic ? field : null;
+}
+
 /// The instance field [expression] names through `this` inside a method (`this.count`, also as an assignment
 /// target), or null.
 FieldElement? thisFieldOf(Expression expression) {
@@ -106,6 +120,10 @@ ConstructorDeclaration? constructorOf(ClassDeclaration declaration) => declarati
     .whereType<ConstructorDeclaration>()
     .where((c) => c.name == null && c.factoryKeyword == null)
     .firstOrNull;
+
+/// The static fields of [declaration], in declaration order.
+Iterable<VariableDeclaration> staticFields(ClassDeclaration declaration) =>
+    declaration.body.members.whereType<FieldDeclaration>().where((f) => f.isStatic).expand((f) => f.fields.variables);
 
 /// The instance fields of [declaration], in declaration order.
 Iterable<VariableDeclaration> instanceFields(ClassDeclaration declaration) =>

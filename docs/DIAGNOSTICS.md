@@ -477,7 +477,8 @@ the same reason.
 
 (Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
 `e015_widget_forward_reference`, `e015_signal_initial_value`,
-`e015_watch_forward_reference`, `e015_led_sink_forward_reference`, `e015_class_initializers`.)
+`e015_watch_forward_reference`, `e015_led_sink_forward_reference`, `e015_class_initializers`,
+`e015_static_members`.)
 
 ## E016: Recursive function
 

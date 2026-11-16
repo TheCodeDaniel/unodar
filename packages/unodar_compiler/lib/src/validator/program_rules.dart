@@ -68,6 +68,11 @@ final class InitializerRule implements ValidationRule {
       } else {
         values = [initializer];
       }
+      // `const early = Later.size + 1;` with `Later` declared below: C++ needs the class first.
+      if (values.map((v) => _laterStatic(v, variable.offset)).nonNulls.firstOrNull case (final node, final cls)) {
+        context.report(Diagnostics.forwardReference(name, cls, context.at(node)));
+        continue;
+      }
       for (final value in values) {
         final later = subexpressions(value).whereType<SimpleIdentifier>().where((identifier) {
           final reference = referenceOf(identifier);
@@ -81,6 +86,16 @@ final class InitializerRule implements ValidationRule {
       }
     }
   }
+}
+
+/// A static member (`Later.size`) in [root] of a user class declared after [offset]: the node and the class name.
+(Expression, String)? _laterStatic(Expression root, int offset) {
+  for (final e in subexpressions(root)) {
+    final field = staticFieldOf(e);
+    final declared = field?.enclosingElement.firstFragment.nameOffset;
+    if (field != null && declared != null && declared > offset) return (e, field.enclosingElement.name!);
+  }
+  return null;
 }
 
 /// What the user's classes compile must be constant (E015): field initializers over constants, initializer-list
@@ -110,6 +125,11 @@ final class ClassInitializerRule implements ValidationRule {
           context.report(Diagnostics.classForwardReference(cls, later.name, context.at(later)));
           return;
         }
+        // `Later.size`: a static member of a class declared below this one.
+        if (_laterStatic(root, declaration.offset) case (final node, final name)) {
+          context.report(Diagnostics.classForwardReference(cls, name, context.at(node)));
+          return;
+        }
         final constant = subexpressions(root).every((e) => switch (e) {
               MethodInvocation() => false,
               SimpleIdentifier() when parameters && constructorParameterOf(e) != null => true,
@@ -124,10 +144,11 @@ final class ClassInitializerRule implements ValidationRule {
 
       for (final member in declaration.body.members) {
         switch (member) {
-          case FieldDeclaration(:final fields) when !member.isStatic:
+          case FieldDeclaration(:final fields):
             for (final variable in fields.variables) {
               if (variable.initializer case final initializer?) {
-                check(initializer, "the initializer of field '${variable.name.lexeme}'");
+                check(initializer,
+                    "the initializer of ${member.isStatic ? 'static ' : ''}field '${variable.name.lexeme}'");
               }
             }
           case ConstructorDeclaration(name: null, factoryKeyword: null, :final initializers):
@@ -347,7 +368,11 @@ final class EvaluationOrderRule implements ValidationRule {
             !variable.isFinal &&
             !isUnodarElement(variable)) {
           group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
-        } else if (signalOfValue(leftHandSide) != null || fieldAccessOf(leftHandSide) != null) {
+        } else if (signalOfValue(leftHandSide) != null ||
+            fieldAccessOf(leftHandSide) != null ||
+            thisFieldOf(leftHandSide) != null ||
+            staticFieldOf(leftHandSide) != null ||
+            (leftHandSide is SimpleIdentifier && referenceOf(leftHandSide) is FieldReference)) {
           // `count.value += next()` is `count.set(count.value() + next())`: the read and the call are unsequenced.
           group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
         }
@@ -394,6 +419,7 @@ final class _Member {
             e.name
           else if (signalOfValue(e) != null ||
               (fieldAccessOf(e)?.isMutable ?? false) ||
+              !(staticFieldOf(e)?.isFinal ?? true) ||
               !(thisFieldOf(e)?.isFinal ?? true))
             e.toSource(),
       ].firstOrNull,

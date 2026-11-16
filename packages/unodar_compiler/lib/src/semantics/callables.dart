@@ -44,7 +44,7 @@ Iterable<(MethodDeclaration, ClassDeclaration)> compiledMethods(CompilationUnit 
   for (final declaration in userClassDeclarations(unit)) {
     if (declaration.extendsClause != null) continue;
     for (final method in declaration.body.members.whereType<MethodDeclaration>()) {
-      if (method.isSetter || method.isOperator || method.isStatic || method.externalKeyword != null) continue;
+      if (method.isSetter || method.isOperator || method.externalKeyword != null) continue;
       if (objectMemberNames.contains(method.name.lexeme)) continue;
       yield (method, declaration);
     }
@@ -67,7 +67,7 @@ ExecutableElement? calleeOf(AstNode node) {
     case MethodInvocation():
       if (userFunctionOf(node) case final function?) return function;
       final element = node.methodName.element;
-      return element is MethodElement && !element.isStatic && isUserClass(element.enclosingElement) ? element : null;
+      return element is MethodElement && isUserClass(element.enclosingElement) ? element : null;
     case PrefixedIdentifier(:final identifier):
       return _getter(identifier.element);
     case PropertyAccess(:final propertyName):
@@ -83,6 +83,4 @@ ExecutableElement? calleeOf(AstNode node) {
 
 /// An explicit getter of a user class (not the implicit getter of a field).
 GetterElement? _getter(Element? element) =>
-    element is GetterElement && !element.isOriginVariable && !element.isStatic && isUserClass(element.enclosingElement)
-        ? element
-        : null;
+    element is GetterElement && !element.isOriginVariable && isUserClass(element.enclosingElement) ? element : null;

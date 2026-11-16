@@ -175,4 +175,8 @@ const sizeBudgets = <String, SizeBudget>{
   // class_methods: methods and getters on two objects (step 4). RAM (avr-nm): Serial 175 + core 9 + Button 7 +
   // Every 8 + small 12 + large 12 (three int fields each; methods add nothing) + "\r\n\0" 3.
   'class_methods': SizeBudget(baselineFlash: 3078, baselineRam: 226, maxFlash: 4050, maxRam: 237),
+  // class_static: static members (step 5). RAM (avr-nm): Serial 175 + core 9 + Button 7 + Every 8 + a 8 + b 8 (id and
+  // count; static fields are not in objects) + Tally::created 4 + Tally::resets 4 + "\r\n\0" 3. The `static const`
+  // limit and the `static final` rate have no symbol: folded, 0 B.
+  'class_static': SizeBudget(baselineFlash: 2788, baselineRam: 226, maxFlash: 3650, maxRam: 237),
 };

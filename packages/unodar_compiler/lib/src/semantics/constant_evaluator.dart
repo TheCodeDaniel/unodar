@@ -4,6 +4,7 @@ import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 
 import '../ir/ir.dart';
+import 'classes.dart';
 import 'elements.dart';
 import 'types.dart';
 
@@ -105,6 +106,11 @@ final class ConstantEvaluator {
         return value;
       case SimpleIdentifier():
         return _reference(e);
+      // `Tally.limit`: a `static const` of a user class.
+      case PrefixedIdentifier() when staticFieldOf(e) != null:
+        final field = staticFieldOf(e)!;
+        if (!field.isConst) throw const _NotConstant();
+        return _fromDartObject(field.computeConstantValue()) ?? (throw const _NotConstant());
       case ParenthesizedExpression(:final expression):
         return _eval(expression);
       case PrefixExpression(:final operator, :final operand):
@@ -138,6 +144,7 @@ final class ConstantEvaluator {
     final VariableElement? element = switch (referenceOf(identifier)) {
       UnodarConstantReference(:final element) || GlobalReference(:final element) => element,
       LocalReference(:final element) => element,
+      FieldReference(:final element) when element.isStatic => element,
       _ => null,
     };
     if (element == null || !element.isConst) throw const _NotConstant();
