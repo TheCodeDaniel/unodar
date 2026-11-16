@@ -4,6 +4,7 @@ import 'package:analyzer/dart/element/type.dart';
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
+import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/elements.dart';
 import '../semantics/signals.dart';
@@ -129,12 +130,12 @@ final class FunctionSignatureRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    for (final function in compiledFunctions(unit).where((f) => !isEntryPoint(f))) {
-      final expression = function.functionExpression;
-      final parameters = expression.parameters?.parameters ?? const <FormalParameter>[];
-      final body = expression.body;
+    for (final function in compiledCallables(unit)) {
+      if (function.function case final f? when isEntryPoint(f)) continue;
+      final parameters = function.parameters?.parameters ?? const <FormalParameter>[];
+      final body = function.body;
       final problems = [
-        if (expression.typeParameters != null) 'type parameters',
+        if (function.typeParameters != null) 'type parameters',
         if (parameters.any((p) => p.isOptionalPositional)) 'optional positional parameters',
         if (parameters.any((p) => p.isNamed)) 'named parameters',
         if (parameters.any((p) => p.defaultClause != null)) 'a default value',
@@ -150,7 +151,8 @@ final class FunctionSignatureRule implements ValidationRule {
       ];
       if (problems.isNotEmpty) {
         context.report(Diagnostics.unsupportedSignature(
-            function.name.lexeme, 'it has ${englishList(problems)}', context.at(function.name)));
+            function.displayName, 'it has ${englishList(problems)}', context.at(function.name),
+            kind: function.owner == null ? 'function' : 'method'));
       }
     }
   }
@@ -168,15 +170,14 @@ final class DeclaredTypeRule implements ValidationRule {
       if (widgetClassOf(declaration.variables.type?.type) != null) continue;
       _variables(declaration.variables, context);
     }
-    for (final function in compiledFunctions(unit)) {
-      final expression = function.functionExpression;
-      if (expression.typeParameters != null) continue;
+    for (final function in compiledCallables(unit)) {
+      if (function.typeParameters != null) continue;
       final returnType = function.returnType;
       if (returnType != null) _annotation(returnType, context, allowVoid: true);
-      for (final parameter in expression.parameters?.parameters ?? const <FormalParameter>[]) {
+      for (final parameter in function.parameters?.parameters ?? const <FormalParameter>[]) {
         if (parameter.type case final type? when parameter.functionTypedSuffix == null) _annotation(type, context);
       }
-      _locals(expression.body, context);
+      _locals(function.body, context);
     }
     for (final declaration in userClassDeclarations(unit).where((c) => c.extendsClause == null)) {
       for (final member in declaration.body.members) {

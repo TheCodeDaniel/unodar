@@ -1,0 +1,4 @@
+input.dart:15:46: error[E026]: a Computed can only read signals and Computeds declared above it, and constants; 'settings.offset' is a mutable variable, so the Computed would not see it change.
+  = help: Make 'settings.offset' a Signal, or a `const`.
+input.dart:16:44: error[E026]: a Computed cannot call 'settings.doubled': it may only read signals, Computeds and constants, so that it can be evaluated at any time.
+  = help: Store the value in a Signal from a Button or Every callback, and compute from that signal.

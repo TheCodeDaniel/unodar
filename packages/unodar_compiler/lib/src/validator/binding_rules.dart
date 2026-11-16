@@ -10,6 +10,7 @@ import '../diagnostics/diagnostics.dart';
 import '../emitter/target.dart';
 import '../frontend/frontend.dart';
 import '../ir/ir.dart';
+import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/elements.dart';
 import '../semantics/types.dart';
@@ -353,12 +354,11 @@ final class BoundObjectRule implements ValidationRule {
       }
     }
 
-    for (final function in compiledFunctions(unit)) {
-      final expression = function.functionExpression;
+    for (final function in compiledCallables(unit)) {
       if (function.returnType case final type? when isObjectType(type.type)) {
         context.report(_typePosition('a return value', type.type!, type.toSource(), context.at(type)));
       }
-      for (final parameter in expression.parameters?.parameters ?? const <FormalParameter>[]) {
+      for (final parameter in function.parameters?.parameters ?? const <FormalParameter>[]) {
         final type = parameter.declaredFragment?.element.type;
         if (!isObjectType(type)) continue;
         final node = _typeAnnotationOf(parameter) ?? parameter;

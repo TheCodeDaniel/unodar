@@ -3,6 +3,7 @@ import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
 
 import '../diagnostics/diagnostics.dart';
+import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/elements.dart';
 import '../semantics/signals.dart';
@@ -98,11 +99,11 @@ final class SignalRule implements ValidationRule {
     }
 
     // Types: parameters, return values, locals.
-    for (final function in compiledFunctions(unit)) {
+    for (final function in compiledCallables(unit)) {
       if (function.returnType case final type? when isSignalType(type.type)) {
         context.report(Diagnostics.signalTypePosition('a return value', type.toSource(), context.at(type)));
       }
-      for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
+      for (final parameter in function.parameters?.parameters ?? const <FormalParameter>[]) {
         final type = parameter.declaredFragment?.element.type;
         if (!isSignalType(type)) continue;
         context.report(Diagnostics.signalTypePosition('a parameter', displayType(type!), context.at(parameter)));
@@ -173,7 +174,7 @@ final class ReactiveCycleRule implements ValidationRule {
       for (final variable in topLevelVariables(unit))
         if (topLevelSignal(variable) != null) variable.name.lexeme,
     ];
-    final functions = {for (final f in compiledFunctions(unit)) f.declaredFragment?.element: f};
+    final functions = {for (final f in compiledCallables(unit)) f.element: f};
 
     // Watches in source order, with the name of the signal they watch.
     final watches = <(String, FunctionExpression)>[];
@@ -189,7 +190,7 @@ final class ReactiveCycleRule implements ValidationRule {
     final edges = <String, Map<String, _Write>>{};
     for (final (source, callback) in watches) {
       final queue = <(FunctionBody, String)>[(callback.body, 'Watch($source)')];
-      final seen = <FunctionDeclaration>{};
+      final seen = <Callable>{};
       while (queue.isNotEmpty) {
         final (body, path) = queue.removeAt(0);
         final visitor = _WriteVisitor(functions)..visit(body);
@@ -198,7 +199,7 @@ final class ReactiveCycleRule implements ValidationRule {
           (edges[source] ??= {}).putIfAbsent(target, () => _Write(node, path));
         }
         for (final function in visitor.callees) {
-          if (seen.add(function)) queue.add((function.functionExpression.body, '$path → ${function.name.lexeme}()'));
+          if (seen.add(function)) queue.add((function.body, '$path → ${function.displayName}()'));
         }
       }
     }
@@ -325,9 +326,9 @@ final class _Write {
 final class _WriteVisitor extends RecursiveAstVisitor<void> {
   _WriteVisitor(this.functions);
 
-  final Map<Element?, FunctionDeclaration> functions;
+  final Map<Element?, Callable> functions;
   final writes = <(String, Expression)>[];
-  final callees = <FunctionDeclaration>[];
+  final callees = <Callable>[];
 
   void visit(AstNode node) => node.accept(this);
 
@@ -353,12 +354,34 @@ final class _WriteVisitor extends RecursiveAstVisitor<void> {
     super.visitPrefixExpression(node);
   }
 
-  @override
-  void visitMethodInvocation(MethodInvocation node) {
-    if (functions[userFunctionOf(node)] case final function?) {
+  void _call(AstNode node) {
+    if (functions[calleeOf(node)] case final function?) {
       if (!callees.contains(function)) callees.add(function);
     }
+  }
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    _call(node);
     super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    _call(node);
+    super.visitPrefixedIdentifier(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    _call(node);
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    _call(node);
+    super.visitSimpleIdentifier(node);
   }
 }
 
@@ -409,6 +432,15 @@ final class ComputedRule implements ValidationRule {
         if (expressionIssue(e) != null) return false; // E002/E012.
         if (e is MethodInvocation) {
           context.report(Diagnostics.computedCall('${e.methodName.name}()', context.at(e.methodName)));
+          return false;
+        }
+        // A getter of the user's class is a call; a mutable field of an object can change unseen.
+        if (calleeOf(e) != null) {
+          context.report(Diagnostics.computedCall(e.toSource(), context.at(e)));
+          return false;
+        }
+        if (fieldAccessOf(e) case final access?) {
+          if (access.isMutable) context.report(Diagnostics.computedMutable(e.toSource(), context.at(e)));
           return false;
         }
         if (signalOfValue(e) case final signal?) {

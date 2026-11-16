@@ -19,3 +19,13 @@ class Meter {
 void setup() {}
 
 void loop() {}
+
+class Shown {
+  int n = 0;
+
+  @override
+  String toString() => 'Shown';
+
+  @override
+  int get hashCode => n;
+}

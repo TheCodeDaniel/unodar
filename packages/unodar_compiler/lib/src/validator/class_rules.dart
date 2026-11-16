@@ -4,6 +4,7 @@ import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
+import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/signals.dart';
 import '../semantics/types.dart';
@@ -100,11 +101,11 @@ final class ClassRule implements ValidationRule {
           feature("an external member ('${name.lexeme}')", _externalHelp, start);
         case MethodDeclaration(:final name, isStatic: true):
           feature("a static member ('${name.lexeme}')", 'Declare it at the top level instead.', start);
-        case MethodDeclaration(:final name, isGetter: true):
-          // Interim (Phase 6 step 3): methods and getters land in step 4.
-          feature("a getter ('${name.lexeme}')", 'Write it as a top-level function for now.', start);
-        case MethodDeclaration(:final name):
-          feature("a method ('${name.lexeme}')", 'Write it as a top-level function for now.', start);
+        case MethodDeclaration(:final name) when objectMemberNames.contains(name.lexeme):
+          feature("overriding '${name.lexeme}'",
+              'Remove it; there are no strings or hash maps on the device. Write a method of another name.', start);
+        case MethodDeclaration():
+          break; // A method or getter: compiled like a function (E011 and every body rule).
         default:
           feature('this member', 'Remove it; see "Your own classes" in docs/SUBSET.md.', start);
       }

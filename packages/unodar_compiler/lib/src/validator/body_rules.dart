@@ -1,11 +1,13 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
+import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
@@ -79,13 +81,17 @@ final class StatementRule implements ValidationRule {
       case AssignmentExpression(:final leftHandSide)
           when leftHandSide is! SimpleIdentifier &&
               !_isSignalWrite(leftHandSide) &&
-              fieldAccessOf(leftHandSide) == null:
+              fieldAccessOf(leftHandSide) == null &&
+              thisFieldOf(leftHandSide) == null:
         unsupported('an assignment to `${leftHandSide.toSource()}`', 'Assign to a variable name.');
       case AssignmentExpression():
         break;
       case PrefixExpression(:final operand) || PostfixExpression(:final operand)
           when isIncrementOrDecrement(expression):
-        if (operand is! SimpleIdentifier && !_isSignalWrite(operand) && fieldAccessOf(operand) == null) {
+        if (operand is! SimpleIdentifier &&
+            !_isSignalWrite(operand) &&
+            fieldAccessOf(operand) == null &&
+            thisFieldOf(operand) == null) {
           unsupported('`++`/`--` on `${operand.toSource()}`', 'Apply `++` and `--` to a variable name.');
         }
       case ThrowExpression():
@@ -205,9 +211,24 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     // `left.count`: a field of an object (whether `left` may be used is for E018).
     case PrefixedIdentifier() || PropertyAccess() when fieldAccessOf(expression) != null:
       return null;
+    // `this.count`, `meter.big`, `this.big`: a field through `this`, or a getter call.
+    case PropertyAccess() when thisFieldOf(expression) != null:
+      return null;
+    case PrefixedIdentifier() || PropertyAccess() when calleeOf(expression) != null:
+      return null;
+    // A method used without calling it (`onPressed: toggle.flip`).
+    case PrefixedIdentifier(identifier: SimpleIdentifier(element: final MethodElement method)) ||
+            PropertyAccess(propertyName: SimpleIdentifier(element: final MethodElement method))
+        when isUserClass(method.enclosingElement):
+      return _isWidgetArgument(expression)
+          ? (at) => Diagnostics.callbackReference(expression.toSource(), at)
+          : (at) => Diagnostics.functionReference(expression.toSource(), at);
     // A field of a parameter or local of a class type: E018 reports the parameter or local.
     case PrefixedIdentifier(:final prefix) when userClassOf(prefix.staticType) != null:
       return null;
+    // `this` on its own is the object as a value (E018); `this.x` and `this.m()` are handled above.
+    case ThisExpression():
+      return Diagnostics.thisUse;
     case PrefixedIdentifier() || PropertyAccess():
       return e002("a property access ('${expression.toSource()}')",
           'Properties and methods of values are not supported in this version.');
@@ -269,16 +290,16 @@ final class ExpressionTypeRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     final genericFunctions = {
-      for (final f in compiledFunctions(unit))
-        if (f.functionExpression.typeParameters != null) f,
+      for (final f in compiledCallables(unit))
+        if (f.typeParameters != null) f.declaration,
     };
     final roots = [
       for (final variable in topLevelVariables(unit))
         if (variable.initializer case final initializer?) initializer,
       ...allClassRoots(unit),
       ...deviceRoots(unit),
-      for (final function in compiledFunctions(unit))
-        if (!genericFunctions.contains(function)) ...rootsOfFunction(function),
+      for (final function in compiledCallables(unit))
+        if (!genericFunctions.contains(function.declaration)) ...rootsOfBody(function.body),
       for (final callback in widgetCallbacks(unit)) ...rootsOfBody(callback.body),
     ];
     for (final root in roots) {
@@ -289,7 +310,8 @@ final class ExpressionTypeRule implements ValidationRule {
         // Method calls on numbers (`x.abs()`) are E003; methods of API objects are checked like functions.
         if (expression is MethodInvocation &&
             expression.target != null &&
-            context.api.resolveMethodCall(expression) == null) {
+            context.api.resolveMethodCall(expression) == null &&
+            calleeOf(expression) == null) {
           return false;
         }
         final type = expression.staticType;
@@ -340,7 +362,7 @@ final class ApiCallRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
-      if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null || isCppCall(call)) continue;
+      if (context.api.resolveApiCall(call) != null || calleeOf(call) != null || isCppCall(call)) continue;
       if (isRunDeviceCall(call)) continue; // E021, from ExpressionRule.
       // A method of a misplaced widget (a local): reported at its declaration (E022). A method of an accepted
       // top-level widget that the registry does not support (declared in package:unodar ahead of its compiler
@@ -353,7 +375,7 @@ final class ApiCallRule implements ValidationRule {
         continue;
       }
       // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
-      if (call.target != null && bindingClassOf(call.target!.staticType) != null) continue;
+      if (call.target != null && isObjectType(call.target!.staticType)) continue;
       final target = call.target;
       final name = target == null ? call.methodName.name : '${target.toSource()}.${call.methodName.name}';
       final source = call.toSource();

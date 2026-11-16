@@ -125,13 +125,22 @@ final class IrBoundObject extends IrGlobalDeclaration {
 /// The C++ `struct` of one of the user's classes (docs/SUBSET.md "Your own classes"). Its objects are
 /// [IrBoundObject]s of [name].
 final class IrStruct extends IrGlobalDeclaration {
-  const IrStruct({required super.name, required super.line, this.fields = const [], this.constructor});
+  const IrStruct({
+    required super.name,
+    required super.line,
+    this.fields = const [],
+    this.constructor,
+    this.methods = const [],
+  });
 
   /// Instance fields, in declaration order.
   final List<IrStructField> fields;
 
   /// The constructor, or null for Dart's default constructor (the C++ implicit one).
   final IrConstructor? constructor;
+
+  /// Its methods and getters, declared in the struct; each is also in [IrProgram.functions], where it is defined.
+  final List<IrFunction> methods;
 }
 
 /// An instance field: `const int32_t id;`, `int32_t count = start;`.
@@ -178,7 +187,8 @@ final class IrParameter {
   final IrType type;
 }
 
-/// A top-level function. [isEntryPoint] marks `setup`/`loop`, which Arduino declares itself (no prototype).
+/// A top-level function, or with an [owner] a method of a struct. [isEntryPoint] marks `setup`/`loop`, which Arduino
+/// declares itself (no prototype).
 final class IrFunction {
   const IrFunction({
     required this.name,
@@ -187,9 +197,13 @@ final class IrFunction {
     this.returnType = IrType.void_,
     this.parameters = const [],
     this.isEntryPoint = false,
+    this.owner,
   });
 
   final String name;
+
+  /// The struct a method belongs to (declared there, defined as `R Owner::name(…)`), or null for a function.
+  final String? owner;
   final int line;
   final IrType returnType;
   final List<IrParameter> parameters;
@@ -418,7 +432,8 @@ final class IrCall extends IrExpression {
   @override
   final IrType type;
 
-  /// The C++ object a method is called on, or null for a function call.
+  /// The C++ object a method is called on (`this` inside a method: `this->m()`), or null for a function call or a
+  /// call of a method of the current object without `this`.
   final String? receiver;
 
   /// The C++ result type, for API and binding calls whose C++ result may differ from the target's type for [type]

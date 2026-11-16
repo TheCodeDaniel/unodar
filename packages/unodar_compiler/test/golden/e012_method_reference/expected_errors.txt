@@ -1,0 +1,4 @@
+input.dart:11:15: error[E012]: a closure is not supported in this version. Functions can only be declared at the top level.
+  = help: Declare a top-level function and call it directly.
+input.dart:19:35: error[E012]: a function reference ('toggle.flip') cannot be a widget callback.
+  = help: Write a closure that calls it: `() { toggle.flip(); }`.

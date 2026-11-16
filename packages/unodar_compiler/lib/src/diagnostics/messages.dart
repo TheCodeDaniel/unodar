@@ -171,10 +171,12 @@ abstract final class Diagnostics {
         suggestion: 'Use a divisor that is not zero.',
       );
 
-  static Diagnostic unsupportedSignature(String name, String problems, SourceLocation at) => Diagnostic(
+  /// [kind] is `function` or `method`.
+  static Diagnostic unsupportedSignature(String name, String problems, SourceLocation at, {String kind = 'function'}) =>
+      Diagnostic(
         code: DiagnosticCode.unsupportedSignature,
         location: at,
-        message: "unsupported signature for function '$name': $problems.",
+        message: "unsupported signature for $kind '$name': $problems.",
         suggestion: 'Use only required positional parameters with a supported type, e.g. '
             '`int add(int a, int b) { ... }`.',
       );
@@ -383,6 +385,14 @@ abstract final class Diagnostics {
         location: at,
         message: "the object '$name' can only be used through its fields and methods.",
         suggestion: 'Use a field or a method, e.g. `$name.count`; an object cannot be stored, compared, passed, or '
+            'printed.',
+      );
+
+  static Diagnostic thisUse(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: '`this` can only be used to name a member of the object (`this.count`, `this.update()`).',
+        suggestion: 'Use a field or a method of `this`; the object itself cannot be stored, compared, passed, or '
             'printed.',
       );
 

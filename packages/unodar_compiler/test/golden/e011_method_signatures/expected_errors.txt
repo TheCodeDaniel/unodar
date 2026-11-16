@@ -1,0 +1,8 @@
+input.dart:6:8: error[E011]: unsupported signature for method 'Motor.set': it has named parameters and a default value.
+  = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.
+input.dart:10:8: error[E011]: unsupported signature for method 'Motor.nudge': it has optional positional parameters and a default value.
+  = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.
+input.dart:14:5: error[E011]: unsupported signature for method 'Motor.pick': it has type parameters.
+  = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.
+input.dart:16:8: error[E011]: unsupported signature for method 'Motor.go': it has an untyped parameter ('value').
+  = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.

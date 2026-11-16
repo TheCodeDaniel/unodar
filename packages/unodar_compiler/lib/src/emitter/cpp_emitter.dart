@@ -61,7 +61,7 @@ final class CppEmitter {
     }
     final prototypes = [
       for (final function in program.functions)
-        if (!function.isEntryPoint) '${_signature(function)};',
+        if (!function.isEntryPoint && function.owner == null) '${_signature(function)};',
     ];
     if (prototypes.isNotEmpty) {
       out.writeln();
@@ -112,6 +112,11 @@ final class CppEmitter {
         ..writeln('#line ${field.line} $file')
         ..writeln('  ${_declaration(field.storage, field.type, field.name)}$initializer;');
     }
+    for (final method in struct.methods) {
+      out
+        ..writeln('#line ${method.line} $file')
+        ..writeln('  ${_signature(method, qualified: false)};');
+    }
     if (struct.constructor case final constructor?) {
       final parameters = constructor.parameters.map((p) => '${target.cppType(p.type)} ${p.name}').join(', ');
       final head = '  ${constructor.isConstexpr ? 'constexpr ' : ''}explicit ${struct.name}($parameters)';
@@ -129,9 +134,11 @@ final class CppEmitter {
     out.writeln('};');
   }
 
-  String _signature(IrFunction function) {
+  /// `int32_t f(int32_t a)`; a method defined outside its struct is qualified, `bool Meter::big()`.
+  String _signature(IrFunction function, {bool qualified = true}) {
     final parameters = function.parameters.map((p) => '${target.cppType(p.type)} ${p.name}').join(', ');
-    return '${target.cppType(function.returnType)} ${function.name}($parameters)';
+    final name = qualified && function.owner != null ? '${function.owner}::${function.name}' : function.name;
+    return '${target.cppType(function.returnType)} $name($parameters)';
   }
 
   String _declaration(IrStorage storage, IrType type, String name) {
@@ -280,7 +287,8 @@ final class CppEmitter {
     final texts = [
       for (var index = 0; index < arguments.length; index++) _argument(arguments[index], parameterCppTypes?[index]),
     ];
-    final text = '${receiver == null ? '' : '$receiver.'}$function(${texts.join(', ')})';
+    final prefix = switch (receiver) { null => '', 'this' => 'this->', _ => '$receiver.' };
+    final text = '$prefix$function(${texts.join(', ')})';
     return switch (_resultConversion(call)) {
       null => text,
       final type => _conversion(type, text),

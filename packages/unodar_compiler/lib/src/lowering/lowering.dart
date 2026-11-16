@@ -1,12 +1,14 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/syntactic_entity.dart';
 import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../frontend/frontend.dart';
 import '../ir/ir.dart';
+import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
@@ -71,6 +73,8 @@ final class _Lowerer {
     final names = {for (final (name, creation) in acceptedWidgets(source.unit)) creation: name};
     final bodies = <(int, IrFunction Function())>[
       for (final function in compiledFunctions(source.unit)) (function.offset, () => _function(function)),
+      // Methods are defined among the functions, in source order (declared in their struct).
+      for (final (method, owner) in compiledMethods(source.unit)) (method.offset, () => _method(method, owner)),
       // A Computed's function, at its declaration.
       for (final variable in topLevelVariables(source.unit))
         if (computedCreation(variable.initializer) case final creation? when topLevelSignal(variable) != null)
@@ -87,7 +91,8 @@ final class _Lowerer {
     ];
     final functionNames = <String>{};
     for (final function in functions) {
-      if (!functionNames.add(function.name)) throw LoweringError('two functions named ${function.name}');
+      final name = function.owner == null ? function.name : '${function.owner}::${function.name}';
+      if (!functionNames.add(name)) throw LoweringError('two functions named $name');
     }
     return IrProgram(
       sourceName: source.displayName,
@@ -387,6 +392,10 @@ final class _Lowerer {
       name: declaration.namePart.typeName.lexeme,
       line: _line(declaration.namePart.typeName),
       fields: fields,
+      methods: [
+        for (final (method, owner) in compiledMethods(source.unit))
+          if (owner == declaration) _method(method, owner),
+      ],
       constructor: constructor == null
           ? null
           : IrConstructor(
@@ -432,6 +441,31 @@ final class _Lowerer {
           throw LoweringError('missing argument ${parameter.name} in ${creation.toSource()}'),
     ];
   }
+
+  /// A method or getter, lowered once (its struct declares it, the functions define it).
+  IrFunction _method(MethodDeclaration method, ClassDeclaration owner) => _methods[method] ??= () {
+        final element = method.declaredFragment?.element ?? (throw LoweringError('unresolved ${method.name}'));
+        final returnType = _type(element.returnType, method.name);
+        final body = method.body;
+        return IrFunction(
+          name: method.name.lexeme,
+          owner: owner.namePart.typeName.lexeme,
+          line: _line(method.firstTokenAfterCommentAndMetadata),
+          returnType: returnType,
+          parameters: [
+            for (final parameter in method.parameters?.parameters ?? const <FormalParameter>[])
+              IrParameter(parameter.name!.lexeme, _type(parameter.declaredFragment?.element.type, parameter)),
+          ],
+          body: switch (body) {
+            BlockFunctionBody(:final block) => _statements(block.statements),
+            ExpressionFunctionBody(expression: final e) when returnType == IrType.void_ => [_statementLevel(e)],
+            ExpressionFunctionBody(expression: final e) => [IrReturn(_expression(e), line: _line(e))],
+            _ => throw LoweringError('unsupported body of ${method.name.lexeme}'),
+          },
+        );
+      }();
+
+  final _methods = <MethodDeclaration, IrFunction>{};
 
   IrFunction _function(FunctionDeclaration function) {
     final expression = function.functionExpression;
@@ -553,9 +587,9 @@ final class _Lowerer {
               PostfixExpression(operand: SimpleIdentifier(:final name), :final operator)
           when isIncrementOrDecrement(expression):
         return IrIncrement(name, decrement: operator.type == TokenType.MINUS_MINUS, line: line);
-      // Field writes: `left.count = e`, `+=`, `-=`, `++`, `--` on the C++ member.
+      // Field writes: `left.count = e`, `this.count = e`, `+=`, `-=`, `++`, `--` on the C++ member.
       case AssignmentExpression(:final leftHandSide, :final operator, :final rightHandSide)
-          when fieldAccessOf(leftHandSide) != null:
+          when fieldAccessOf(leftHandSide) != null || thisFieldOf(leftHandSide) != null:
         final op = switch (operator.type) {
           TokenType.EQ => IrAssignOp.assign,
           TokenType.PLUS_EQ => IrAssignOp.add,
@@ -564,7 +598,7 @@ final class _Lowerer {
         };
         return IrAssign(_fieldTarget(leftHandSide), op, _expression(rightHandSide), line: line);
       case PrefixExpression(:final operand, :final operator) || PostfixExpression(:final operand, :final operator)
-          when isIncrementOrDecrement(expression) && fieldAccessOf(operand) != null:
+          when isIncrementOrDecrement(expression) && (fieldAccessOf(operand) != null || thisFieldOf(operand) != null):
         return IrIncrement(_fieldTarget(operand), decrement: operator.type == TokenType.MINUS_MINUS, line: line);
       // Signal writes: `count.value = e` → `count.set(e)`; `+=`, `-=`, `++`, `--` → `count.set(count.value() ± e)`.
       case AssignmentExpression(:final leftHandSide, :final operator, :final rightHandSide)
@@ -592,8 +626,9 @@ final class _Lowerer {
     }
   }
 
-  /// The C++ lvalue of a field: `left.count`.
+  /// The C++ lvalue of a field: `left.count`, or `this->count`.
   String _fieldTarget(Expression target) {
+    if (thisFieldOf(target) case final field?) return 'this->${field.name}';
     final access = fieldAccessOf(target)!;
     return '${access.object.name}.${access.field.name}';
   }
@@ -671,6 +706,14 @@ final class _Lowerer {
       case PrefixedIdentifier() || PropertyAccess() when fieldAccessOf(expression) != null:
         final access = fieldAccessOf(expression)!;
         return IrFieldRead(access.object.name!, access.field.name!, _typeOf(expression));
+      case PropertyAccess() when thisFieldOf(expression) != null:
+        return IrFieldRead(null, thisFieldOf(expression)!.name!, _typeOf(expression));
+      // A getter call: `meter.big` → `meter.big()`, `this.big` → `this->big()`.
+      case PrefixedIdentifier(:final prefix, :final identifier) when calleeOf(expression) != null:
+        return IrCall(identifier.name, const [], receiver: prefix.name, type: _typeOf(expression));
+      case PropertyAccess(:final target, :final propertyName) when calleeOf(expression) != null:
+        return IrCall(propertyName.name, const [],
+            receiver: target is ThisExpression ? 'this' : (target as SimpleIdentifier).name, type: _typeOf(expression));
       // `Every`'s interval, validated (E022): its length in milliseconds.
       case InstanceCreationExpression() when isWidgetInterval(expression):
         return switch (intervalOf(expression, const ConstantEvaluator())) {
@@ -708,8 +751,10 @@ final class _Lowerer {
       case UnodarConstantReference():
         final constant = api.resolveConstant(identifier) ?? (throw LoweringError('unknown constant $identifier'));
         return IrConstant(constant.cppName);
-      case LocalReference() || GlobalReference():
+      case LocalReference() || GlobalReference() || FieldReference():
         return IrVariable(identifier.name, _typeOf(identifier));
+      case GetterReference():
+        return IrCall(identifier.name, const [], type: _typeOf(identifier));
       default:
         throw LoweringError('unsupported reference $identifier');
     }
@@ -741,6 +786,21 @@ final class _Lowerer {
         type: function.returnType,
         cppResult: _cppResult(function),
         parameterCppTypes: function.convertsArguments ? [for (final p in function.parameters) p.cppType!] : null,
+      );
+    }
+    if (calleeOf(call) is MethodElement) {
+      // A method of the user's class: on an object, on `this`, or (no target) on the current object.
+      final target = call.target;
+      return IrCall(
+        call.methodName.name,
+        [for (final a in call.argumentList.arguments) _expression(a.argumentExpression)],
+        receiver: switch (target) {
+          null => null,
+          ThisExpression() => 'this',
+          SimpleIdentifier(:final name) => name,
+          _ => throw LoweringError('method call on ${target.toSource()}'),
+        },
+        type: _typeOf(call),
       );
     }
     if (userFunctionOf(call) == null) throw LoweringError('unresolved call ${call.toSource()}');

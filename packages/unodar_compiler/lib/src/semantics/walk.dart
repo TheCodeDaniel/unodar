@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 
+import 'callables.dart';
 import 'classes.dart';
 import 'elements.dart';
 import 'signals.dart';
@@ -40,11 +41,11 @@ List<Statement> childStatements(Statement statement) => switch (statement) {
       _ => const [],
     };
 
-/// The body of every compiled function, then of every widget callback (a callback is compiled like a `void`
-/// function without parameters).
+/// The body of every compiled function and method, then of every widget callback (a callback is compiled like a
+/// `void` function without parameters).
 Iterable<FunctionBody> compiledBodies(CompilationUnit unit) sync* {
-  for (final function in compiledFunctions(unit)) {
-    yield function.functionExpression.body;
+  for (final callable in compiledCallables(unit)) {
+    yield callable.body;
   }
   for (final callback in widgetCallbacks(unit)) {
     yield callback.body;
@@ -58,6 +59,8 @@ Expression? statementLevelArrow(FunctionBody body) {
   return switch (body.parent) {
     FunctionExpression(parent: final FunctionDeclaration function) when isVoidArrow(function) => body.expression,
     FunctionExpression(parent: FunctionDeclaration()) => null,
+    MethodDeclaration(:final returnType) when returnType?.toSource() == 'void' => body.expression,
+    MethodDeclaration() => null,
     FunctionExpression() => body.expression, // A widget callback.
     _ => null,
   };

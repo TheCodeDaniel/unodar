@@ -1,0 +1,2 @@
+input.dart:11:18: error[E025]: this write closes a cycle: Watch(count) → Limiter.clamp() → count, so the Watch would run again after every delivery.
+  = help: Write 'count' where the change starts, e.g. in a Button callback, or derive the value with a Computed.

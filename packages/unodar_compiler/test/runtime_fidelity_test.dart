@@ -679,6 +679,48 @@ void main() {
       });
     });
 
+    group('a method changes only the object it is called on (golden class_methods, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      // Two bouncing presses on D2 (settled at 305 and 1205 ms); the Every ticks at 500, 1000 and 1500 ms.
+      const pins = ['D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@700', 'D2=low@1200', 'D2=open@1600'];
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'class_methods', 'input.dart'));
+        if (result is! CompileSuccess) fail('class_methods did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<String> run(String cpp) async {
+        final build = await compileSketch('class_methods', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, pins: pins, until: null, cycles: 1800 * 16000)).serial;
+      }
+
+      test('methods call methods, read and write fields with and without this, and getters evaluate as in Dart',
+          () async {
+        gate.check();
+        // small = Meter(1): big when count >= 2. large = Meter(7): big when count >= 14.
+        // Press 1: small.add(3): count 3, total 3. Tick 1: large count 7, total 7.
+        // Tick 2: large count 14, total 21, big. Press 2: small count 6, total 9. Tick 3: large count 21, total 42.
+        expect(
+            await run(await generated()),
+            '3 3 true\r\n7 7 false\r\n'
+            '3 3 true\r\n14 21 true\r\nlarge is big\r\n'
+            '6 9 true\r\n21 42 true\r\nlarge is big\r\n');
+      });
+
+      test('negative control: a method body that names one object instead of this changes the other object', () async {
+        gate.check();
+        final cpp = await generated();
+        const write = '  this->total += count;\n';
+        expect(cpp, contains(write), reason: 'the generated code changed; update the negative control');
+        // large.add(1) at tick 1 then adds large's count 7 to small.total (3 + 7) and leaves large.total at 0.
+        expect(
+            await run(cpp.replaceFirst(write, '  small.total += count;\n')), startsWith('3 10 true\r\n7 0 false\r\n'));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

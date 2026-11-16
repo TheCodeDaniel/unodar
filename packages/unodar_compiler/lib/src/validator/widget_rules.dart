@@ -4,6 +4,7 @@ import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
+import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
@@ -312,11 +313,11 @@ final class WidgetHandleRule implements ValidationRule {
         return expressionIssue(expression) == null;
       });
     }
-    for (final function in compiledFunctions(unit)) {
+    for (final function in compiledCallables(unit)) {
       if (function.returnType case final type? when widgetClassOf(type.type) != null) {
         context.report(Diagnostics.widgetTypePosition('a return value', type.toSource(), context.at(type)));
       }
-      for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
+      for (final parameter in function.parameters?.parameters ?? const <FormalParameter>[]) {
         final type = parameter.declaredFragment?.element.type;
         if (widgetClassOf(type) == null) continue;
         context.report(Diagnostics.widgetTypePosition('a parameter', displayType(type!), context.at(parameter)));
@@ -349,23 +350,23 @@ final class DelayInCallbackRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    final functions = {for (final f in compiledFunctions(unit)) f.declaredFragment?.element: f};
+    final functions = {for (final f in compiledCallables(unit)) f.element: f};
     final reported = <MethodInvocation>{};
     for (final callback in widgetCallbacks(unit)) {
       final widget = widgetClassOf(widgetOfCallback(callback)!.staticType)!.name;
       final start = "$widget's ${callbackParameterName(callback)}";
       // Breadth first, so each function is reached by its shortest path.
       final queue = <(FunctionBody, String)>[(callback.body, start)];
-      final seen = <FunctionDeclaration>{};
+      final seen = <Callable>{};
       while (queue.isNotEmpty) {
         final (body, path) = queue.removeAt(0);
-        final calls = <MethodInvocation>[];
+        final calls = <AstNode>[];
         body.accept(_CallVisitor(calls.add));
         for (final call in calls) {
-          if (_isDelay(call)) {
+          if (call is MethodInvocation && _isDelay(call)) {
             if (reported.add(call)) context.report(Diagnostics.delayInCallback(path, context.at(call)));
-          } else if (functions[userFunctionOf(call)] case final function? when seen.add(function)) {
-            queue.add((function.functionExpression.body, '$path → ${function.name.lexeme}()'));
+          } else if (functions[calleeOf(call)] case final function? when seen.add(function)) {
+            queue.add((function.body, '$path → ${function.displayName}()'));
           }
         }
       }
@@ -379,14 +380,33 @@ final class DelayInCallbackRule implements ValidationRule {
   }
 }
 
+/// Every call in a body: method invocations, and reads that may call a getter (checked with [calleeOf]).
 final class _CallVisitor extends RecursiveAstVisitor<void> {
   _CallVisitor(this.onCall);
 
-  final void Function(MethodInvocation call) onCall;
+  final void Function(AstNode call) onCall;
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
     onCall(node);
     super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    onCall(node);
+    super.visitPrefixedIdentifier(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    onCall(node);
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    onCall(node);
+    super.visitSimpleIdentifier(node);
   }
 }

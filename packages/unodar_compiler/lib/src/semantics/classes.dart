@@ -91,6 +91,16 @@ Element? _writeElementOf(Expression target) => switch (target.parent) {
       _ => null,
     };
 
+/// The instance field [expression] names through `this` inside a method (`this.count`, also as an assignment
+/// target), or null.
+FieldElement? thisFieldOf(Expression expression) {
+  if (expression case PropertyAccess(target: ThisExpression(), :final propertyName)) {
+    final field = _fieldOf(propertyName.element) ?? _fieldOf(_writeElementOf(expression));
+    return field != null && !field.isStatic && isUserClass(field.enclosingElement) ? field : null;
+  }
+  return null;
+}
+
 /// The unnamed generative constructor of [declaration], or null if it has none (Dart's default constructor).
 ConstructorDeclaration? constructorOf(ClassDeclaration declaration) => declaration.body.members
     .whereType<ConstructorDeclaration>()

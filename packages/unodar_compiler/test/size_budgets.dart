@@ -172,4 +172,7 @@ const sizeBudgets = <String, SizeBudget>{
   // Every 8 + left 18 + right 18 (each the sum of its fields, 4 + 4 + 1 + 4 + 1 + 4: no padding, no vtable) + 15 B of
   // .data strings ("\r\n\0" and Print's "nan"/"inf"/"ovf"). Most of the flash is float printing and arithmetic.
   'class_fields': SizeBudget(baselineFlash: 4608, baselineRam: 250, maxFlash: 6000, maxRam: 261),
+  // class_methods: methods and getters on two objects (step 4). RAM (avr-nm): Serial 175 + core 9 + Button 7 +
+  // Every 8 + small 12 + large 12 (three int fields each; methods add nothing) + "\r\n\0" 3.
+  'class_methods': SizeBudget(baselineFlash: 3078, baselineRam: 226, maxFlash: 4050, maxRam: 237),
 };

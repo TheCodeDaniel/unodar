@@ -281,7 +281,7 @@ input.dart:8:17: error[E009]: the type 'num' is not supported in this version. O
 ```
 
 (Golden tests: `test/golden/e009_nullable_type`, `e009_unsupported_type`, `e009_types`,
-`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`, `e009_watch_parameter`.)
+`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`, `e009_watch_parameter`, `e009_field_types`.)
 
 ## E010: Constant out of range
 
@@ -338,7 +338,7 @@ input.dart:5:3: error[E011]: unsupported signature for function 'first': it has 
   = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.
 ```
 
-(Golden tests: `test/golden/e011_optional_parameter`, `e011_signatures`.)
+(Golden tests: `test/golden/e011_optional_parameter`, `e011_signatures`, `e011_method_signatures`.)
 
 ## E012: Closure or function value
 
@@ -370,7 +370,7 @@ A `Watch` callback takes exactly one parameter, the value (the analyzer checks i
 follows the same rules. The closure of a `Computed` is the one other allowed closure; its body is checked by E026.
 
 (Golden tests: `test/golden/e012_closure`, `e012_function_reference`, `e012_local_function`,
-`e012_widget_callbacks`, `e012_watch_callback`.)
+`e012_widget_callbacks`, `e012_watch_callback`, `e012_method_reference`.)
 
 ## E013: Evaluation order differs in C++
 
@@ -403,7 +403,7 @@ input.dart:13:17: error[E013]: 'next()' may run before or after 'count' is read 
 ```
 
 (Golden tests: `test/golden/e013_call_and_global`, `e013_two_calls`, `e013_arguments`, `e013_compound_assignment`,
-`e013_api_calls`, `e013_method_calls`, `e013_signal_read`.)
+`e013_api_calls`, `e013_method_calls`, `e013_signal_read`, `e013_class_methods`.)
 
 ## E014: Reserved name
 
@@ -439,7 +439,7 @@ input.dart:8:7: error[E014]: 'and' cannot be used as a name: it is a C++ keyword
 ```
 
 (Golden tests: `test/golden/e014_all_caps`, `e014_arduino_name`, `e014_cpp_keyword`, `e014_api_name`,
-`e014_reserved_pattern`, `e014_generated_name`, `e014_watch_parameter`.)
+`e014_reserved_pattern`, `e014_generated_name`, `e014_watch_parameter`, `e014_class_names`.)
 
 ## E015: Top-level initializer is not a compile-time constant
 
@@ -477,7 +477,7 @@ the same reason.
 
 (Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
 `e015_widget_forward_reference`, `e015_signal_initial_value`,
-`e015_watch_forward_reference`, `e015_led_sink_forward_reference`.)
+`e015_watch_forward_reference`, `e015_led_sink_forward_reference`, `e015_class_initializers`.)
 
 ## E016: Recursive function
 
@@ -511,7 +511,7 @@ input.dart:5:6: error[E016]: recursion is not supported: 'ping' calls itself thr
   = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.
 ```
 
-(Golden tests: `test/golden/e016_direct_recursion`, `e016_mutual_recursion`.)
+(Golden tests: `test/golden/e016_direct_recursion`, `e016_mutual_recursion`, `e016_method_recursion`.)
 
 ## E017: Invalid binding class or interop annotation
 
@@ -584,7 +584,7 @@ input.dart:5:13: error[E018]: a parameter of the binding type 'Servo' is not sup
   = help: Use the top-level object directly instead of passing it around.
 ```
 
-(Golden tests: `test/golden/e018_bound_object_declarations`, `e018_bound_object_uses`.)
+(Golden tests: `test/golden/e018_bound_object_declarations`, `e018_bound_object_uses`, `e018_objects`, `e018_this`.)
 
 ## E019: `cpp()` misuse
 
@@ -740,7 +740,7 @@ input.dart:7:3: error[E023]: 'delay()' runs inside a widget callback (Button's o
   = help: Time things with an Every widget instead, keeping state in a top-level variable between ticks.
 ```
 
-(Golden tests: `test/golden/e023_delay_direct`, `e023_delay_indirect`, `e023_delay_watch`.)
+(Golden tests: `test/golden/e023_delay_direct`, `e023_delay_indirect`, `e023_delay_watch`, `e023_delay_in_method`.)
 
 ## E024: Signal misuse
 
@@ -816,7 +816,8 @@ input.dart:6:3: error[E025]: this write closes a cycle: Watch(count) → bump() 
   = help: Write 'count' where the change starts, e.g. in a Button callback, or derive the value with a Computed.
 ```
 
-(Golden tests: `test/golden/e025_self_write`, `e025_cycle`, `e025_indirect`, `e025_computed_cycle`.)
+(Golden tests: `test/golden/e025_self_write`, `e025_cycle`, `e025_indirect`, `e025_computed_cycle`,
+`e025_write_in_method`.)
 
 ## E026: `Computed` rules
 
@@ -854,7 +855,7 @@ input.dart:6:30: error[E026]: a Computed can only read signals and Computeds dec
   = help: Move the declaration of 'later' above 'twice'.
 ```
 
-(Golden tests: `test/golden/e026_computed_body`, `e026_computed_reads`.)
+(Golden tests: `test/golden/e026_computed_body`, `e026_computed_reads`, `e026_object_reads`.)
 
 ## E027: Class rules
 

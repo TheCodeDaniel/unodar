@@ -7,6 +7,7 @@ import '../api/api_resolution.dart';
 
 import '../diagnostics/diagnostics.dart';
 import '../emitter/cpp_names.dart';
+import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
@@ -184,9 +185,9 @@ final class ReservedNameRule implements ValidationRule {
         }
       }
     }
-    for (final function in compiledFunctions(unit)) {
-      if (!isEntryPoint(function)) checkName(function.name);
-      for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
+    for (final function in compiledCallables(unit)) {
+      if (function.function == null || !isEntryPoint(function.function!)) checkName(function.name);
+      for (final parameter in function.parameters?.parameters ?? const <FormalParameter>[]) {
         if (parameter.name case final name?) checkName(name);
       }
     }
@@ -286,7 +287,7 @@ final class EvaluationOrderRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    final reported = <MethodInvocation>{};
+    final reported = <AstNode>{};
     void group(List<_Member> members) {
       for (final member in members) {
         final call = member.firstCall;
@@ -300,11 +301,11 @@ final class EvaluationOrderRule implements ValidationRule {
               ..add(call)
               ..add(otherCall);
             final (first, second) = otherCall.offset < call.offset ? (otherCall, call) : (call, otherCall);
-            context.report(Diagnostics.twoCalls(_callText(first), _callText(second), context.at(first.methodName)));
+            context.report(Diagnostics.twoCalls(_callText(first), _callText(second), context.at(_callNode(first))));
           } else if (global != null) {
             final userCall = member.firstUserCall!;
             reported.add(userCall);
-            context.report(Diagnostics.callNextToGlobal(_callText(userCall), global, context.at(userCall.methodName)));
+            context.report(Diagnostics.callNextToGlobal(_callText(userCall), global, context.at(_callNode(userCall))));
           } else {
             continue;
           }
@@ -354,9 +355,13 @@ final class EvaluationOrderRule implements ValidationRule {
     }
   }
 
-  /// `next()`, `Wire.read()`.
-  static String _callText(MethodInvocation call) =>
-      '${call.target == null ? '' : '${call.target!.toSource()}.'}${call.methodName.name}()';
+  /// `next()`, `Wire.read()`, or a getter as written (`meter.big`).
+  static String _callText(AstNode call) => call is MethodInvocation
+      ? '${call.target == null ? '' : '${call.target!.toSource()}.'}${call.methodName.name}()'
+      : call.toSource();
+
+  /// Where a call is reported: a method's name, or the getter read.
+  static AstNode _callNode(AstNode call) => call is MethodInvocation ? call.methodName : call;
 }
 
 /// `count` in `Watch(count, …)`: a widget's signal argument, checked for declaration order like other arguments.
@@ -366,7 +371,7 @@ bool _isSignalArgumentName(SimpleIdentifier identifier) {
 }
 
 bool _mutableGlobal(SimpleIdentifier identifier) => switch (referenceOf(identifier)) {
-      GlobalReference(:final isMutable) => isMutable,
+      GlobalReference(:final isMutable) || FieldReference(:final isMutable) => isMutable,
       _ => false,
     };
 
@@ -377,16 +382,19 @@ final class _Member {
 
   factory _Member.of(Expression expression) {
     final all = subexpressions(expression).toList();
-    final calls = all.whereType<MethodInvocation>();
+    // Method invocations, and getter reads of the user's classes (a getter is a call).
+    final calls = all.where((e) => e is MethodInvocation || calleeOf(e) != null);
     return _Member(
       calls.firstOrNull,
-      calls.where((c) => userFunctionOf(c) != null).firstOrNull,
+      calls.where((c) => calleeOf(c) != null).firstOrNull,
       // A signal's `.value` is mutable top-level state too.
       [
         for (final e in all)
           if (e is SimpleIdentifier && _mutableGlobal(e))
             e.name
-          else if (signalOfValue(e) != null || (fieldAccessOf(e)?.isMutable ?? false))
+          else if (signalOfValue(e) != null ||
+              (fieldAccessOf(e)?.isMutable ?? false) ||
+              !(thisFieldOf(e)?.isFinal ?? true))
             e.toSource(),
       ].firstOrNull,
     );
@@ -394,8 +402,8 @@ final class _Member {
 
   factory _Member.global(String name) => _Member(null, null, name);
 
-  final MethodInvocation? firstCall;
-  final MethodInvocation? firstUserCall;
+  final AstNode? firstCall;
+  final AstNode? firstUserCall;
   final String? firstMutableGlobal;
 }
 
@@ -405,13 +413,13 @@ final class RecursionRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    final functions = compiledFunctions(unit).toList();
-    final byName = {for (final f in functions) f.name.lexeme: f};
+    final functions = compiledCallables(unit);
+    final byName = {for (final f in functions) f.displayName: f};
+    final names = {for (final f in functions) f.element: f.displayName};
     final calls = {
-      for (final f in functions)
-        f.name.lexeme: (_CallCollector(byName.keys.toSet())..visit(f.functionExpression.body)).callees,
+      for (final f in functions) f.displayName: (_CallCollector(names)..visit(f.body)).callees,
     };
-    for (final component in _stronglyConnected(functions.map((f) => f.name.lexeme).toList(), calls)) {
+    for (final component in _stronglyConnected(functions.map((f) => f.displayName).toList(), calls)) {
       final first = component.first; // Components keep source order, so this is the first declared.
       final isCycle = component.length > 1 || calls[first]!.contains(first);
       if (!isCycle) continue;
@@ -486,20 +494,41 @@ final class RecursionRule implements ValidationRule {
   }
 }
 
-/// The user functions called anywhere in a body (any position, so even calls inside rejected code count).
+/// The user functions, methods and getters called anywhere in a body (any position, so even calls inside rejected
+/// code count), by display name.
 final class _CallCollector extends RecursiveAstVisitor<void> {
-  _CallCollector(this.userFunctions);
+  _CallCollector(this.names);
 
-  final Set<String> userFunctions;
+  final Map<Element?, String> names;
   final List<String> callees = [];
 
   void visit(AstNode node) => node.accept(this);
 
+  void _call(AstNode node) {
+    if (names[calleeOf(node)] case final name? when !callees.contains(name)) callees.add(name);
+  }
+
   @override
   void visitMethodInvocation(MethodInvocation node) {
-    if (userFunctionOf(node) != null && userFunctions.contains(node.methodName.name)) {
-      if (!callees.contains(node.methodName.name)) callees.add(node.methodName.name);
-    }
+    _call(node);
     super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    _call(node);
+    super.visitPrefixedIdentifier(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    _call(node);
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    _call(node);
+    super.visitSimpleIdentifier(node);
   }
 }
