@@ -1,7 +1,10 @@
 # Phase 6 plan — Classes and library wrappers
 
-**Status: step 1 (this plan), on the `phase-6` branch. Waiting for the maintainer's answers to D1–D10 (§8);
-nothing is built until then.** D9 is PRD §13.6 and D10 is PRD §13.4, both "stop and ask" items.
+**Status: in progress on the `phase-6` branch.** The maintainer approved D1–D10 as recommended on 2026-11-16 (D9 is
+PRD §13.6, D10 is PRD §13.4), with two additions: the docs state that LiquidCrystal means the official
+parallel-wired library (I²C backpack LCDs are not covered) and that Phase 8 displays need a heap-free driver
+(Adafruit SSD1306 and NeoPixel call `malloc`); and the library manifest lists every dependency explicitly, checked
+by a test (step 9), since CI installs with `--no-deps`.
 
 Goal: a Flutter developer can organise a program into their own classes and use real Arduino libraries beyond
 Servo and Wire, under the same rules as before: no heap, the fidelity rule (the generated C++ behaves exactly like
@@ -325,7 +328,9 @@ Not proposed:
 - **Adafruit SSD1306 2.5.17** allocates its 1 KB frame buffer with `malloc` in `begin()` (`Adafruit_SSD1306.cpp:499`):
   half the Uno's RAM. Which OLED driver to use (U8g2 in page mode, or SSD1306Ascii, both heap-free) belongs to
   Phase 8, with the `Oled` widget.
-- **LiquidCrystal I2C 1.1.2** is popular, but it is a community fork, not maintained by Arduino. It is a good
+- **LiquidCrystal I2C 1.1.2** is popular, but it is a community fork, not maintained by Arduino. "LiquidCrystal"
+  in this phase means only the official parallel-wired library; I²C backpack LCDs are not covered (maintainer
+  decision). It is a good
   later candidate: avr8js models TWI, so it is testable through a PCF8574 model.
 - **Stepper** blocks inside `step(n)` for a time that depends on its argument.
 
@@ -475,15 +480,15 @@ Every construct step adds its goldens first, and in the same commit:
 
 | # | Step | Test written first |
 |---|---|---|
-| 1 | This plan and the decisions | — |
-| 2 | Spec, after the answers: SUBSET "Your own classes", "Enums", "Libraries" (one section per wrapper); DIAGNOSTICS E027, E028 and the reworded codes; PRD status, §13.4 and §13.6. Examples that change output later wait in `docs/drafts`, as in Phase 3. | `docs_test` stays green |
+| 1 | (**done**, a7b6ffc) This plan and the decisions | — |
+| 2 | (**done**) Spec, after the answers: SUBSET "Your own classes", "Enums", "Libraries" (one section per wrapper); DIAGNOSTICS E027, E028 and the reworded codes; PRD status, §13.4 and §13.6. Examples that change output later wait in `docs/drafts`, as in Phase 3. | `docs_test` stays green |
 | 3 | Classes I: declaration, fields, one constructor (initializing formals, named parameters, initializer list), objects as top-level `final`s, field reads and writes from outside (`t.mode = …`, `c.count++`); E027, E018, E015, E014, E009 | Goldens `class_fields` + negatives; avr8js: two instances keep independent state; control: fields emitted `static` |
 | 4 | Classes II: instance methods and getters, implicit and explicit `this`; the call graph through methods (E016, E023, E025, E013); tear-offs (E012) | Goldens `class_methods`, `e016_method_recursion`, `e023_delay_in_method`, `e025_write_in_method`; avr8js: a method on one instance changes only that one; control: a body emitted against the wrong object |
 | 5 | Static members: `static const`/`final`/mutable fields, static methods | Golden `class_static`; avr8js: a static counter shared by instances; control: a per-instance copy |
 | 6 | Composition: `final` fields of a user class or binding type, created in place, in declaration order | Golden `class_composition`; avr8js: nested state, and a Servo member driving pin 9 (pin log); control: members constructed in the wrong order |
 | 7 | Enums: declaration, `==`/`!=`, `.index`, enum-typed variables, fields, parameters and returns, `Signal<Mode>` with `Watch`; E028; E009 for printing | Goldens `enum_basics`, `enum_signal` + negatives; avr8js: a state machine's transitions, `mode.index * 1000`; control: `.index` without the widening |
 | 8 | `OnStart` (D5): a widget, run in `setup()` at its `children` position, before the setup delivery; E023 exemption; writes delivered by the setup delivery | Golden `on_start`; avr8js: the order of `begin()` and `OnStart` in the pin log, and a signal written there printed once at boot with its new value; control: `OnStart` emitted after the setup delivery |
-| 9 | Library infrastructure: `tool/arduino_libraries.txt` (Servo moves into it) read by CI, `check_arduino.sh` and the gate; `package:unodar/<lib>.dart` imports (E005); shim headers through `runtime_files.dart` | `cli_test`, `golden_test`; CI job; a missing library gives the install line |
+| 9 | Library infrastructure: `tool/arduino_libraries.txt` (Servo moves into it; every dependency listed) read by CI, `check_arduino.sh` and the gate; `package:unodar/<lib>.dart` imports (E005); shim headers through `runtime_files.dart` | `cli_test`, `golden_test`; CI job; a missing library gives the install line; a test that every `depends=` of a manifest library is in the manifest |
 | 10 | `@CppPin` (E017, E004, E022) on the existing bindings where it applies | Goldens `e022_binding_pin_conflict`, `e017_cpp_pin` |
 | 11 | Binding conformance probe for Wire and Servo | Probe test; control: a deliberately wrong `@CppType` must fail it |
 | 12 | Runner: cycle-stamped pin log, `--spi` scripted slave, `--eeprom FILE` backend with a write count | Runner tests on hand-written sketches, each with a negative control |

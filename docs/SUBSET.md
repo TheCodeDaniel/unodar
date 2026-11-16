@@ -1,4 +1,4 @@
-# Unodar Dart subset — Phase 5 (signals, experimental)
+# Unodar Dart subset — Phase 6 (classes and libraries, experimental)
 
 This is the **exact** list of what the compiler accepts. Anything not listed here is rejected with a diagnostic
 (see [`DIAGNOSTICS.md`](DIAGNOSTICS.md)). The subset grows phase by phase; this file is updated *before* any new
@@ -55,10 +55,12 @@ void loop() {
 | `void` | `void` | Function return type only. |
 | String literal | `F("…")` | **Only** as the argument of `Serial.print`/`Serial.println` (see [Serial](#serial)). |
 | A [binding class](#binding-c-classes) | its `@CppClass` name | **Only** as the type of a top-level `final` object (E018). |
-| `Signal<T>`, `Computed<T>` | `unodar::Signal<…>` | **Only** as a top-level `final` signal, see [Signals](#signals) (E024). `T` is one of the types above it. |
+| `Signal<T>`, `Computed<T>` | `unodar::Signal<…>` | **Only** as a top-level `final` signal, see [Signals](#signals) (E024). `T` is one of the types above it, or an enum. |
+| An enum of your own | `enum class E : uint8_t` | Anywhere a value type is allowed, see [Enums](#enums). |
+| A class of your own | `struct C` | **Only** as the type of a top-level `final` object or of a field created in place, see [Your own classes](#your-own-classes) (E018). |
 
 Every other type is rejected (E009), including nullable types (`int?`), `num`, `dynamic`, `Object`, `String`
-(as the type of a variable, parameter, or return value), function types, and classes. That includes the *inferred*
+(as the type of a variable, parameter, or return value), function types, and classes from other libraries. That includes the *inferred*
 static type of an expression: `flag ? 1 : 2.5` has type `num` in Dart and is rejected.
 
 ### Sized integers (`Uint8`, `Uint16`, `Int16`)
@@ -81,6 +83,9 @@ C++ behaves identically:
 | `void main()` | Only as the single `runDevice(Device(…))` call of a widget program, see [Widgets](#widgets-rundevice); then `setup()`/`loop()` are not allowed (E021). | Generated `setup()` and `loop()` |
 | Widgets | `final led = Led(pin: 13);`, `final button = Button(pin: 2, onPressed: () { … });`, or written directly inside `Device(children: […])`. Arguments are compile-time constants (E022). | `unodar::Led led(13);` and so on, from `unodar_widgets.h` |
 | Signals | `final count = Signal<int>(0);`, `final isOdd = Computed(() => …);` in a widget program, see [Signals](#signals). | `unodar::Signal<int32_t> count(0);` |
+| Classes | `class Thermostat { … }`, see [Your own classes](#your-own-classes). | `struct Thermostat { … };` |
+| Objects | `final thermostat = Thermostat(hysteresis: 2);`, constructor arguments compile-time constants (E015). | `Thermostat thermostat(2);` |
+| Enums | `enum Mode { idle, heating }`, see [Enums](#enums). | `enum class Mode : uint8_t { idle, heating };` |
 | Functions | `R name(T a, T b) { … }` or `=> expr;`. `R` is a supported type or `void`; every parameter is required, positional, and has an explicit supported type. Recursion, direct or mutual, is rejected (E016). | Same, plus a prototype for each function |
 | `const` variables | `const int x = …;` or `const x = …;` (type inferred). | `constexpr int32_t x = …;` |
 | `final` variables | As above with `final`. | `const int32_t x = …;` |
@@ -95,8 +100,8 @@ constants (`HIGH`, `A0`, …), `const` variables declared **above** this one, `U
 constants, and the operators below. A `final` or mutable variable is not a constant, even if its initializer is.
 The arguments of a bound object's constructor follow the same rule.
 
-Still rejected: `main()` of any other shape (E008); classes without `@CppClass`, enums, mixins, extensions, typedefs, top-level
-getters/setters (E005); `late` variables, and `external` variables whose type is not a binding class (E005);
+Still rejected: `main()` of any other shape (E008); class features outside [Your own classes](#your-own-classes)
+(E027) and enhanced enums (E028); extensions, extension types, typedefs, top-level getters/setters (E005); `late` variables, and `external` variables whose type is not a binding class (E005);
 optional, named, or default parameters, type parameters, `async`/generators, `external` functions, untyped
 parameters (E011).
 
@@ -107,7 +112,7 @@ Allowed inside any function body:
 | Statement | Notes |
 |---|---|
 | Call | `pulse(300);`, `delay(ms);`, `servo.write(90);`. A non-void result may be discarded. |
-| Assignment | `x = e;`, `x += e;`, `x -= e;`, `x++;`, `x--;`, `++x;`, `--x;`, and the same on a signal's `.value` (`count.value++;`, see [Signals](#signals)). **Statements only**: an assignment, `++`, or `--` inside a larger expression is rejected (E002). `*=`, `/=`, `~/=`, `%=` and the bitwise forms are rejected (E002); write `x = x * y;`. |
+| Assignment | `x = e;`, `x += e;`, `x -= e;`, `x++;`, `x--;`, `++x;`, `--x;`, and the same on a signal's `.value` (`count.value++;`, see [Signals](#signals)) and on a field of an object (`thermostat.switches++;`, `this.mode = Mode.idle;`, see [Your own classes](#your-own-classes)). **Statements only**: an assignment, `++`, or `--` inside a larger expression is rejected (E002). `*=`, `/=`, `~/=`, `%=` and the bitwise forms are rejected (E002); write `x = x * y;`. |
 | Local variable | `int x = e;`, `var x = e;`, `final x = e;`, `const x = e;`, `int x;`. Any initializer expression. Types are the resolved Dart types. `const` → `constexpr`, `final` → `const`. `late` is rejected. |
 | `if` / `else` | Including `else if` chains. |
 | `while` | |
@@ -132,6 +137,8 @@ E012. A rejected statement is reported as a whole; the code inside it is checked
 | String literals | Only as the argument of `Serial.print`/`Serial.println`. No interpolation (E002). | `F("…")` |
 | Names | Locals, parameters, top-level variables, unodar constants. | Same name |
 | Signal reads | `count.value`, `isOdd.value` (see [Signals](#signals)) | `count.value()`, `unodar_isOdd_compute()` |
+| Fields | `thermostat.mode`, `this.mode`, `mode` inside a method, `Thermostat.limit` (see [Your own classes](#your-own-classes)) | `thermostat.mode`, `this->mode`, `mode`, `Thermostat::limit` |
+| Enum values | `Mode.idle`, `mode.index` (see [Enums](#enums)) | `Mode::idle`, `uint8_t(mode)` |
 | Parentheses | Kept where C++ needs them; see Precedence. | |
 | Unary | `-x`, `!b` | Same |
 | Arithmetic | `+`, `-`, `*` on numbers. | Same |
@@ -142,7 +149,7 @@ E012. A rejected statement is reported as a whole; the code inside it is checked
 | Logical | `&&`, `\|\|` (short-circuit) | Same |
 | Conditional | `c ? a : b`, where the result has a supported type. | Same |
 | Calls | Functions declared in this file, and unodar API functions. | Same |
-| Method calls | On `Serial`, on a bound object, or on an external object: `servo.write(90)`, `Wire.read()`. | `servo.write(90)` |
+| Method calls | On `Serial`, on a bound object, on an external object, or on an object of your own class: `servo.write(90)`, `Wire.read()`, `thermostat.update(t, 21)`, `Thermostat.reset()`; inside a method, `update(t, 21)` or `this.update(t, 21)`. Getters: `thermostat.heating`. | `servo.write(90)`, `thermostat.heating()`, `Thermostat::reset()` |
 | Named arguments | Only where the API or binding declares named parameters, e.g. `servo.attach(9, min: 600)`. | Passed positionally, in declaration order; an omitted one gets its declared default |
 | Sized constructors | `Uint8(e)`, `Uint16(e)`, `Int16(e)` | `uint8_t(e)` etc. |
 
@@ -195,8 +202,9 @@ first. `&&`, `||`, and `?:` are always fine. Fix: store a call's result in a loc
 
 ## Names
 
-User declarations (top-level variables, functions, parameters, locals, bound objects) may not use a name that would
-collide with C++ or the Arduino core (E014):
+User declarations (top-level variables, functions, parameters, locals, bound objects, and the names of classes,
+fields, methods, enums and enum values) may not use a name that would collide with C++ or the Arduino core (E014).
+Arduino's macros ignore C++ scopes, so a field or an enum value named `min` would be replaced too:
 
 - C++ keywords, including the alternative operator names that are valid Dart identifiers (`and`, `or`, `not`, …).
 - Every unodar API name (`pinMode`, `analogRead`, `Serial`, `HIGH`, …), taken from the compiler's API registry,
@@ -373,6 +381,21 @@ program using `Serial`, `Wire`, a `SoftwareSerial` object and a `Servo` object t
 before any `loop()` locals. This is static allocation (arduino-cli reports it as "Global variables use …"), so it is
 fixed and visible at build time; leave room for the stack. The size budgets record RAM for every binding golden.
 
+### First-party libraries (Phase 6, not available yet)
+
+Phase 6 adds wrappers for EEPROM, SPI and SoftwareSerial (part of the AVR core), LiquidCrystal 1.0.7 and, if time
+allows, the DHT sensor library 1.4.7, each imported on its own (`import 'package:unodar/eeprom.dart';`). Until each
+wrapper lands, its import is E005. Each wrapper's section will state its RAM and flash cost, the longest time each
+method waits, and a **Verified:** line saying what is checked in the avr8js simulator and what only on a real board.
+
+- **LiquidCrystal** means Arduino's official library for HD44780 character LCDs wired **in parallel** (RS, E and
+  four data pins). LCDs with an I²C backpack (a PCF8574 board, "LiquidCrystal I2C") are **not** covered: their
+  library is a community fork, not maintained by Arduino.
+- **Not wrapped, because they use the heap:** Adafruit NeoPixel (allocates its pixel buffer with `malloc` in
+  `updateLength()`) and Adafruit SSD1306 (allocates its 1 KB frame buffer with `malloc` in `begin()`). Displays come
+  in Phase 8 and must use a heap-free driver (for example one with a page buffer or text-only output); addressable
+  LEDs need fixed-size arrays first.
+
 ## Escape hatch: `cpp()` and `@CppInclude`
 
 For anything not wrapped yet:
@@ -493,6 +516,7 @@ void loop() {
 | `Button(pin: p, onPressed: () { … })` | `pin` 0–19 | Input with the internal pull-up (`INPUT_PULLUP`): wire the button between the pin and GND, no resistor. `onPressed` runs **once per press**, when the reading changes from HIGH to LOW and stays there for **50 ms** (debounced). Releasing runs nothing. A button already held at power-up does not count as a press. |
 | `Every(Duration(…), () { … })` | interval 1 ms to 2147483647 ms | Runs the callback **after one interval**, then every interval, measured from `setup()`. |
 | `Watch(signal, (v) { … })` | a top-level `Signal` or `Computed` | Runs the callback with the value when the signal changes, and once at the end of `setup()` (see [Signals](#signals)). |
+| `OnStart(() { … })` | | Runs the callback **once**, in `setup()`, at its place in `children` (after the `begin()` of the widgets listed before it, before those after it), and before the initial delivery of signals. For library setup (`lcd.begin(16, 2)`, `servo.attach(9)`) and loading saved state. `delay()` is allowed here (E023 does not apply): nothing is polled yet. A signal written here is delivered by the initial delivery, with its new value. |
 
 - A widget is either a top-level `final` (`final led = Led(pin: 13);`), which gives a handle callbacks can use, or
   written directly in `children` (no handle). Anywhere else, e.g. a local variable, inside a callback, or in a
@@ -505,11 +529,11 @@ void loop() {
   top-level initializers.
 - `children` order is the order of `setup()` initialization and of polling in `loop()`.
 - A widget handle can only be used to call its methods (`led.toggle()`) and to be listed in `children` (E022), as
-  with bound objects. `Button`, `Every` and `Watch` have no methods yet.
+  with bound objects. `Button`, `Every`, `Watch` and `OnStart` have no methods yet.
 
 ### Callbacks
 
-`onPressed`, `Every`'s and `Watch`'s callbacks are closures: `() { … }` or `() => call(…)`, and `(v) { … }` for
+`onPressed`, `Every`'s, `Watch`'s and `OnStart`'s callbacks are closures: `() { … }` or `() => call(…)`, and `(v) { … }` for
 `Watch`. Each becomes a generated plain function (`unodar_button_onPressed`, `unodar_every_0_callback`,
 `unodar_watch_0_callback`).
 
@@ -519,8 +543,8 @@ void loop() {
   may use top-level variables and constants, call your top-level functions and the unodar API, use `Serial` (but
   not `Serial.begin`), widget handles, bound objects, and `cpp()`.
 - No closures inside a callback (E012). Closures anywhere else remain rejected (E012).
-- No `delay()`, directly or through a function the callback calls (E023): while a callback waits, no button is
-  read and no timer runs.
+- No `delay()`, directly or through a function or method the callback calls (E023): while a callback waits, no
+  button is read and no timer runs. `OnStart` is the exception: it runs once, before anything is polled.
 
 ### Timing
 
@@ -758,6 +782,156 @@ The values and marks taken during delivery are local variables. Delivery code is
 are watched or read by a watched Computed; a signal nobody observes is plain state with its 1-byte mark. Measured
 with `avr-nm` (see `test/size_budgets.dart`).
 
+## Your own classes
+
+A class groups state and the code that works on it. Unodar compiles it to a C++ `struct` whose objects are
+statically allocated globals, like bound objects: no heap, no vtables, no pointers stored anywhere.
+
+```dart
+enum Mode { idle, heating }
+
+class Thermostat {
+  static const int limit = 40;
+  final int hysteresis;
+  Mode mode = Mode.idle;
+  int switches = 0;
+
+  Thermostat({this.hysteresis = 1});
+
+  void update(int temperature, int target) {
+    if (mode == Mode.idle && temperature < target - hysteresis) {
+      mode = Mode.heating;
+      switches++;
+    } else if (mode == Mode.heating && temperature > target + hysteresis) {
+      mode = Mode.idle;
+    }
+  }
+
+  bool get heating => mode == Mode.heating;
+}
+
+final thermostat = Thermostat(hysteresis: 2);
+```
+
+```cpp
+enum class Mode : uint8_t { idle, heating };
+
+struct Thermostat {
+  static constexpr int32_t limit = 40;
+  const int32_t hysteresis;
+  Mode mode;
+  int32_t switches;
+  constexpr explicit Thermostat(int32_t hysteresis) : hysteresis(hysteresis), mode(Mode::idle), switches(0) {}
+  void update(int32_t temperature, int32_t target);
+  bool heating();
+};
+constexpr int32_t Thermostat::limit;
+
+Thermostat thermostat(2);
+
+void Thermostat::update(int32_t temperature, int32_t target) { … }
+bool Thermostat::heating() { return mode == Mode::heating; }
+```
+
+(Indicative; `#line` omitted. The reviewed goldens are authoritative.)
+
+### Declaring a class
+
+| Member | Rule | C++ |
+|---|---|---|
+| `class C { … }`, `final class C { … }` | At the top level, in any program (sketch or widget program). No `extends`, `implements`, `with`, type parameters, or other modifiers (E027). | `struct C { … };`, all members public (Dart privacy, `_x`, is checked by the analyzer) |
+| Instance fields | `final` or mutable, of a supported type, an enum, or (composition) a class or binding class created in place. Initialized by an initializing formal, the initializer list, or a field initializer; every initializer is a compile-time constant over constants and the constructor's parameters (E015). No `late` (E027), no nullable types (E009). | Members in declaration order; `final` becomes `const` |
+| One constructor | `C(this.a, int b, {this.c = 1, required int d}) : e = b * 2;`: required positional parameters, named parameters with a constant default or `required`, initializing formals, an initializer list. **No body**, and no `factory`, named, redirecting or `const` constructor, no optional positional parameters, and only one constructor (E027). A class without one gets Dart's default constructor. | A `constexpr` constructor when every member allows it, with the parameters in declaration order |
+| Instance methods, getters | Like top-level functions (E011, and every body rule). Fields are used as `x` or `this.x`, methods as `m()` or `this.m()`. | Member functions, declared in the struct, defined among the functions in source order |
+| Static members | `static const`, `static final` and static mutable fields with constant initializers (E015); static methods. Used as `C.limit`, `C.reset()`, or by their bare name inside the class. | `static constexpr` / `static const` / `static` members, defined after the struct; static member functions |
+
+Not supported (E027): setters, operators (including `==`), overriding `toString`, `hashCode` or `noSuchMethod`,
+`external` members, `mixin` and `mixin class` declarations, `abstract`, `sealed`, `base` and `interface` classes.
+
+A class may only use another class (as a field) or a top-level constant declared **above** it (E015, forward
+reference), the same order rule as for top-level initializers. A class that contains itself, directly or through
+other classes, is E027.
+
+### Objects
+
+- An object is a top-level `final` initialized by its class's constructor, with compile-time-constant arguments
+  (E015): `final thermostat = Thermostat(hysteresis: 2);` → `Thermostat thermostat(2);`. Named arguments are
+  passed positionally, in declaration order, and an omitted one gets its declared default.
+- A `final` field of another class can hold an object created in place (`final Blinker left = Blinker(2);`, or
+  `: left = Blinker(pin)` in the initializer list). Its C++ member is that object.
+- An object is used only through its fields and methods: `thermostat.mode`, `thermostat.switches++`,
+  `thermostat.update(t, 21)`. It cannot be assigned, compared (`==`, `identical`), passed, stored, returned or
+  printed, no local, parameter, return value or field may refer to an existing object, and `this` is only used to
+  name a member (`this.x`, `this.update()`) (E018).
+
+**Why.** Dart objects are references and C++ objects are values: `var b = thermostat; b.switches++;` changes
+`thermostat` in Dart and a copy in C++. With every object a named, static place that is never copied, the two
+cannot differ.
+
+**Construction.** Every initializer is a constant, so construction does nothing that could be observed: the C++
+objects are constant-initialized before `setup()`, and Dart, which creates a top-level `final` lazily on first use,
+would hold exactly the same values. A class with a binding member (`final Servo arm = Servo();`) is the
+exception: like every bound object, its member is constructed before `setup()` runs (see
+[deviations](#known-deviations-from-dart)). Put setup work into a method and call it from `setup()` or from
+[`OnStart`](#widgets).
+
+### Classes and the rest of the program
+
+- **Signals.** Methods read and write top-level signals like any function. A signal field is E024 (a signal is a
+  top-level `final`); `Signal<T>` of a class type is E009. `Signal<Mode>` of an enum works.
+- **Widgets.** A widget field is E022 (a widget is a top-level `final` or written in `children`), and an object is
+  not a widget (`children` is a list of widgets, E007). Methods may call widget handles; the bound-Led rule (E022)
+  applies in them too.
+- **Callbacks.** Callbacks call methods: `onPressed: () { thermostat.reset(); }`. A method tear-off
+  (`onPressed: thermostat.reset`) and a closure inside a method are E012.
+- **Computed.** A Computed may read `final` fields of objects; a mutable field is E026 (it would not see the
+  change), and a getter or method is a call (E026).
+- **Whole-program checks** see through methods: recursion through methods (E016), `delay()` reached from a widget
+  callback (E023), and a Watch writing its signal through a method (E025). For the evaluation-order rule (E013) a
+  method or getter call is a call to a user function, and a mutable field of an object is mutable top-level state.
+
+### Not supported, and why
+
+| Construct | Code | Reason |
+|---|---|---|
+| `extends`, `implements`, `with`, `mixin`, `abstract` and other class modifiers | E027 | A method inherited from a base class that calls an overridden method on `this` runs the override in Dart. Faithful C++ needs `virtual` (vtables are copied into RAM on AVR) or a copy of every inherited method per subclass. Since objects cannot be passed around, polymorphism would buy nothing; composition gives the reuse. |
+| A constructor body | E027 | It would run before Arduino's `init()`, where Dart would run it at first use. |
+| Objects as values (parameters, locals, returns, `==`) | E018 | The aliasing above. |
+| Generic classes | E027 | Like generic functions (E011). |
+| Enhanced enums, `.values`, `.name` | E028 | See [Enums](#enums). |
+
+## Enums
+
+```dart
+enum Mode { idle, heating, error }
+```
+
+`enum Mode { … }` becomes `enum class Mode : uint8_t { … };` (at most 256 values, E028). Enums come first in the
+generated file, so every function and class can use them.
+
+| Dart | C++ |
+|---|---|
+| `Mode.idle` | `Mode::idle` |
+| `a == b`, `a != b` (Dart enums have no `<`) | the same |
+| `mode.index` | `uint8_t(mode)`, an `int` that the 32-bit rule widens where needed |
+| `Mode` as the type of a variable, `const`, field, parameter or return value | `Mode` |
+| `Signal<Mode>`, `Watch` of it | `unodar::Signal<Mode>` |
+
+Rejected: enums with fields, constructors, methods, `implements` or `with`; `Mode.values` (a list); `mode.name`
+(E028). Printing an enum value is E009 (Dart would print `Mode.idle`): print `mode.index`. `switch` is not
+supported yet (E002); use `if`/`else if`.
+
+### Cost of classes and enums
+
+Sizes on the Uno, fixed at build time (measured in step 21 of the Phase 6 plan; these are the expected values):
+
+| Construct | RAM | Flash |
+|---|---|---|
+| Object | the sum of its fields: `int`/`double` 4 B, `Int16`/`Uint16` 2 B, `bool`/`Uint8`/enum 1 B, members as their own objects; no padding, no vtable. A class without fields: 1 B (C++'s minimum), or 0 B if the linker drops it. | Construction: 0 B (constant-initialized) |
+| Method, getter | 0 B | As a top-level function; the object's address is passed in registers, and is often optimized away for a single object |
+| Static field | As a global (`static const`: 0 B) | |
+| Enum value or variable | 1 B | Comparisons are 8-bit |
+
 ## Translation and layout
 
 The generated file contains, in order: the `// Generated by unodar…` header; `#include <Arduino.h>`; the
@@ -777,6 +951,12 @@ Signals and Computeds are declared with the other top-level variables, in source
 (`unodar_<name>_compute`) sits at its declaration among the functions, each Watch callback with the other callbacks,
 and `unodar_deliver()` right before the generated `setup()`. Its locals are named `unodar_<signal>_changed` and
 `unodar_<signal>_value`, so they cannot shadow a user name (the `unodar_` prefix is reserved, E014).
+
+Enums are emitted right after the helpers, before the prototypes, in source order. Classes are emitted among the
+top-level variables, in source order (a class may use only what is declared above it): the `struct` with its member
+declarations and its constructor, then the definitions of its static data members. Methods are defined
+(`bool Thermostat::heating() { … }`) among the functions, in source order. An object is declared like a bound
+object: `Thermostat thermostat(2);`.
 
 ## Building
 
@@ -813,7 +993,7 @@ control built without `-fwrapv`.
 | A non-constant value passed to an Arduino function or a binding parameter outside its C++ parameter type or its `@CppRange` | (external) | Converted to the C++ parameter type by C++ rules, e.g. `delay(-1)` waits about 49 days, a pin of 300 becomes 44; a value outside a `@CppRange` is passed unchanged and the library misbehaves (Servo wraps its `int8_t` offset). |
 | `millis()` after about 24.8 days, `micros()` after about 35.8 minutes of uptime | (external) | The value passes 2147483647 and continues at -2147483648, wrapping like an `int32_t` (Arduino's `unsigned long` counter, converted). **Elapsed time stays correct**: `now - last` wraps too (`-fwrapv`), so `if (now - last >= interval)` works across the wrap for any interval below 2147483648. Comparing two readings directly (`now > last`) does not. |
 | `Serial.print` of a `double` | (external; Dart's `toString()` would print `1.5`) | Arduino's fixed-point format: `digits` decimals (default 2), so `1.50`; `nan`, `inf`, and `ovf` (above about 4.3e9) for special values. |
-| Bound objects | (external) | Constructed before `setup()` runs (C++ static initialization), not lazily on first use like a Dart top-level `final`. |
+| Bound objects, and objects of your classes with a binding member | (external) | Constructed before `setup()` runs (C++ static initialization), not lazily on first use like a Dart top-level `final`. Objects of your classes without binding members are constant-initialized, which cannot be told apart from Dart's lazy initialization. |
 | Widget callbacks and timers | (no direct Dart equivalent; a Dart event loop would queue callbacks) | Callbacks run inside `loop()`, one after another, in `children` order; a slow callback delays the others. An `Every` that falls behind runs its missed ticks on the next passes, one per pass. |
 | Signal delivery | (no direct Dart equivalent; a `ValueNotifier` calls its listeners synchronously on every change) | Changes are delivered once per `loop()` pass, after the inputs and timers: several writes in one pass are delivered once, with the last value, and a write made during delivery arrives one pass later ([When changes are delivered](#when-changes-are-delivered)). |
 
@@ -825,20 +1005,20 @@ control built without `-fwrapv`.
 | Unsupported statement, operator, or expression form; a string literal outside a Serial argument; string interpolation | E002 |
 | Call to a function or method that is neither declared in this file nor part of the unodar API or a binding (incl. `x.abs()`) | E003 |
 | Constant argument out of range for an Arduino or binding parameter; `digits:` with a non-`double` value | E004 |
-| Classes without `@CppClass`, enums, typedefs, extensions, getters/setters, `late` variables, `external` variables of a non-binding type, other imports, `export`/`part` | E005 |
+| Typedefs, extensions, extension types, top-level getters/setters, `late` variables, `external` variables of a non-binding type, other imports, `export`/`part` | E005 |
 | `setup`/`loop` not exactly `void name() { … }` | E006 |
 | Any Dart analysis error | E007 |
 | `main()` other than a single `runDevice(Device(…))` call | E008 |
-| Unsupported or nullable type, incl. `String` variables, unsupported Serial arguments, and signal type arguments (`Signal<String>`); comparing a bool with a number | E009 |
+| Unsupported or nullable type, incl. `String` variables, unsupported Serial arguments, and signal type arguments (`Signal<String>`); printing an enum value; comparing a bool with a number | E009 |
 | Constant out of range, constant overflow, constant division by zero | E010 |
-| Optional/named/default parameters, generics, `async`, untyped parameters in a user function | E011 |
+| Optional/named/default parameters, generics, `async`, untyped parameters in a user function or method | E011 |
 | Closures other than widget callbacks, callbacks with parameters, closures inside callbacks, function references, local functions | E012 |
 | Code whose meaning depends on evaluation order, incl. a call next to a `.value` read | E013 |
 | Name that collides with C++ or Arduino | E014 |
 | Top-level initializer (or bound-object constructor argument, or signal initial value) that is not a compile-time constant; a signal argument of a widget declared below it | E015 |
 | A function that calls itself, directly or through other functions | E016 |
 | Invalid binding class or interop annotation | E017 |
-| A bound object used other than as a top-level `final` whose methods are called | E018 |
+| A bound object, or an object of your own class, used other than as a top-level `final` (or a field created in place) whose fields and methods are used | E018 |
 | `cpp()` used other than as a statement with one string literal | E019 |
 | Heap allocation in `cpp()` text | E020 |
 | Widget program shape: `main()` with `setup()`/`loop()`, widgets or signals in a `setup()`/`loop()` sketch, `Device` arguments, `Serial.begin` | E021 |
@@ -847,4 +1027,5 @@ control built without `-fwrapv`.
 | Signal misuse: not a top-level `final`, used other than through `.value`, signal-typed locals/parameters/returns, a Watch source that is not a top-level signal | E024 |
 | A Watch that writes the signal it watches, or Watches that write each other's signals in a cycle | E025 |
 | `Computed` not a single expression over signals/Computeds declared above and constants | E026 |
-| Your own classes | not yet available |
+| Class declarations outside [Your own classes](#your-own-classes): inheritance, mixins, modifiers, constructor bodies, extra or special constructors, setters, operators, `late` fields, a class containing itself | E027 |
+| Enhanced enums, more than 256 values, `.values`, `.name` | E028 |

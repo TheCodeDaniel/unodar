@@ -255,7 +255,8 @@ declared types (variables, parameters, return types) and for the inferred static
 `flag ? 1 : 2.5` (type `num`) is rejected. `String` is rejected everywhere except a string literal passed to
 `Serial.print`/`println`; any other type passed there is rejected too. Binding types outside a top-level `final`
 are E018 instead. Signal type arguments follow the same list: `Signal<String>`, `Signal<num>`, `Signal<int?>` are
-E009. Nullable types get their own wording. Also used for `==`/`!=` between a
+E009. Printing an enum value is E009 too (print its `.index`), and so is `Signal<C>` of a class `C`. Nullable
+types get their own wording. Also used for `==`/`!=` between a
 `bool` and a number: Dart says they are never equal, C++ says `true == 1`.
 
 ```dart
@@ -311,8 +312,9 @@ input.dart:7:9: error[E010]: this constant expression divides by zero.
 
 ## E011: Unsupported function signature
 
-User-defined functions take only required, positional parameters with an explicit supported type, have no type
-parameters, and are not `async`, generators, or `external`. All problems with one function are listed in one
+User-defined functions and methods (including getters and static methods of your classes) take only required,
+positional parameters with an explicit supported type, have no type parameters, and are not `async`, generators, or
+`external`. (Constructors of your classes may have named parameters; their rules are E027.) All problems with one function are listed in one
 diagnostic, at the function name. (`setup` and `loop` have their own rule, E006.)
 
 ```dart
@@ -341,8 +343,8 @@ input.dart:5:3: error[E011]: unsupported signature for function 'first': it has 
 Functions can only be declared at the top level and called directly. The one place a closure is allowed is a widget
 callback (`Button(onPressed: () { … })`, `Every(…, () { … })`), where it becomes a generated plain function. It
 takes no parameters, is not `async`, returns nothing, and contains no closures of its own; a function reference
-(`onPressed: toggle`) is not accepted there either. Everywhere else, closures (`() => …`), function references (using
-`pulse` without calling it), and local functions are rejected: they would need captured state or function
+(`onPressed: toggle`) is not accepted there either. Everywhere else, closures (`() => …`, also inside methods), function and method references (using
+`pulse` or `thermostat.reset` without calling it), and local functions are rejected: they would need captured state or function
 pointers.
 
 ```dart
@@ -373,8 +375,8 @@ follows the same rules. The closure of a `Computed` is the one other allowed clo
 Dart evaluates operands and arguments left to right; C++ leaves the order unspecified. Within one operator's
 operands, one call's argument list, or the two sides of `+=`/`-=`, two calls of any kind may not sit next to each
 other (your functions, Arduino functions such as `micros() - micros()`, methods such as `Wire.read() + Wire.read()`),
-and a call to a user function may not sit next to a read of a mutable top-level variable or of a signal's `.value`
-(the call might change it). A call nested inside another call's argument is fine. `&&`, `||`, and `?:` fix the order and are always fine.
+and a call to a user function (or a method or getter of your classes) may not sit next to a read of a mutable
+top-level variable, of a signal's `.value`, or of a mutable field of an object (the call might change it). A call nested inside another call's argument is fine. `&&`, `||`, and `?:` fix the order and are always fine.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -403,7 +405,8 @@ input.dart:13:17: error[E013]: 'next()' may run before or after 'count' is read 
 
 ## E014: Reserved name
 
-A user-declared name (top-level variable, function, parameter, or local) that would collide with C++ or the Arduino
+A user-declared name (top-level variable, function, parameter, local, class, field, method, enum, or enum value)
+that would collide with C++ or the Arduino
 core in the generated code: a C++ keyword, a unodar API name, an Arduino core or avr-libc function or macro, an
 ALL-CAPS name, or a name reserved by C/C++ or unodar (`_t` suffix, `__`, `$`, `_` plus upper-case, `unodar_`
 prefix). See the Names section of `docs/SUBSET.md`. Also a top-level widget whose generated callback would get the
@@ -441,7 +444,8 @@ input.dart:8:7: error[E014]: 'and' cannot be used as a name: it is a C++ keyword
 Every top-level variable needs an initializer made only of literals, unodar constants, `const` variables declared
 **above** it, `Uint8(…)`/`Uint16(…)`/`Int16(…)` of constants, and supported operators. The constructor arguments of
 a bound object (`final link = SoftSerial(10, 11);`) and the initial value of a signal (`Signal(analogRead(A0))` is
-rejected) follow the same rule; widget arguments are checked by E022 instead, except for declaration order (a widget's arguments are emitted in its C++ declaration). C++ initializes globals before
+rejected) follow the same rule, and so do the constructor arguments of an object of your own class, its field
+initializers, its initializer list (which may also use the constructor's parameters), and its static fields; widget arguments are checked by E022 instead, except for declaration order (a widget's arguments are emitted in its C++ declaration). C++ initializes globals before
 `setup()` runs and needs declarations before use, while Dart initializes them lazily, so anything else could run
 in a different order. Compute other values in `setup()`.
 
@@ -475,7 +479,7 @@ the same reason.
 
 ## E016: Recursive function
 
-A function that calls itself, directly or through other user functions. The compiler checks the call graph of
+A function or method that calls itself, directly or through other user functions and methods. The compiler checks the call graph of
 all functions in the file (including `setup` and `loop`) for cycles and reports each cycle once, at the first
 function of the cycle in source order, with the path. Recursion is rejected because the Uno's 2 KB stack has no
 overflow check: Dart would throw `StackOverflowError`, the board would silently corrupt memory.
@@ -545,10 +549,13 @@ input.dart:7:19: error[E017]: unsupported binding method 'readTemperature': it h
 (Golden tests: `test/golden/e017_binding_members`, `e017_binding_signatures`, `e017_annotations`,
 `e017_cpp_range`.)
 
-## E018: Bound object misuse
+## E018: Object misuse
 
 A binding type (`Servo`, `TwoWire`, your own `@CppClass`) may only be the type of a top-level `final` variable
-initialized by its constructor, or of an `external final` object. Its methods are the only thing you can use: a
+initialized by its constructor, or of an `external final` object. The same holds for your own classes: an object is
+a top-level `final` initialized by its constructor, or a `final` field created in place in another class; only its
+fields and methods can be used, and `this` only to name a member. Objects are never copied, which is what keeps
+Dart's reference semantics and C++'s value semantics the same. Its methods are the only thing you can use: a
 local, parameter, or return value of a binding type, a non-`final` or `const` bound object, an initializer that is
 not the class's constructor, assigning, comparing, or passing the object as a value are all rejected. The C++
 object is a global, allocated once and statically; anything else would need copies, references, or the heap.
@@ -666,7 +673,7 @@ to a whole number of milliseconds from 1 to 2147483647. Each pin belongs to one 
 listed in `children` exactly once, or it would never be set up and polled (a `Watch`, which has nothing to set up
 or poll, would never run when its signal changes, and its message says so). A top-level widget's callback may only
 use widgets declared above it. A widget handle can only be listed in `children` or used to call its methods
-(`led.toggle()`); it cannot be stored, compared, or passed. `Watch` is a widget and follows all of these rules. A
+(`led.toggle()`); it cannot be stored, compared, or passed. `Watch` is a widget and follows all of these rules. A widget cannot be a field of a class. `OnStart` is a widget too. A
 `Led` bound to a signal (`Led(pin: 13, on: flag)`) is driven only by that signal, so calling `on()`, `off()`,
 `toggle()` or `set()` on it is rejected.
 
@@ -698,8 +705,9 @@ input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
 ## E023: `delay()` in a widget callback
 
 Widget callbacks run inside the generated `loop()`, which polls every button and timer. `delay()` would stop all of
-them while it waits, so it is rejected in a callback (including a `Watch` callback), and in any of your functions that a callback calls, directly
-or through other functions. Plain `setup()`/`loop()` sketches keep `delay()`.
+them while it waits, so it is rejected in a callback (including a `Watch` callback), and in any of your functions and methods that a
+callback calls, directly or through other functions. Plain `setup()`/`loop()` sketches keep `delay()`, and so does
+`OnStart`'s callback, which runs once in `setup()` before anything is polled.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -735,7 +743,7 @@ input.dart:7:3: error[E023]: 'delay()' runs inside a widget callback (Button's o
 ## E024: Signal misuse
 
 A signal (`Signal`, `Computed`) is a top-level `final` initialized by its constructor, and it is used only through
-`.value`. Rejected: a non-`final` or `const` signal, a signal created anywhere else (a local, a callback), a signal
+`.value`. Rejected: a non-`final` or `const` signal, a signal created anywhere else (a local, a callback, a field of a class), a signal
 used as a value (stored in another variable, compared, passed, printed, returned), a local, parameter or return
 value of a signal type, and a `Watch` whose first argument is not the name of a top-level signal. The C++ signal is
 a global, allocated once; anything else would need references or the heap. Uses of a declaration that was already
@@ -773,7 +781,7 @@ input.dart:13:32: error[E024]: the signal 'count' is used as a value; a signal c
 
 ## E025: Reactive cycle
 
-A `Watch` callback writes, directly or through functions it calls, the signal it watches, or a signal whose Watches
+A `Watch` callback writes, directly or through functions and methods it calls, the signal it watches, or a signal whose Watches
 lead back to it (`Watch(a)` writes `b`, `Watch(b)` writes `a`). Changes are delivered once per `loop()` pass, so such
 a program would deliver on every pass for ever. A Computed counts as depending on what it reads, so a Watch of a
 Computed that writes one of its signals is a cycle too (`isOdd reads count → Watch(isOdd) → count`; the message then
@@ -812,8 +820,8 @@ input.dart:6:3: error[E025]: this write closes a cycle: Watch(count) → bump() 
 
 The closure of a `Computed` is a single `=>` expression over `.value` of signals and Computeds declared above it,
 literals, constants (`const` and `final` values), `Uint8(…)`/`Uint16(…)`/`Int16(…)`, and the subset's operators.
-Rejected: a block, async or generator body, any call (including `analogRead`), a mutable top-level variable (the
-Computed would not see it change), and a signal or Computed declared below it or itself (which is also what rules
+Rejected: a block, async or generator body, any call (including `analogRead`, and the methods and getters of your
+classes), a mutable top-level variable or mutable field of an object (the Computed would not see it change), and a signal or Computed declared below it or itself (which is also what rules
 out cycles). An assignment is E002, as anywhere inside an expression.
 
 ```dart
@@ -845,3 +853,86 @@ input.dart:6:30: error[E026]: a Computed can only read signals and Computeds dec
 ```
 
 (Golden tests: `test/golden/e026_computed_body`, `e026_computed_reads`.)
+
+## E027: Class rules
+
+A class of your own (see "Your own classes" in `docs/SUBSET.md`) has instance fields, at most one unnamed
+constructor without a body, instance methods, getters, and static members. Rejected:
+- `extends`, `implements` or `with`, and the modifiers `abstract`, `sealed`, `base`, `interface` and `mixin`
+  (`final` is allowed); `mixin` declarations; type parameters;
+- a constructor body; `factory`, named, redirecting or `const` constructors; more than one constructor; optional
+  positional constructor parameters;
+- setters, operators (including `==`), overriding `toString`, `hashCode` or `noSuchMethod`, `external` members,
+  `late` fields;
+- a class that contains itself, directly or through the classes of its fields.
+
+Objects are statically allocated and created before `setup()`, so a constructor only initializes fields: code in a
+constructor body would run before Arduino's `init()`, where Dart would run it when the object is first used.
+Inheritance is rejected because faithful virtual dispatch needs vtables, which AVR copies into RAM; composition
+(a field holding another object) gives the reuse. A class with a problem is reported once per problem; the
+problems of a class that extends another are reported only once, at `extends`.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+class Blinker {
+  final int pin;
+  Blinker(this.pin) {
+    pinMode(pin, OUTPUT);
+  }
+}
+
+class FastBlinker extends Blinker {
+  FastBlinker(super.pin);
+}
+
+void setup() {}
+
+void loop() {}
+```
+
+```text
+input.dart:5:3: error[E027]: a constructor cannot have a body in this version: objects are created before setup() runs, not when Dart would first use them.
+  = help: Move this code into a method, e.g. `void begin()`, and call it from setup() or from an OnStart widget.
+input.dart:10:19: error[E027]: a class cannot extend another class in this version ('FastBlinker' extends 'Blinker').
+  = help: Give 'FastBlinker' a field of type 'Blinker' instead (composition), or merge the two classes.
+```
+
+(Golden tests: `test/golden/e027_class_header`, `e027_constructors`, `e027_members`.)
+
+## E028: Enum rules
+
+Enums are simple enums (`enum Mode { idle, heating }`, see "Enums" in `docs/SUBSET.md`), compiled to C++
+`enum class Mode : uint8_t`. Rejected: enums with fields, constructors, methods, `implements` or `with` (enhanced
+enums); more than 256 values; `Mode.values` (a list) and `mode.name` (a string). Printing an enum value is E009.
+
+```dart
+import 'package:unodar/unodar.dart';
+
+enum Mode { idle, heating }
+
+enum Speed {
+  slow(1),
+  fast(2);
+
+  const Speed(this.factor);
+  final int factor;
+}
+
+Mode mode = Mode.idle;
+
+void setup() {}
+
+void loop() {
+  Serial.println(mode.name);
+}
+```
+
+```text
+input.dart:5:6: error[E028]: an enum with fields, constructors or methods ('Speed') is not supported in this version.
+  = help: Use a simple enum, e.g. `enum Speed { slow, fast }`, and compute the values in a function.
+input.dart:18:23: error[E028]: the name of an enum value ('mode.name') is not available in this version.
+  = help: Print `mode.index` instead.
+```
+
+(Golden tests: `test/golden/e028_enums`.)

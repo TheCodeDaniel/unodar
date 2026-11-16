@@ -2,7 +2,7 @@
 
 **Version:** 0.1 (pre-implementation)  
 **Owner:** Daniel Ainoko  
-**Status:** Active. Phase 1 (tagged v0.1.0), Phase 2 (language core, tagged v0.2.0), Phase 3 (hardware + interop foundation, tagged v0.3.0) and Phase 4 (static widget tree, tagged v0.4.0) are done; Phase 5 (signals) is done on the `phase-5` branch (v0.5, awaiting maintainer review and tag).  
+**Status:** Active. Phase 1 (tagged v0.1.0), Phase 2 (language core, tagged v0.2.0), Phase 3 (hardware + interop foundation, tagged v0.3.0) and Phase 4 (static widget tree, tagged v0.4.0) and Phase 5 (signals, tagged v0.5.0) are done; Phase 6 (classes and library wrappers) is in progress on the `phase-6` branch.  
 **Audience:** The maintainer and Claude Code (as the implementing engineer). Read this fully before writing code.
 
 ---
@@ -145,8 +145,8 @@ Each phase has an exit gate. Do not start a phase until the previous gate passes
 | 2 | Language core (**done**, tagged v0.2.0) | ints, bools, doubles, consts, top-level vars, arithmetic/logic, `if`/`while`/`for`, functions, sized ints (`Uint8`...), rejection diagnostics | 0.2 |
 | 3 | Hardware + interop foundation (**done**, tagged v0.3.0) | `Serial`, analog I/O, flash strings, `@CppClass`/`@CppHeader`, `cpp()` escape hatch, `Servo` + `Wire` bindings | 0.3 |
 | 4 | Static widget tree (**done**, tagged v0.4.0) | `runDevice`, `Device`, `Led`, `Button` (debounced), `Every`; non-capturing closures → generated functions | 0.4 |
-| 5 | Signals (**done**, awaiting tag) | `Signal<T>` (value + dirty flag), `Watch`, restricted `Computed`, binding to widgets (`Led(on:)`), no heap | 0.5 |
-| 6 | Classes + library wrappers | Simple classes → structs; first-party wrappers for top ~10 libs (SPI, LiquidCrystal, DHT, SSD1306, NeoPixel...) | 0.6 |
+| 5 | Signals (**done**, tagged v0.5.0) | `Signal<T>` (value + dirty flag), `Watch`, restricted `Computed`, binding to widgets (`Led(on:)`), no heap | 0.5 |
+| 6 | Classes + library wrappers (**in progress**) | Simple classes → structs (fields, one constructor, methods, static members, composition, enums; no inheritance); first-party wrappers for EEPROM, SPI, SoftwareSerial, LiquidCrystal, DHT (SSD1306 and NeoPixel use the heap: Phase 8 picks a heap-free display driver) | 0.6 |
 | 7 | CLI and DX | `flash`, `run`, `doctor`, `setup` (toolchain bootstrap, §8.1), friendly errors, 10-minute quickstart | 0.7 (**public announce**) |
 | 8 | Display widgets | `Oled` + `Column`/`Row`/`Text`/`Padding`, layout resolved at compile time | 0.8 |
 | 9 | ESP32 target | Board abstraction, WiFi/BLE, OTA, phone-to-board demo | 0.9 |
@@ -367,9 +367,9 @@ Key long-term decisions (already made — do not relitigate without asking):
 1. ~~Dart `int` mapping~~ **Decided (Phase 2):** `int` → `int32_t` everywhere, `double` → `float`, plus sized `Uint8`/`Uint16`/`Int16`. See `docs/DECISIONS.md`.
 2. ~~Output as single `.ino` vs `.cpp` + `.h`~~ **Decided (Phase 4):** the generated program stays one `.ino`; a program that uses widgets also gets a copy of the fixed, hand-written runtime header `unodar_widgets.h` in the same sketch folder. See `docs/DECISIONS.md`.
 3. ~~Computed/derived signals~~ **Decided (Phase 5):** restricted expressions. A `Computed` is a single `=>` expression over signals and Computeds declared above it and constants, no calls; general closures may come later. See `docs/DECISIONS.md`.
-4. Fixed-size list design (e.g. `FixedList<int, 8>`) (not before Phase 6).
+4. Fixed-size list design (e.g. `FixedList<int, 8>`): **not in Phase 6** (maintainer decision, 2026-11-16); still open for a later phase, together with immutable value classes. See `docs/DECISIONS.md`.
 5. Board abstraction shape before ESP32 (Phase 9).
-6. Whether to build a C++ header binding generator (after hand-written bindings prove painful).
+6. ~~C++ header binding generator~~ **Decided (Phase 6):** no generator in Phase 6; every binding gets a conformance probe instead, and the effort of each hand-written wrapper is recorded to revisit the question with data. See `docs/DECISIONS.md`.
 
 ---
 
