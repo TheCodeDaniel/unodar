@@ -150,6 +150,87 @@ void main() {
       });
     });
 
+    group('runner device models (Phase 6 step 12, hand-written sketches)', () {
+      Future<String> hex(String name) async {
+        final source = File(fromPackage('test', 'runtime', 'runner_devices', '$name.ino')).readAsStringSync();
+        final build = await compileSketch(name, source);
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return build.hexPath;
+      }
+
+      test('EEPROM: a second run sees the first run\'s bytes; an update to the same value writes nothing', () async {
+        gate.check();
+        final program = await hex('eeprom');
+        final dir = Directory.systemTemp.createTempSync('unodar_eeprom_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final file = p.join(dir.path, 'eeprom.bin');
+        final writes = p.join(dir.path, 'writes.txt');
+        final first = await simulate(program, extra: ['--eeprom', file, '--eeprom-writes', writes]);
+        expect(first.serial, 'boot 0\r\nbyte1 42\r\nDONE');
+        expect(File(writes).readAsStringSync().trim(), '2', reason: 'byte 0 and the first update of byte 1');
+        final second = await simulate(program, extra: ['--eeprom', file, '--eeprom-writes', writes]);
+        expect(second.serial, 'boot 1\r\nbyte1 42\r\nDONE');
+        expect(File(writes).readAsStringSync().trim(), '1', reason: 'byte 1 already holds 0x42');
+      });
+
+      test('negative control: a run without the saved EEPROM file starts erased again', () async {
+        gate.check();
+        final program = await hex('eeprom');
+        final dir = Directory.systemTemp.createTempSync('unodar_eeprom_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        await simulate(program, extra: ['--eeprom', p.join(dir.path, 'a.bin')]);
+        final fresh = await simulate(program, extra: ['--eeprom', p.join(dir.path, 'b.bin')]);
+        expect(fresh.serial, startsWith('boot 0\r\n'));
+      });
+
+      test('SPI: the scripted slave answers each byte; the log has the bytes and the SPCR settings', () async {
+        gate.check();
+        final program = await hex('spi');
+        final dir = Directory.systemTemp.createTempSync('unodar_spi_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final log = p.join(dir.path, 'spi.log');
+        final result = await simulate(program, extra: ['--spi-reply', 'c22017aa', '--spi-log', log]);
+        expect(result.serial, 'C2 20 17 \r\nAA\r\nDONE');
+        final lines = File(log).readAsLinesSync().map((l) => l.substring(l.indexOf(' ') + 1)).toList();
+        expect(lines, [
+          '9f c2 mode=1 order=msbFirst divider=16',
+          '00 20 mode=1 order=msbFirst divider=16',
+          '00 17 mode=1 order=msbFirst divider=16',
+          '55 aa mode=3 order=lsbFirst divider=4',
+        ]);
+      });
+
+      test('negative control: without a script the slave answers 0xFF', () async {
+        gate.check();
+        final result = await simulate(await hex('spi'), extra: ['--spi-log', '/dev/null']);
+        expect(result.serial, 'FF FF FF \r\nFF\r\nDONE');
+      });
+
+      test('cycle-stamped pin log: D13 goes high and low 2 cycles apart', () async {
+        gate.check();
+        final result = await simulate(await hex('pins_cycles'), extra: ['--pin-log-cycles']);
+        int at(String change) => int.parse(result.pinLog.firstWhere((l) => l.endsWith(' $change')).split(' ').first);
+        expect(at('D13 low') < at('D13 high'), isTrue, reason: 'pinMode via DDRB: low before the pulse');
+        final high = at('D13 high');
+        final fall = result.pinLog
+            .where((l) => l.endsWith(' D13 low'))
+            .map((l) => int.parse(l.split(' ').first))
+            .firstWhere((c) => c > high);
+        expect(fall - high, 2);
+      });
+
+      test('negative control: the millisecond log cannot tell the two changes apart', () async {
+        gate.check();
+        final result = await simulate(await hex('pins_cycles'));
+        final times = [
+          for (final l in result.pinLog)
+            if (l.endsWith(' D13 high') || l.endsWith(' D13 low')) l.split(' ').first
+        ];
+        expect(times.sublist(times.length - 2).toSet(), hasLength(1), reason: result.pinLog.join('\n'));
+      });
+    });
+
     group('widget runtime (runtime/unodar_widgets.h, hand-written sketch)', () {
       final sketch = File(fromPackage('test', 'runtime', 'widgets', 'widgets.ino')).readAsStringSync();
       final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
