@@ -361,8 +361,10 @@ final high = Wire.read();
 
 ### Servo, from the Arduino library index
 
-Servo is **not** part of the AVR core: install it once with `arduino-cli lib install Servo` (unodar is tested with
-Servo 1.3.0). `tool/check_arduino.sh` and the `arduino`-tagged tests fail with that instruction when it is missing.
+Servo is **not** part of the AVR core: install it once with `arduino-cli lib install --no-deps Servo@1.3.0`, the
+version unodar is tested with. Every library from the library index that unodar uses is pinned in
+`tool/arduino_libraries.txt`, together with its dependencies; `tool/check_arduino.sh` and the `arduino`-tagged
+tests fail (or skip, outside CI) with the exact install command when one is missing or has another version.
 
 | Dart (`Servo`) | C++ |
 |---|---|

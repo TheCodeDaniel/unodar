@@ -30,7 +30,8 @@ tool/embed_runtime.sh                                                     # re-e
 (cd tool/avr_runner && npm ci)                                            # avr8js for the runtime fidelity harness
 ```
 Tests tagged `arduino` (compile checks, size budgets, fidelity harnesses, reserved names) skip with install
-instructions when arduino-cli, the arduino:avr core, or the Servo library is missing; the runtime fidelity harness
+instructions when arduino-cli, the arduino:avr core, or a library of `tool/arduino_libraries.txt` (exact version,
+every dependency listed) is missing; the runtime fidelity harness
 also needs Node.js and `npm ci` in `tool/avr_runner`. **CI must set `UNODAR_REQUIRE_ARDUINO=1`** so they fail instead;
 `.github/workflows/ci.yml` does, and also fails on any skipped test (`tool/ci_no_skips.sh`).
 

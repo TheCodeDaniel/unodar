@@ -1,7 +1,7 @@
 /// Shared access to the real Arduino toolchain for tests tagged `arduino`.
 ///
-/// When `arduino-cli`, the `arduino:avr` core, or the Servo library is missing, tests using it are SKIPPED WITH A
-/// REASON that names the exact install commands; with UNODAR_REQUIRE_ARDUINO=1 (e.g. in CI) a missing toolchain is a
+/// When `arduino-cli`, the `arduino:avr` core, or a library of `tool/arduino_libraries.txt` (at its exact version) is
+/// missing, tests using it are SKIPPED WITH A REASON that names the exact install commands; with UNODAR_REQUIRE_ARDUINO=1 (e.g. in CI) a missing toolchain is a
 /// failure instead.
 library;
 
@@ -14,12 +14,34 @@ import 'package:unodar_compiler/src/emitter/emitter.dart';
 
 import 'test_paths.dart';
 
-const installHelp = '''
-arduino-cli and the arduino:avr core are required for this check. Install with:
+/// The libraries of `tool/arduino_libraries.txt`, in order.
+final List<({String name, String version})> arduinoLibraries =
+    parseArduinoLibraries(File(fromPackage('..', '..', 'tool', 'arduino_libraries.txt')).readAsStringSync());
+
+/// `name@version` lines; `#` comments and blank lines are ignored. The name may contain spaces.
+List<({String name, String version})> parseArduinoLibraries(String text) => [
+      for (final line in LineSplitter.split(text))
+        if (line.trim().isNotEmpty && !line.trimLeft().startsWith('#'))
+          (
+            name: line.substring(0, line.lastIndexOf('@')).trim(),
+            version: line.substring(line.lastIndexOf('@') + 1).trim()
+          ),
+    ];
+
+/// The command that installs [library] exactly as CI does.
+String installCommand(({String name, String version}) library) {
+  final spec = '${library.name}@${library.version}';
+  return 'arduino-cli lib install --no-deps ${spec.contains(' ') ? '"$spec"' : spec}';
+}
+
+final installHelp = '''
+arduino-cli, the arduino:avr core and the libraries of tool/arduino_libraries.txt are required for this check.
+Install with:
   brew install arduino-cli            # macOS; other platforms: https://arduino.github.io/arduino-cli/latest/installation/
   arduino-cli core update-index
   arduino-cli core install arduino:avr
-  arduino-cli lib install Servo@1.3.0  # Servo is not part of the core (docs/SUBSET.md "Servo")''';
+  arduino-cli lib update-index
+${arduinoLibraries.map((l) => '  ${installCommand(l)}').join('\n')}''';
 
 /// Null when the toolchain is ready; otherwise what is missing.
 String? missingToolchain() {
@@ -34,12 +56,39 @@ String? missingToolchain() {
   }
 }
 
-/// What is missing given the output of `arduino-cli core list` and `arduino-cli lib list`, or null.
+/// What is missing given the output of `arduino-cli core list` and `arduino-cli lib list`, or null. Library names
+/// may contain spaces, so a line matches when it starts with the name followed by whitespace and a version.
 String? missingFrom({required String coreList, required String libraryList}) {
   if (!coreList.contains('arduino:avr')) return 'the arduino:avr core is not installed';
-  if (!RegExp(r'^Servo\s', multiLine: true).hasMatch(libraryList)) return 'the Servo library is not installed';
+  for (final library in arduinoLibraries) {
+    final installed = RegExp('^${RegExp.escape(library.name)}\\s+(\\S+)', multiLine: true).firstMatch(libraryList);
+    if (installed == null) return 'the ${library.name} library is not installed';
+    if (installed.group(1) != library.version) {
+      return 'the ${library.name} library is ${installed.group(1)}, but unodar is tested with ${library.version}';
+    }
+  }
   return null;
 }
+
+/// The `depends=` names of a `library.properties` file (version constraints such as `A (>=1.0)` dropped).
+List<String> dependsOf(String properties) {
+  final line = LineSplitter.split(properties).where((l) => l.startsWith('depends=')).firstOrNull;
+  if (line == null) return const [];
+  return [
+    for (final part in line.substring('depends='.length).split(','))
+      if (part.replaceAll(RegExp(r'\(.*\)'), '').trim() case final name when name.isNotEmpty) name,
+  ];
+}
+
+/// One message per dependency of a manifest library that the manifest does not list ([depends]: name → depends).
+List<String> undeclaredDependencies(
+        List<({String name, String version})> manifest, Map<String, List<String>> depends) =>
+    [
+      for (final library in manifest)
+        for (final dependency in depends[library.name] ?? const <String>[])
+          if (!manifest.any((l) => l.name == dependency))
+            '${library.name} depends on $dependency, which is not in tool/arduino_libraries.txt',
+    ];
 
 /// The outcome of `arduino-cli compile --format json` for one golden case.
 final class ArduinoBuild {

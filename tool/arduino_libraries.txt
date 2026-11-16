@@ -1,0 +1,7 @@
+# Arduino libraries from the library index that unodar is built and tested with, one `name@version` per line.
+# CI installs each with `arduino-cli lib install --no-deps`, so every dependency must be listed here too (a test
+# reads each installed library's library.properties `depends=`). tool/check_arduino.sh and the `arduino` test gate
+# read this file. A version change gets a dedicated commit, like a size budget: budgets depend on exact versions.
+# Libraries that ship with arduino:avr (EEPROM, SPI, SoftwareSerial, Wire) are pinned through the core instead.
+# Each library is added in the commit of the wrapper that needs it (docs/PLAN.md Phase 6).
+Servo@1.3.0

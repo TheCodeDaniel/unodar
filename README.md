@@ -97,8 +97,8 @@ Unodar is experimental. Beyond the subset itself (`docs/SUBSET.md`), these are t
   `Signal<int>`/`Signal<double>` 5 B, `Signal<Int16>`/`Signal<Uint16>` 3 B, `Signal<bool>`/`Signal<Uint8>` 2 B; a
   watched `Computed` as a `Signal` of its type. A `Watch`, an unwatched `Computed` and the delivery itself use 0 B
   (measured with `avr-nm`).
-- **Requirements:** arduino-cli with `arduino:avr` 1.8.8 and `Servo` 1.3.0 for builds, and Node.js 20.19+ for the
-  runtime tests (`(cd tool/avr_runner && npm ci)`). Tests that need them skip with install instructions; CI
+- **Requirements:** arduino-cli with `arduino:avr` 1.8.8 and the libraries pinned in `tool/arduino_libraries.txt`
+  (today `Servo` 1.3.0) for builds, and Node.js 20.19+ for the runtime tests (`(cd tool/avr_runner && npm ci)`). Tests that need them skip with install instructions; CI
   requires them.
 
 ## Quick start
