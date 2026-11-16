@@ -88,8 +88,8 @@ abstract final class Diagnostics {
   static Diagnostic unsupportedDeclaration(String what, SourceLocation at, {String? suggestion}) => Diagnostic(
         code: DiagnosticCode.unsupportedDeclaration,
         location: at,
-        message: '$what is not supported in this version. Only top-level functions, variables, classes, and binding '
-            'classes may be declared.',
+        message: '$what is not supported in this version. Only top-level functions, variables, classes, enums, and '
+            'binding classes may be declared.',
         suggestion:
             suggestion ?? 'Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.',
       );
@@ -402,6 +402,44 @@ abstract final class Diagnostics {
         message: "the field '$name' must hold an object created in place, by calling the $cls constructor.",
         suggestion: 'Create it in the field\'s initializer, `final $cls $name = $cls(…);`, or in the initializer list; '
             'an object cannot be passed in or shared.',
+      );
+
+  // E028: enums, and E009 for printing one.
+
+  static Diagnostic enhancedEnum(String name, List<String> values, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.enumRule,
+        location: at,
+        message: "an enum with fields, constructors or methods ('$name') is not supported in this version.",
+        suggestion: 'Use a simple enum, e.g. `enum $name { ${values.join(', ')} }`, and compute the values in a '
+            'function.',
+      );
+
+  static Diagnostic tooManyEnumValues(String name, int count, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.enumRule,
+        location: at,
+        message: "the enum '$name' has $count values; at most 256 are supported (it is stored in one byte).",
+        suggestion: 'Split it into smaller enums.',
+      );
+
+  static Diagnostic enumName(String expression, String receiver, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.enumRule,
+        location: at,
+        message: "the name of an enum value ('$expression') is not available in this version.",
+        suggestion: 'Print `$receiver.index` instead.',
+      );
+
+  static Diagnostic enumValues(String expression, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.enumRule,
+        location: at,
+        message: "the list of an enum's values ('$expression') is not available in this version.",
+        suggestion: 'Lists are not supported; compare with each value, or use `.index`.',
+      );
+
+  static Diagnostic enumPrint(String expression, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedType,
+        location: at,
+        message: "an enum value ('$expression') cannot be printed in this version (Dart would print its name).",
+        suggestion: 'Print its index instead, e.g. `Serial.println($expression.index);`.',
       );
 
   static Diagnostic thisUse(SourceLocation at) => Diagnostic(

@@ -4,6 +4,7 @@ import 'package:analyzer/dart/ast/token.dart';
 import 'callables.dart';
 import 'classes.dart';
 import 'elements.dart';
+import 'enums.dart';
 import 'signals.dart';
 import 'widgets.dart';
 
@@ -187,6 +188,10 @@ List<Expression> childExpressions(Expression expression) => switch (expression) 
       // A Computed's closure: its single expression is compiled, so every expression rule checks it.
       FunctionExpression() when isComputedClosure(expression) => [
           if (computedExpression(expression) case final body?) body,
+        ],
+      // `mode.index`: the enum value is an operand.
+      PrefixedIdentifier() || PropertyAccess() when enumIndexTarget(expression) != null => [
+          enumIndexTarget(expression)!,
         ],
       MethodInvocation(:final argumentList) || InstanceCreationExpression(:final argumentList) => [
           for (final argument in argumentList.arguments) argument.argumentExpression,

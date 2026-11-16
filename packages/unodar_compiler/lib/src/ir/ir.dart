@@ -19,10 +19,19 @@ library;
 /// the fixed ones. Every type is a canonical instance compared by identity; the fixed ones are the constants below,
 /// listed in [values].
 final class IrType {
-  const IrType._(this.name);
+  const IrType._(this.name, {this.isEnum = false});
 
-  /// The Dart-side name of the type, for messages and debugging (`int32`, `bool_`, …).
+  /// The Dart-side name of the type, for messages and debugging (`int32`, `bool_`, …); for an enum, its name,
+  /// which is also its C++ name.
   final String name;
+
+  /// One of the user's enums (docs/SUBSET.md "Enums"): C++ `enum class Name : uint8_t`.
+  final bool isEnum;
+
+  /// The canonical type of the user's enum [name].
+  static IrType enumeration(String name) => _enums.putIfAbsent(name, () => IrType._(name, isEnum: true));
+
+  static final _enums = <String, IrType>{};
 
   static const void_ = IrType._('void_');
   static const bool_ = IrType._('bool_');
@@ -73,6 +82,7 @@ final class IrProgram {
     required this.sourceName,
     this.includes = const [],
     this.localIncludes = const [],
+    this.enums = const [],
     this.globals = const [],
     required this.functions,
   });
@@ -88,11 +98,23 @@ final class IrProgram {
   /// order. Emitted as `#include "…"` after [includes], each once.
   final List<String> localIncludes;
 
+  /// The user's enums, in source order. Emitted before the prototypes, so every declaration can use them.
+  final List<IrEnum> enums;
+
   /// Top-level variables, bound objects and the structs of the user's classes, in source order.
   final List<IrGlobalDeclaration> globals;
 
   /// Functions in source order.
   final List<IrFunction> functions;
+}
+
+/// One of the user's enums: `enum class Mode : uint8_t { idle, heating };`.
+final class IrEnum {
+  const IrEnum({required this.name, required this.values, required this.line});
+
+  final String name;
+  final List<String> values;
+  final int line;
 }
 
 sealed class IrGlobalDeclaration {

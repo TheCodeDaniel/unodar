@@ -7,7 +7,7 @@ enum DiagnosticCode {
   unsupportedStatement('E002', 'Unsupported statement or expression kind'),
   unknownFunction('E003', 'Call to a function that is not part of the supported unodar API'),
   unsupportedArgument('E004', 'Unsupported argument (constant out of range for the Arduino parameter, or named)'),
-  unsupportedDeclaration('E005', 'Unsupported top-level declaration (enums, extensions, typedefs, getters, late)'),
+  unsupportedDeclaration('E005', 'Unsupported top-level declaration (extensions, typedefs, getters, late)'),
   invalidEntrySignature('E006', 'Invalid `setup`/`loop` signature (must be `void`, no parameters)'),
   analysisError('E007', 'Dart analysis error in the source file (type error, syntax error, unresolved import)'),
   unsupportedMain('E008', '`main()` other than a single `runDevice(Device(…))` call'),
@@ -29,7 +29,8 @@ enum DiagnosticCode {
   signalMisuse('E024', 'Signal misuse (placement, value uses, signal-typed locals/parameters/returns, Watch source)'),
   reactiveCycle('E025', 'Reactive cycle: a Watch writes the signal it watches, or Watches write signals in a cycle'),
   computedRule('E026', 'Computed rules (a single expression over signals and Computeds declared above, constants)'),
-  classRule('E027', 'Class rules (inheritance, modifiers, constructor bodies and kinds, setters, operators, late)');
+  classRule('E027', 'Class rules (inheritance, modifiers, constructor bodies and kinds, setters, operators, late)'),
+  enumRule('E028', 'Enum rules (enhanced enums, more than 256 values, `.values`, `.name`)');
 
   const DiagnosticCode(this.id, this.summary);
 

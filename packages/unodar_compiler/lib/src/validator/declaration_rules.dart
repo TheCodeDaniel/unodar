@@ -75,7 +75,7 @@ final class TopLevelDeclarationRule implements ValidationRule {
         case MixinDeclaration():
           break; // ClassRule (E027).
         case EnumDeclaration():
-          unsupported('an enum');
+          break; // One of the user's enums: EnumRule checks it (E028).
         case ExtensionDeclaration() || ExtensionTypeDeclaration():
           unsupported('an extension');
         case TypeAlias():

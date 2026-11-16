@@ -59,6 +59,13 @@ final class CppEmitter {
       out.writeln();
       modHelper.forEach(out.writeln);
     }
+    // Enums have no `#line`: like the prototypes, they come before the first one (docs/SUBSET.md "Enums").
+    if (program.enums.isNotEmpty) {
+      out.writeln();
+      for (final e in program.enums) {
+        out.writeln('enum class ${e.name} : uint8_t { ${e.values.join(', ')} };');
+      }
+    }
     final prototypes = [
       for (final function in program.functions)
         if (!function.isEntryPoint && function.owner == null) '${_signature(function)};',

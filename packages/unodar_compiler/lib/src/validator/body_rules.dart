@@ -11,6 +11,7 @@ import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/enums.dart';
 import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
@@ -210,6 +211,20 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     // `count.value`: a signal read (where the signal may be used is for E024).
     case PrefixedIdentifier() || PropertyAccess() when signalOfValue(expression) != null:
       return null;
+    // `Mode.idle`, `mode.index`; `Mode.values` and `mode.name` are E028.
+    case PrefixedIdentifier() when enumValueOf(expression) != null:
+      return null;
+    case PrefixedIdentifier() || PropertyAccess() when enumIndexTarget(expression) != null:
+      return null;
+    case PrefixedIdentifier() || PropertyAccess() when unsupportedEnumMember(expression) != null:
+      final target = switch (expression) {
+        PrefixedIdentifier(:final prefix) => prefix,
+        PropertyAccess(:final target) => target!,
+        _ => throw StateError('unreachable'),
+      };
+      return unsupportedEnumMember(expression) == 'values'
+          ? (at) => Diagnostics.enumValues(expression.toSource(), at)
+          : (at) => Diagnostics.enumName(expression.toSource(), target.toSource(), at);
     // `left.count`: a field of an object (whether `left` may be used is for E018).
     case PrefixedIdentifier() || PropertyAccess() when fieldAccessOf(expression) != null:
       return null;

@@ -12,6 +12,7 @@ export 'binding_rules.dart';
 export 'body_rules.dart';
 export 'class_rules.dart';
 export 'declaration_rules.dart';
+export 'enum_rules.dart';
 export 'program_rules.dart';
 export 'widget_rules.dart';
 

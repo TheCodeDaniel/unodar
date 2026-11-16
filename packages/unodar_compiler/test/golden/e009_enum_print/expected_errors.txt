@@ -1,0 +1,2 @@
+input.dart:9:18: error[E009]: an enum value ('mode') cannot be printed in this version (Dart would print its name).
+  = help: Print its index instead, e.g. `Serial.println(mode.index);`.

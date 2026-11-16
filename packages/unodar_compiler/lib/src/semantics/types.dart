@@ -16,6 +16,7 @@ IrType? irTypeOf(DartType? type) {
   if (type.isDartCoreInt) return IrType.int32;
   if (type.isDartCoreDouble) return IrType.float32;
   if (type.isDartCoreBool) return IrType.bool_;
+  if (userEnumOf(type) case final element?) return IrType.enumeration(element.name!);
   return sizedTypeOf(type);
 }
 
@@ -30,6 +31,13 @@ IrType? sizedTypeOf(DartType type) {
     'Int16' => IrType.int16,
     _ => null,
   };
+}
+
+/// One of the user's enums: an enum declared outside `package:unodar` and the Dart SDK (the program is one file).
+EnumElement? userEnumOf(DartType? type) {
+  if (type is! InterfaceType || isNullable(type)) return null;
+  final element = type.element;
+  return element is EnumElement && !isUnodarElement(element) && element.library.uri.scheme != 'dart' ? element : null;
 }
 
 bool isNullable(DartType type) => type.nullabilitySuffix == NullabilitySuffix.question;

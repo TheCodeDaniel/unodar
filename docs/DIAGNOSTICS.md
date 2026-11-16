@@ -150,9 +150,9 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
 
 ## E005: Unsupported top-level declaration
 
-Top-level functions and variables are supported, and so are your own classes (checked by E027), binding classes
-(annotated `@CppClass`, checked by E017) and `external` objects of a binding type. Enums, extensions, extension
-types, typedefs, and top-level getters/setters are not, nor are `late` variables or `external` variables of any
+Top-level functions and variables are supported, and so are your own classes and enums (checked by E027 and
+E028), binding classes (annotated `@CppClass`, checked by E017) and `external` objects of a binding type.
+Extensions, extension types, typedefs, and top-level getters/setters are not, nor are `late` variables or `external` variables of any
 other type. Also used for directives: any import other than an unprefixed `package:unodar/unodar.dart`, and
 `export`/`part`.
 
@@ -171,9 +171,9 @@ void loop() {}
 ```
 
 ```text
-input.dart:3:1: error[E005]: an extension is not supported in this version. Only top-level functions, variables, classes, and binding classes may be declared.
+input.dart:3:1: error[E005]: an extension is not supported in this version. Only top-level functions, variables, classes, enums, and binding classes may be declared.
   = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
-input.dart:7:1: error[E005]: a late variable ('ledPin') is not supported in this version. Only top-level functions, variables, classes, and binding classes may be declared.
+input.dart:7:1: error[E005]: a late variable ('ledPin') is not supported in this version. Only top-level functions, variables, classes, enums, and binding classes may be declared.
   = help: Remove `late` and give the variable a constant initializer.
 ```
 
@@ -439,7 +439,8 @@ input.dart:8:7: error[E014]: 'and' cannot be used as a name: it is a C++ keyword
 ```
 
 (Golden tests: `test/golden/e014_all_caps`, `e014_arduino_name`, `e014_cpp_keyword`, `e014_api_name`,
-`e014_reserved_pattern`, `e014_generated_name`, `e014_watch_parameter`, `e014_class_names`.)
+`e014_reserved_pattern`, `e014_generated_name`, `e014_watch_parameter`, `e014_class_names`,
+`e014_enum_names`.)
 
 ## E015: Top-level initializer is not a compile-time constant
 
@@ -936,8 +937,8 @@ void loop() {
 ```text
 input.dart:5:6: error[E028]: an enum with fields, constructors or methods ('Speed') is not supported in this version.
   = help: Use a simple enum, e.g. `enum Speed { slow, fast }`, and compute the values in a function.
-input.dart:18:23: error[E028]: the name of an enum value ('mode.name') is not available in this version.
+input.dart:18:18: error[E028]: the name of an enum value ('mode.name') is not available in this version.
   = help: Print `mode.index` instead.
 ```
 
-(Golden tests: `test/golden/e028_enums`.)
+(Golden tests: `test/golden/e028_enums`, and `e009_enum_print` for printing.)

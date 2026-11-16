@@ -12,6 +12,7 @@ import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/enums.dart';
 import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
@@ -98,6 +99,14 @@ final class _Lowerer {
       sourceName: source.displayName,
       includes: [..._headers, ..._cppIncludes()],
       localIncludes: [if (device != null) 'unodar_widgets.h'],
+      enums: [
+        for (final declaration in userEnumDeclarations(source.unit))
+          IrEnum(
+            name: declaration.namePart.typeName.lexeme,
+            values: [for (final c in declaration.body.constants) c.name.lexeme],
+            line: _line(declaration.namePart.typeName),
+          ),
+      ],
       globals: globals,
       functions: functions,
     );
@@ -705,11 +714,21 @@ final class _Lowerer {
     );
   }
 
-  static IrExpression _zero(IrType type) => switch (type) {
+  /// T's zero: `0`, `0.0`, `false`, or an enum's first value (index 0, as Dart's `values.first`).
+  IrExpression _zero(IrType type) => switch (type) {
         IrType.bool_ => const IrBoolLiteral(false),
         IrType.float32 => const IrDoubleLiteral(0),
+        _ when type.isEnum => IrConstant('${type.name}::${_firstEnumValue(type.name)}', type: type),
         _ => const IrIntLiteral(0),
       };
+
+  String _firstEnumValue(String name) => userEnumDeclarations(source.unit)
+      .firstWhere((d) => d.namePart.typeName.lexeme == name)
+      .body
+      .constants
+      .first
+      .name
+      .lexeme;
 
   /// `count.set(value);`.
   IrStatement _signalSet(SimpleIdentifier signal, IrExpression value, int line) =>
@@ -755,6 +774,12 @@ final class _Lowerer {
         return _call(expression);
       case PrefixedIdentifier() || PropertyAccess() when signalOfValue(expression) != null:
         return _signalRead(signalOfValue(expression)!);
+      // `Mode.idle` → `Mode::idle`; `mode.index` → `uint8_t(mode)` (an int of 0 to 255, widened where needed).
+      case PrefixedIdentifier() when enumValueOf(expression) != null:
+        final value = enumValueOf(expression)!;
+        return IrConstant('${value.enclosingElement.name}::${value.name}', type: _typeOf(expression));
+      case PrefixedIdentifier() || PropertyAccess() when enumIndexTarget(expression) != null:
+        return IrConvert(IrType.uint8, _expression(enumIndexTarget(expression)!));
       case PrefixedIdentifier() || PropertyAccess() when fieldAccessOf(expression) != null:
         final access = fieldAccessOf(expression)!;
         return IrFieldRead(access.object == 'this' ? null : access.object, access.field.name!, _typeOf(expression));

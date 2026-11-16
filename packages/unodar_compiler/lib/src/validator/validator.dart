@@ -23,6 +23,7 @@ final class Validator {
     BindingClassRule(),
     BoundObjectRule(),
     ClassRule(),
+    EnumRule(),
     // Bodies.
     StatementRule(),
     ExpressionRule(),

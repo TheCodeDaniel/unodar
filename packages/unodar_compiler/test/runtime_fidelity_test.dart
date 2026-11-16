@@ -809,6 +809,44 @@ void main() {
       });
     });
 
+    group('an enum drives a state machine (golden enum_basics, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'enum_basics', 'input.dart'));
+        if (result is! CompileSuccess) fail('enum_basics did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<String> run(String cpp) async {
+        final build = await compileSketch('enum_basics', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, until: null, cycles: 1800 * 16000)).serial;
+      }
+
+      test('transitions, comparisons, a Signal<Mode> Watch and a 32-bit index product, as in Dart', () async {
+        gate.check();
+        // Setup delivers idle (0). Tick 1: 10 degrees, heating (1); previous was the const start, cooling. Tick 2:
+        // 30 degrees, cooling (2), 2 * 20000 = 40000. Tick 3: still cooling, an equal write, so no delivery.
+        expect(
+            await run(await generated()),
+            'mode 0\r\n'
+            '1 1 true 20000 false\r\nmode 1\r\n'
+            '2 2 true 40000 false\r\nmode 2\r\n'
+            '2 2 true 40000 true\r\n');
+      });
+
+      test('negative control: the index product without the 32-bit widening wraps in 16 bits', () async {
+        gate.check();
+        final cpp = await generated();
+        const product = 'uint8_t(mode.value()) * 20000L';
+        expect(cpp, contains(product), reason: 'the generated code changed; update the negative control');
+        expect(await run(cpp.replaceFirst(product, 'uint8_t(mode.value()) * 20000')),
+            contains('2 2 true -25536 false\r\n'));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

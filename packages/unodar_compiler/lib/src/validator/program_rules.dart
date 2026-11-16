@@ -11,6 +11,7 @@ import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/enums.dart';
 import '../semantics/signals.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
@@ -210,6 +211,13 @@ final class ReservedNameRule implements ValidationRule {
       if (api.contains(name.lexeme)) {
         context.report(Diagnostics.reservedName(
             name.lexeme, 'it is a unodar API name', '${name.lexeme}Binding', context.at(name)));
+      }
+    }
+    // An enum and its values become C++ names; Arduino's macros ignore C++ scopes, even `Mode::min`.
+    for (final declaration in userEnumDeclarations(unit)) {
+      checkName(declaration.namePart.typeName);
+      for (final constant in declaration.body.constants) {
+        checkName(constant.name);
       }
     }
     // A class, its fields and its constructor's parameters become C++ names; Arduino's macros ignore C++ scopes.

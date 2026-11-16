@@ -183,4 +183,8 @@ const sizeBudgets = <String, SizeBudget>{
   // other 23 (small 8 + large 8 + Servo 3 + rounds 4: a member object is stored inside its owner) + Servo library
   // 38 (servos table 36, ServoCount, Channel) + "\r\n\0" 3 + 1 B of .data padding.
   'class_composition': SizeBudget(baselineFlash: 3830, baselineRam: 272, maxFlash: 5000, maxRam: 283),
+  // enum_basics: an enum as a signal, field, const, local, parameter and return type (step 7). RAM (avr-nm):
+  // Serial 175 + core 9 + Every 8 + mode 2 (Signal<Mode>: a 1-byte enum and the mark) + thermostat 5 (int changes 4
+  // + Mode previous 1) + readings 4 + "\r\n\0" 3.
+  'enum_basics': SizeBudget(baselineFlash: 2340, baselineRam: 206, maxFlash: 3050, maxRam: 217),
 };

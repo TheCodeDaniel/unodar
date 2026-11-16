@@ -952,7 +952,8 @@ Signals and Computeds are declared with the other top-level variables, in source
 and `unodar_deliver()` right before the generated `setup()`. Its locals are named `unodar_<signal>_changed` and
 `unodar_<signal>_value`, so they cannot shadow a user name (the `unodar_` prefix is reserved, E014).
 
-Enums are emitted right after the helpers, before the prototypes, in source order. Classes are emitted among the
+Enums are emitted right after the helpers, before the prototypes, in source order, without `#line` (like the
+prototypes, they come before the first one). Classes are emitted among the
 top-level variables, in source order (a class may use only what is declared above it): the `struct` with its member
 declarations and its constructor, then the definitions of its static data members. Methods are defined
 (`bool Thermostat::heating() { … }`) among the functions, in source order. An object is declared like a bound
