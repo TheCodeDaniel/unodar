@@ -764,6 +764,51 @@ void main() {
       });
     });
 
+    group('a member object is part of its owner, never a copy (golden class_composition, compiled by unodar)', () {
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'class_composition', 'input.dart'));
+        if (result is! CompileSuccess) fail('class_composition did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<({String serial, List<String> pinLog})> run(String cpp) async {
+        final build = await compileSketch('class_composition', cpp);
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return simulate(build.hexPath, until: null, cycles: 500 * 16000);
+      }
+
+      test('members created in place, used through chains and from methods; the Servo member drives pin 9', () async {
+        gate.check();
+        final result = await run(await generated());
+        // pair = Pair(3): small step 1, large step 30; two rounds, then pair.small.add(): 3 + 60. other = Pair(5):
+        // one round, 1 + 50. pair.rounds 2; other.large.step 50; the Servo reads back 90; other's is not attached.
+        expect(result.serial, '63\r\n51\r\n2\r\n50\r\n90\r\nfalse\r\n');
+        // The Servo member sends pulses on D9, about 1472 µs long for 90 degrees.
+        final highs = [
+          for (final line in result.pinLog)
+            if (line.endsWith(' D9 high')) double.parse(line.split(' ').first)
+        ];
+        final lows = [
+          for (final line in result.pinLog)
+            if (line.endsWith(' D9 low')) double.parse(line.split(' ').first)
+        ];
+        expect(highs.length, greaterThan(5));
+        final width = lows.firstWhere((t) => t > highs[1]) - highs[1];
+        expect(width, closeTo(1.472, 0.02));
+      });
+
+      test('negative control: calling the method on a copy of the member leaves the member unchanged', () async {
+        gate.check();
+        final cpp = await generated();
+        const call = '  this->large.add();\n';
+        expect(cpp, contains(call), reason: 'the generated code changed; update the negative control');
+        final copied = cpp.replaceFirst(call, '  { Counter copy = this->large; copy.add(); }\n');
+        // large never changes: pair.total is 3 + 0, other.total 1 + 0.
+        expect((await run(copied)).serial, startsWith('3\r\n1\r\n'));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

@@ -138,8 +138,8 @@ final class IrStruct extends IrGlobalDeclaration {
   /// `static const …` (`static final`), `static …` (mutable), each also defined after the struct.
   final List<IrStructField> staticFields;
 
-  /// Instance fields, in declaration order.
-  final List<IrStructField> fields;
+  /// Instance fields and member objects, in declaration order (C++ constructs members in this order).
+  final List<IrMember> fields;
 
   /// The constructor, or null for Dart's default constructor (the C++ implicit one).
   final IrConstructor? constructor;
@@ -148,17 +148,24 @@ final class IrStruct extends IrGlobalDeclaration {
   final List<IrFunction> methods;
 }
 
+/// A member of a struct: a value field or a member object.
+sealed class IrMember {
+  const IrMember({required this.name, required this.line});
+
+  final String name;
+  final int line;
+}
+
 /// An instance field: `const int32_t id;`, `int32_t count = start;`.
-final class IrStructField {
+final class IrStructField extends IrMember {
   const IrStructField({
-    required this.name,
+    required super.name,
     required this.type,
     required this.storage,
     this.initializer,
-    required this.line,
+    required super.line,
   });
 
-  final String name;
   final IrType type;
 
   /// [IrStorage.final_] or [IrStorage.mutable]; a static field may also be [IrStorage.constant].
@@ -166,7 +173,18 @@ final class IrStructField {
 
   /// The Dart field initializer, a constant (a C++ default member initializer), or null.
   final IrExpression? initializer;
-  final int line;
+}
+
+/// A member object (composition): `Counter small = Counter(1);`, `Servo arm;`, or one the constructor creates.
+final class IrMemberObject extends IrMember {
+  const IrMemberObject({required super.name, required this.cppClass, this.arguments, required super.line});
+
+  /// The C++ class (a user struct or a binding class).
+  final String cppClass;
+
+  /// The constructor arguments of a member created by its field initializer, in C++ parameter order; null for one
+  /// the constructor creates (its arguments are in [IrConstructor.initializers]).
+  final List<IrExpression>? arguments;
 }
 
 /// A struct's constructor: parameters in Dart declaration order (named ones included), and the members it
@@ -177,8 +195,9 @@ final class IrConstructor {
 
   final List<IrParameter> parameters;
 
-  /// (field name, value) pairs: an initializing formal's parameter, or an initializer-list value.
-  final List<(String, IrExpression)> initializers;
+  /// (member name, constructor arguments) pairs: one argument for a value field (an initializing formal's
+  /// parameter, or an initializer-list value), a member object's constructor arguments otherwise.
+  final List<(String, List<IrExpression>)> initializers;
 
   /// Whether every member allows a `constexpr` constructor (scalars do; binding objects do not).
   final bool isConstexpr;

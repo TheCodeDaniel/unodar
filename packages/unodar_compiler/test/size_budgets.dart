@@ -179,4 +179,8 @@ const sizeBudgets = <String, SizeBudget>{
   // count; static fields are not in objects) + Tally::created 4 + Tally::resets 4 + "\r\n\0" 3. The `static const`
   // limit and the `static final` rate have no symbol: folded, 0 B.
   'class_static': SizeBudget(baselineFlash: 2788, baselineRam: 226, maxFlash: 3650, maxRam: 237),
+  // class_composition: member objects, one of them a Servo (step 6). RAM (avr-nm): Serial 175 + core 9 + pair 23 +
+  // other 23 (small 8 + large 8 + Servo 3 + rounds 4: a member object is stored inside its owner) + Servo library
+  // 38 (servos table 36, ServoCount, Channel) + "\r\n\0" 3 + 1 B of .data padding.
+  'class_composition': SizeBudget(baselineFlash: 3830, baselineRam: 272, maxFlash: 5000, maxRam: 283),
 };

@@ -41,35 +41,77 @@ InstanceCreationExpression? topLevelObject(VariableDeclaration variable) {
   return userClassOf(declared) == userClassOf(creation.staticType) ? creation : null;
 }
 
-/// An instance field of a user class read or written through a top-level object: `left.count`.
+/// An instance field of a user class read or written through an object: `left.count`, `pair.large.count`, and inside
+/// a method `small.count` (a member object) or `this.count`.
 final class FieldAccess {
   const FieldAccess(this.object, this.field);
 
-  /// The object's top-level variable.
-  final TopLevelVariableElement object;
+  /// The C++ object the field belongs to: `left`, `pair.large`, `small`, or `this` for `this.count`.
+  final String object;
   final FieldElement field;
 
   bool get isMutable => !field.isFinal && !field.isConst;
+
+  /// The C++ lvalue: `left.count`, `this->count`.
+  String get cpp => object == 'this' ? 'this->${field.name}' : '$object.${field.name}';
 }
 
-/// [expression] as a field access (`left.count`, also as an assignment target), or null. The object must be a
-/// top-level variable of a user class; whether that variable is an accepted object is E018's question.
+/// [expression] as a field access (also as an assignment target), or null. Its target must name an object
+/// ([objectPathOf]); whether that object may be used is E018's question.
 FieldAccess? fieldAccessOf(Expression expression) {
-  final (SimpleIdentifier? target, SimpleIdentifier? property) = switch (expression) {
+  final (Expression? target, SimpleIdentifier? property) = switch (expression) {
     PrefixedIdentifier(:final prefix, :final identifier) => (prefix, identifier),
-    PropertyAccess(target: final SimpleIdentifier target, :final propertyName) => (target, propertyName),
+    PropertyAccess(:final target?, :final propertyName) => (target, propertyName),
     _ => (null, null),
   };
-  if (target == null || property == null || userClassOf(target.staticType) == null) return null;
-  final object = switch (target.element) {
-    final GetterElement getter => getter.variable,
-    final other => other,
-  };
-  if (object is! TopLevelVariableElement) return null;
+  if (target == null || property == null) return null;
+  final object = objectPathOf(target);
+  if (object == null) return null;
   final field = _fieldOf(property.element) ?? _fieldOf(_writeElementOf(expression));
   if (field == null || field.isStatic || !isUserClass(field.enclosingElement)) return null;
   return FieldAccess(object, field);
 }
+
+/// The C++ object [expression] names, if it names one of the user's objects or one of their member objects, else
+/// null: a top-level object (`left`), `this`, a member object named inside a method (`small`), or a member object
+/// of an object (`pair.large`, `this.large`). A binding member (`pair.arm`) is an object too.
+String? objectPathOf(Expression expression) {
+  switch (expression) {
+    case ThisExpression():
+      return 'this';
+    case SimpleIdentifier():
+      if (!_isObjectType(expression.staticType)) return null;
+      final element = switch (expression.element) {
+        final PropertyAccessorElement accessor => accessor.variable,
+        final other => other,
+      };
+      return switch (element) {
+        TopLevelVariableElement() => expression.name,
+        FieldElement(isStatic: false) when isUserClass(element.enclosingElement) => expression.name,
+        _ => null,
+      };
+    case PrefixedIdentifier(:final prefix, :final identifier):
+      return _member(prefix, identifier);
+    case PropertyAccess(:final target?, :final propertyName):
+      return _member(target, propertyName);
+    default:
+      return null;
+  }
+}
+
+String? _member(Expression target, SimpleIdentifier property) {
+  if (!_isObjectType(property.staticType)) return null;
+  final field = _fieldOf(property.element);
+  if (field == null || field.isStatic || !isUserClass(field.enclosingElement)) return null;
+  final object = objectPathOf(target);
+  if (object == null) return null;
+  return object == 'this' ? 'this->${property.name}' : '$object.${property.name}';
+}
+
+bool _isObjectType(DartType? type) =>
+    userClassOf(type) != null ||
+    (type is InterfaceType && hasInteropAnnotation(type.element, 'CppClass') && !isUnodarElement(type.element)) ||
+    (type is InterfaceType && isBindingClass(type.element));
 
 /// The field behind [element]: the field itself, or its implicit getter or setter. An explicit getter (`get x`) has
 /// a synthetic field, which is not a field here.

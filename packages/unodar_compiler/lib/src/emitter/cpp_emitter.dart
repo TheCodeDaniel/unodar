@@ -116,11 +116,19 @@ final class CppEmitter {
           IrStorage.mutable => '  static $declaration;',
         });
     }
-    for (final field in struct.fields) {
-      final initializer = field.initializer == null ? '' : ' = ${_expr(field.initializer!)}';
-      out
-        ..writeln('#line ${field.line} $file')
-        ..writeln('  ${_declaration(field.storage, field.type, field.name)}$initializer;');
+    for (final member in struct.fields) {
+      out.writeln('#line ${member.line} $file');
+      switch (member) {
+        case IrStructField(:final initializer, :final storage, :final type, :final name):
+          final value = initializer == null ? '' : ' = ${_expr(initializer)}';
+          out.writeln('  ${_declaration(storage, type, name)}$value;');
+        // `Counter small = Counter(1);` (copy-initialization: a default member initializer cannot use `(…)`), or
+        // `Servo arm;` for no arguments or a member the constructor creates.
+        case IrMemberObject(:final cppClass, :final name, :final arguments):
+          final value =
+              arguments == null || arguments.isEmpty ? '' : ' = $cppClass(${arguments.map(_expr).join(', ')})';
+          out.writeln('  $cppClass $name$value;');
+      }
     }
     for (final method in struct.methods) {
       out
@@ -135,9 +143,10 @@ final class CppEmitter {
         out.writeln('$head {}');
       } else {
         out.writeln(head);
-        for (final (index, (field, value)) in constructor.initializers.indexed) {
+        for (final (index, (field, values)) in constructor.initializers.indexed) {
           final last = index == constructor.initializers.length - 1;
-          out.writeln('${index == 0 ? '      : ' : '        '}$field(${_expr(value)})${last ? ' {}' : ','}');
+          final arguments = values.map(_expr).join(', ');
+          out.writeln('${index == 0 ? '      : ' : '        '}$field($arguments)${last ? ' {}' : ','}');
         }
       }
     }
@@ -530,8 +539,12 @@ final class CppEmitter {
             IrGlobal(:final initializer) => _modInExpression(initializer),
             IrBoundObject(:final arguments) => arguments.any(_modInExpression),
             IrStruct(:final fields, :final staticFields, :final constructor) =>
-              [...fields, ...staticFields].any((f) => _modInExpression(f.initializer)) ||
-                  (constructor?.initializers.any((i) => _modInExpression(i.$2)) ?? false),
+              staticFields.any((f) => _modInExpression(f.initializer)) ||
+                  fields.any((f) => switch (f) {
+                        IrStructField(:final initializer) => _modInExpression(initializer),
+                        IrMemberObject(:final arguments) => arguments?.any(_modInExpression) ?? false,
+                      }) ||
+                  (constructor?.initializers.any((i) => i.$2.any(_modInExpression)) ?? false),
           }) ||
       program.functions.any((f) => _modInStatements(f.body));
 

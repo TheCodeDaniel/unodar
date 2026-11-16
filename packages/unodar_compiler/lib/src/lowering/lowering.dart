@@ -378,16 +378,10 @@ final class _Lowerer {
         listed[initializer.fieldName.name] = initializer.expression;
       }
     }
-    final fields = [
-      for (final variable in instanceFields(declaration))
-        IrStructField(
-          name: variable.name.lexeme,
-          type: _type(variable.declaredFragment?.element.type, variable.name),
-          storage: variable.isFinal ? IrStorage.final_ : IrStorage.mutable,
-          initializer: variable.initializer == null ? null : _expression(variable.initializer!),
-          line: _line(variable.name),
-        ),
-    ];
+    final fields = [for (final variable in instanceFields(declaration)) _member(variable)];
+    // constexpr only if every member object is a constexpr struct (a binding class's constructor is not constexpr).
+    final isConstexpr = fields.every((f) => f is! IrMemberObject || (_constexprStructs[f.cppClass] ?? false));
+    _constexprStructs[declaration.namePart.typeName.lexeme] = isConstexpr;
     return IrStruct(
       name: declaration.namePart.typeName.lexeme,
       line: _line(declaration.namePart.typeName),
@@ -410,16 +404,56 @@ final class _Lowerer {
           ? null
           : IrConstructor(
               parameters: parameters,
+              isConstexpr: isConstexpr,
               initializers: [
                 for (final field in fields)
-                  if (formals[field.name] case final parameter?)
-                    (field.name, IrVariable(parameter, field.type))
+                  if (formals[field.name] case final parameter? when field is IrStructField)
+                    (field.name, [IrVariable(parameter, field.type)])
                   else if (listed[field.name] case final value?)
-                    (field.name, _expression(value)),
+                    (field.name, _memberArguments(value)),
               ],
               line: _line(constructor.firstTokenAfterCommentAndMetadata),
             ),
     );
+  }
+
+  /// Which structs have a `constexpr` constructor, by name (filled in source order; members are declared above).
+  final _constexprStructs = <String, bool>{};
+
+  /// A field or a member object of a struct.
+  IrMember _member(VariableDeclaration variable) {
+    final type = variable.declaredFragment?.element.type;
+    final cls = api.classOfType(type);
+    if (userClassOf(type) == null && cls == null) {
+      return IrStructField(
+        name: variable.name.lexeme,
+        type: _type(type, variable.name),
+        storage: variable.isFinal ? IrStorage.final_ : IrStorage.mutable,
+        initializer: variable.initializer == null ? null : _expression(variable.initializer!),
+        line: _line(variable.name),
+      );
+    }
+    if (cls != null) _usesClass(cls);
+    final initializer = variable.initializer;
+    return IrMemberObject(
+      name: variable.name.lexeme,
+      cppClass: cls?.cppName ?? userClassOf(type)!.name!,
+      arguments: initializer == null ? null : _memberArguments(initializer),
+      line: _line(variable.name),
+    );
+  }
+
+  /// The C++ arguments that create a member object (`Counter(scale * 10)`), or the single value of a field.
+  List<IrExpression> _memberArguments(Expression value) {
+    if (objectCreation(value) case final creation?) return _objectArguments(creation);
+    if (value is InstanceCreationExpression) {
+      if (api.classOfType(value.staticType) case final cls?) {
+        final constructor = cls.constructor ?? (throw LoweringError('${cls.dartName} has no constructor'));
+        return _apiArguments(
+            ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), value.argumentList.arguments);
+      }
+    }
+    return [_expression(value)];
   }
 
   /// A user constructor's arguments in parameter order: positional ones, then each named parameter's argument or,
@@ -640,12 +674,15 @@ final class _Lowerer {
     }
   }
 
+  /// The C++ object a method or getter is called on: `left`, `pair.large`, `this` (printed `this->m()`).
+  String _receiver(Expression target) =>
+      objectPathOf(target) ?? (throw LoweringError('method call on ${target.toSource()}'));
+
   /// The C++ lvalue of a field: `left.count`, or `this->count`.
   String _fieldTarget(Expression target) {
     if (thisFieldOf(target) case final field?) return 'this->${field.name}';
     if (staticFieldOf(target) case final field?) return '${field.enclosingElement.name}::${field.name}';
-    final access = fieldAccessOf(target)!;
-    return '${access.object.name}.${access.field.name}';
+    return fieldAccessOf(target)!.cpp;
   }
 
   /// `count.value()`; for a Computed its expression, `unodar_isOdd_compute()`, so a read is never out of date.
@@ -720,7 +757,7 @@ final class _Lowerer {
         return _signalRead(signalOfValue(expression)!);
       case PrefixedIdentifier() || PropertyAccess() when fieldAccessOf(expression) != null:
         final access = fieldAccessOf(expression)!;
-        return IrFieldRead(access.object.name!, access.field.name!, _typeOf(expression));
+        return IrFieldRead(access.object == 'this' ? null : access.object, access.field.name!, _typeOf(expression));
       case PropertyAccess() when thisFieldOf(expression) != null:
         return IrFieldRead(null, thisFieldOf(expression)!.name!, _typeOf(expression));
       // `Tally.limit` → `Tally::limit`.
@@ -729,10 +766,9 @@ final class _Lowerer {
         return IrVariable('${field.enclosingElement.name}::${field.name}', _typeOf(expression));
       // A getter call: `meter.big` → `meter.big()`, `this.big` → `this->big()`.
       case PrefixedIdentifier(:final prefix, :final identifier) when calleeOf(expression) != null:
-        return IrCall(identifier.name, const [], receiver: prefix.name, type: _typeOf(expression));
-      case PropertyAccess(:final target, :final propertyName) when calleeOf(expression) != null:
-        return IrCall(propertyName.name, const [],
-            receiver: target is ThisExpression ? 'this' : (target as SimpleIdentifier).name, type: _typeOf(expression));
+        return IrCall(identifier.name, const [], receiver: _receiver(prefix), type: _typeOf(expression));
+      case PropertyAccess(:final target?, :final propertyName) when calleeOf(expression) != null:
+        return IrCall(propertyName.name, const [], receiver: _receiver(target), type: _typeOf(expression));
       // `Every`'s interval, validated (E022): its length in milliseconds.
       case InstanceCreationExpression() when isWidgetInterval(expression):
         return switch (intervalOf(expression, const ConstantEvaluator())) {
@@ -819,12 +855,7 @@ final class _Lowerer {
       return IrCall(
         call.methodName.name,
         [for (final a in call.argumentList.arguments) _expression(a.argumentExpression)],
-        receiver: switch (target) {
-          null => null,
-          ThisExpression() => 'this',
-          SimpleIdentifier(:final name) => name,
-          _ => throw LoweringError('method call on ${target.toSource()}'),
-        },
+        receiver: target == null ? null : _receiver(target),
         type: _typeOf(call),
       );
     }

@@ -388,6 +388,22 @@ abstract final class Diagnostics {
             'printed.',
       );
 
+  static Diagnostic objectFieldNotFinal(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the field '$name' holds an object, so it must be declared `final`.",
+        suggestion: 'Write `final $cls $name = $cls(…);`. A member object is created once, with the object that holds '
+            'it.',
+      );
+
+  static Diagnostic objectFieldInitializer(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the field '$name' must hold an object created in place, by calling the $cls constructor.",
+        suggestion: 'Create it in the field\'s initializer, `final $cls $name = $cls(…);`, or in the initializer list; '
+            'an object cannot be passed in or shared.',
+      );
+
   static Diagnostic thisUse(SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,

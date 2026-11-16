@@ -1,0 +1,8 @@
+input.dart:8:11: error[E018]: the field 'loose' holds an object, so it must be declared `final`.
+  = help: Write `final Counter loose = Counter(…);`. A member object is created once, with the object that holds it.
+input.dart:9:17: error[E018]: the field 'given' must hold an object created in place, by calling the Counter constructor.
+  = help: Create it in the field's initializer, `final Counter given = Counter(…);`, or in the initializer list; an object cannot be passed in or shared.
+input.dart:10:26: error[E018]: the field 'shared' must hold an object created in place, by calling the Counter constructor.
+  = help: Create it in the field's initializer, `final Counter shared = Counter(…);`, or in the initializer list; an object cannot be passed in or shared.
+input.dart:15:20: error[E018]: the object 'loose' can only be used through its fields and methods.
+  = help: Use a field or a method, e.g. `loose.count`; an object cannot be stored, compared, passed, or printed.

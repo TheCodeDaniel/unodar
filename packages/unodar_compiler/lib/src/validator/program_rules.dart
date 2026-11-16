@@ -114,8 +114,20 @@ final class ClassInitializerRule implements ValidationRule {
           expressionIssue(e) != null ||
           isSignalType(e.staticType) ||
           widgetClassOf(e.staticType) != null ||
-          userClassOf(e.staticType) != null);
+          (e is! InstanceCreationExpression && isObjectType(e.staticType)));
       void check(Expression root, String what, {bool parameters = false}) {
+        // A member object created in place: each constructor argument follows the same rule.
+        if (root is InstanceCreationExpression && isObjectType(root.staticType)) {
+          final member = switch (root.parent) {
+            VariableDeclaration(:final name) => name.lexeme,
+            ConstructorFieldInitializer(:final fieldName) => fieldName.name,
+            _ => '?',
+          };
+          for (final argument in root.argumentList.arguments) {
+            check(argument.argumentExpression, "an argument of the member object '$member'", parameters: parameters);
+          }
+          return;
+        }
         if (skip(root)) return;
         final later = subexpressions(root).whereType<SimpleIdentifier>().where((identifier) {
           final reference = referenceOf(identifier);
@@ -145,6 +157,17 @@ final class ClassInitializerRule implements ValidationRule {
       for (final member in declaration.body.members) {
         switch (member) {
           case FieldDeclaration(:final fields):
+            // A member object's class must be declared above (C++ needs its complete type).
+            final memberClass = userClassOf(fields.variables.first.declaredFragment?.element.type);
+            final memberOffset = memberClass?.firstFragment.nameOffset;
+            // (A class holding itself is E027.)
+            if (memberOffset != null &&
+                memberOffset > declaration.offset &&
+                memberClass != declaration.declaredFragment?.element) {
+              context.report(Diagnostics.classForwardReference(
+                  cls, memberClass!.name!, context.at(fields.type ?? fields.variables.first.name)));
+              continue;
+            }
             for (final variable in fields.variables) {
               if (variable.initializer case final initializer?) {
                 check(initializer,

@@ -1,5 +1,6 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/syntactic_entity.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_resolution.dart';
@@ -84,7 +85,7 @@ final class ClassRule implements ValidationRule {
                 'Remove `late` and initialize the field in its declaration or in the constructor.', start);
           } else {
             for (final variable in fields.variables) {
-              _fieldType(variable, fields.type, context);
+              _fieldType(declaration, variable, fields.type, context);
             }
           }
         case ConstructorDeclaration():
@@ -152,20 +153,46 @@ final class ClassRule implements ValidationRule {
   }
 
   /// A field of a signal, widget, binding or object type, or of an unsupported type.
-  void _fieldType(VariableDeclaration variable, TypeAnnotation? annotation, ValidationContext context) {
+  void _fieldType(ClassDeclaration declaration, VariableDeclaration variable, TypeAnnotation? annotation,
+      ValidationContext context) {
     final type = variable.declaredFragment?.element.type;
     if (type == null) return;
     final at = context.at(annotation ?? variable.name);
     if (_positionType('a field', type, at, context)) return;
-    if (userClassOf(type) != null || bindingClassOf(type) != null) {
-      // Interim (Phase 6 step 3): composition lands in step 6.
-      context.report(Diagnostics.classFeature(
-          "a field of the class type '${displayType(type)}' "
-              "('${variable.name.lexeme}')",
-          'Declare the object at the top level instead.',
-          at));
+    final cls = userClassOf(type) ?? bindingClassOf(type);
+    if (cls == null) return;
+    // A member object (composition): a `final` field holding an object created in place.
+    final name = variable.name.lexeme;
+    final display = displayType(type);
+    if (cls == declaration.declaredFragment?.element) {
+      context.report(Diagnostics.classFeature("a class that contains itself ('$display' holds a '$display')",
+          'Hold the other object at the top level, or give the class its fields directly.', at));
+      return;
+    }
+    if (variable.declaredFragment?.element case FieldElement(isStatic: true)) {
+      context.report(Diagnostics.classFeature("a static field holding an object ('$name')",
+          'Declare the object at the top level instead: `final $name = $display(…);`.', at));
+      return;
+    }
+    if (!variable.isFinal) {
+      context.report(Diagnostics.objectFieldNotFinal(name, display, context.at(variable.name)));
+    }
+    final initializer = variable.initializer ?? _listed(declaration, name);
+    final created = initializer is InstanceCreationExpression &&
+        initializer.constructorName.name == null &&
+        (userClassOf(initializer.staticType) ?? bindingClassOf(initializer.staticType)) == cls;
+    if (!created) {
+      context.report(Diagnostics.objectFieldInitializer(name, display, context.at(initializer ?? variable.name)));
     }
   }
+
+  /// The initializer-list value of field [name] in [declaration]'s constructor, or null.
+  static Expression? _listed(ClassDeclaration declaration, String name) => constructorOf(declaration)
+      ?.initializers
+      .whereType<ConstructorFieldInitializer>()
+      .where((i) => i.fieldName.name == name)
+      .firstOrNull
+      ?.expression;
 
   /// Reports [type] in [position] if it is a signal or widget type (true), else false.
   bool _positionType(String position, DartType type, SourceLocation at, ValidationContext context) {

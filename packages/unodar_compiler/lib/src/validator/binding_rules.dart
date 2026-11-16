@@ -387,21 +387,30 @@ final class BoundObjectRule implements ValidationRule {
         switch (expression) {
           case InstanceCreationExpression(:final staticType)
               when bindingClassOf(staticType) != null && !constructorInitializers.contains(expression):
-            if (!_isRejectedInitializer(expression)) {
+            if (!_isRejectedInitializer(expression) && !_isMemberCreation(expression)) {
               context
                   .report(Diagnostics.bindingConstructorPosition(staticType!.element!.name!, context.at(expression)));
             }
             return false;
           case InstanceCreationExpression(:final staticType)
               when userClassOf(staticType) != null && !constructorInitializers.contains(expression):
-            // A field's object is composition (ClassRule); a rejected top-level initializer is reported already.
-            if (!_isRejectedInitializer(expression) && enclosingUserClass(expression) == null) {
+            // A member object is composition (ClassRule); a rejected top-level initializer is reported already.
+            if (!_isRejectedInitializer(expression) && !_isMemberCreation(expression)) {
               context.report(Diagnostics.objectCreationPosition(staticType!.element!.name!, context.at(expression)));
             }
             return false;
           case SimpleIdentifier() when userClassOf(expression.staticType) != null:
-            if (referenceOf(expression) case GlobalReference()) {
+            // A global object, or a member object named inside a method. A field initializer that is not a creation
+            // is reported at the field (ClassRule).
+            if (referenceOf(expression) case GlobalReference() || FieldReference()
+                when !isFieldInitializer(expression)) {
               context.report(Diagnostics.objectUse(expression.name, context.at(expression)));
+            }
+            return false;
+          case SimpleIdentifier()
+              when bindingClassOf(expression.staticType) != null && referenceOf(expression) is FieldReference:
+            if (!isFieldInitializer(expression)) {
+              context.report(Diagnostics.boundObjectUse(expression.name, context.at(expression)));
             }
             return false;
           case SimpleIdentifier() when bindingClassOf(expression.staticType) != null:
@@ -428,6 +437,11 @@ final class BoundObjectRule implements ValidationRule {
   }
 
   static TypeAnnotation? _typeAnnotationOf(FormalParameter parameter) => parameter.type;
+
+  /// A member object created in place: a field initializer or an initializer-list value of a user class.
+  static bool _isMemberCreation(InstanceCreationExpression expression) =>
+      isFieldInitializer(expression) ||
+      (expression.parent is ConstructorFieldInitializer && enclosingUserClass(expression) != null);
 
   static Diagnostic _typePosition(String position, DartType type, String display, SourceLocation at) =>
       userClassOf(type) != null

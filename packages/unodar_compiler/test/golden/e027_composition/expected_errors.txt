@@ -1,0 +1,2 @@
+input.dart:4:9: error[E027]: a class that contains itself ('Chain' holds a 'Chain') is not supported in this version.
+  = help: Hold the other object at the top level, or give the class its fields directly.

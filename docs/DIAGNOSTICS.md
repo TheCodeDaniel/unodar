@@ -478,7 +478,7 @@ the same reason.
 (Golden tests: `test/golden/e015_non_constant_initializer`, `e015_forward_reference`, `e015_constructor_argument`,
 `e015_widget_forward_reference`, `e015_signal_initial_value`,
 `e015_watch_forward_reference`, `e015_led_sink_forward_reference`, `e015_class_initializers`,
-`e015_static_members`.)
+`e015_static_members`, `e015_composition`.)
 
 ## E016: Recursive function
 
@@ -585,7 +585,8 @@ input.dart:5:13: error[E018]: a parameter of the binding type 'Servo' is not sup
   = help: Use the top-level object directly instead of passing it around.
 ```
 
-(Golden tests: `test/golden/e018_bound_object_declarations`, `e018_bound_object_uses`, `e018_objects`, `e018_this`.)
+(Golden tests: `test/golden/e018_bound_object_declarations`, `e018_bound_object_uses`, `e018_objects`, `e018_this`,
+`e018_object_fields`.)
 
 ## E019: `cpp()` misuse
 
@@ -902,7 +903,7 @@ input.dart:10:19: error[E027]: a class cannot extend another class in this versi
   = help: Give 'FastBlinker' a field of type 'Blinker' instead (composition), or merge the two classes.
 ```
 
-(Golden tests: `test/golden/e027_class_header`, `e027_constructors`, `e027_members`.)
+(Golden tests: `test/golden/e027_class_header`, `e027_constructors`, `e027_members`, `e027_composition`.)
 
 ## E028: Enum rules
 

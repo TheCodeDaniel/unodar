@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
+import '../semantics/classes.dart';
 import 'api_registry.dart';
 
 /// Connects resolved AST nodes to [ApiRegistry] entries.
@@ -22,9 +23,24 @@ extension ApiResolution on ApiRegistry {
   /// object of a registered class.
   ResolvedMethod? resolveMethodCall(MethodInvocation call) {
     final target = call.target;
+    if (target != null && target is! SimpleIdentifier && call.methodName.element is MethodElement) {
+      // A binding member of one of the user's objects: `pair.arm.attach(9)`, `arm.write(90)` in a method.
+      final type = target.staticType;
+      final path = objectPathOf(target);
+      if (path == null || type is! InterfaceType || bindingClassOf(type) == null) return null;
+      final cls = classNamed(type.element.name!);
+      final method = cls?.method(call.methodName.name);
+      return cls == null || method == null ? null : ResolvedMethod(path, cls, method);
+    }
     if (target is! SimpleIdentifier || call.methodName.element is! MethodElement) return null;
     final element = target.element;
     final variable = element is GetterElement ? element.variable : element;
+    if (variable is FieldElement && bindingClassOf(variable.type) != null && objectPathOf(target) != null) {
+      // A binding member named inside a method: `arm.write(90)`.
+      final cls = classNamed((variable.type as InterfaceType).element.name!);
+      final method = cls?.method(call.methodName.name);
+      return cls == null || method == null ? null : ResolvedMethod(target.name, cls, method);
+    }
     if (variable is! TopLevelVariableElement) return null;
     final type = variable.type;
     if (type is! InterfaceType) return null;
