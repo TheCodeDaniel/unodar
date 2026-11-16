@@ -926,7 +926,7 @@ final class _Lowerer {
       case IrType.int32 || IrType.uint8 || IrType.uint16 || IrType.int16:
         if (digits != null) throw LoweringError('digits with a non-double value ${list.toSource()}');
         return print([ir]);
-      case IrType.void_ || IrType.string:
+      default:
         throw LoweringError('unprintable value ${value.toSource()}');
     }
   }

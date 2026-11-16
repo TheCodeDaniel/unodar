@@ -81,6 +81,7 @@ final class UnoTarget implements Target {
         IrType.uint8 => 'uint8_t',
         IrType.uint16 => 'uint16_t',
         IrType.int16 => 'int16_t',
+        _ => throw ArgumentError.value(type, 'type', 'no C++ type on $name'),
       };
 }
 

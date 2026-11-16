@@ -154,7 +154,7 @@ List<String> _cppTypeProblems(String cppType, IrType dartType, String what, Targ
     IrType.int32 || IrType.uint8 || IrType.uint16 || IrType.int16 => scalar.kind == CppScalarKind.integer,
     IrType.float32 => scalar.kind == CppScalarKind.floatingPoint,
     IrType.bool_ => scalar.kind == CppScalarKind.boolean,
-    IrType.void_ || IrType.string => false,
+    _ => false, // void, a string literal
   };
   return fits ? const [] : ["a @CppType that does not fit the Dart type ('$cppType' on $what)"];
 }

@@ -14,22 +14,34 @@
 library;
 
 /// The value types of the subset (docs/SUBSET.md "Types"). The target maps them to C++ type names.
-enum IrType {
-  void_,
-  bool_,
+///
+/// A class rather than an `enum`, so that types the program declares itself (Phase 6: the user's enums) can join
+/// the fixed ones. Every type is a canonical instance compared by identity; the fixed ones are the constants below,
+/// listed in [values].
+final class IrType {
+  const IrType._(this.name);
+
+  /// The Dart-side name of the type, for messages and debugging (`int32`, `bool_`, …).
+  final String name;
+
+  static const void_ = IrType._('void_');
+  static const bool_ = IrType._('bool_');
 
   /// A string literal. Only an argument of `Serial.print`/`println` (C++ `F("…")`, a flash string); never the
   /// type of a variable.
-  string,
+  static const string = IrType._('string');
 
   /// Dart `int`.
-  int32,
+  static const int32 = IrType._('int32');
 
   /// Dart `double`.
-  float32,
-  uint8,
-  uint16,
-  int16;
+  static const float32 = IrType._('float32');
+  static const uint8 = IrType._('uint8');
+  static const uint16 = IrType._('uint16');
+  static const int16 = IrType._('int16');
+
+  /// The fixed types, in this order.
+  static const values = [void_, bool_, string, int32, float32, uint8, uint16, int16];
 
   /// Whether this is one of the integer types (`int` or a sized type).
   bool get isInteger => this == int32 || isSized;
@@ -38,6 +50,9 @@ enum IrType {
   bool get isSized => this == uint8 || this == uint16 || this == int16;
 
   bool get isNumeric => isInteger || this == float32;
+
+  @override
+  String toString() => 'IrType.$name';
 }
 
 /// How a variable may change. Dart `const` / `final` / neither.
