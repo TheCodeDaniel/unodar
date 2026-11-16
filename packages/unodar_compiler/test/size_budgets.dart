@@ -194,4 +194,7 @@ const sizeBudgets = <String, SizeBudget>{
   // no code. RAM (avr-nm): core 9 + Led 2 + Button 7 + link 31 + SoftwareSerial's 64 B receive buffer, head, tail and
   // active object 4 + its vtable 18 + 1 B of .data padding.
   'cpp_pin': SizeBudget(baselineFlash: 2524, baselineRam: 136, maxFlash: 3300, maxRam: 147),
+  // eeprom: the EEPROM wrapper (step 13). RAM (avr-nm): Serial 175 + core 9 + 4 B of .data strings and padding; the
+  // EEPROM object is an empty struct the linker drops (0 B), its methods are inline avr-libc calls.
+  'eeprom': SizeBudget(baselineFlash: 1938, baselineRam: 188, maxFlash: 2550, maxRam: 199),
 };

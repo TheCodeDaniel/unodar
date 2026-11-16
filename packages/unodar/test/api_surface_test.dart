@@ -1,4 +1,5 @@
 import 'package:test/test.dart';
+import 'package:unodar/eeprom.dart';
 import 'package:unodar/unodar.dart';
 
 /// The constants are real Dart values so user code type-checks under `dart analyze`. The compiler emits them by
@@ -38,6 +39,10 @@ void main() {
   });
 
   // Phase 6 (docs/SUBSET.md "Widgets"): OnStart runs its callback once, in setup().
+  test('EEPROM is the one object of EepromClass, and its methods type-check', () {
+    expect(_eeprom, isA<int Function()>());
+  });
+
   test('OnStart is a widget whose callback takes no parameters', () {
     expect(_isSubtype<OnStart, Widget>(), isTrue);
     expect(_onStart, isA<Widget Function()>());
@@ -164,3 +169,10 @@ void _staticTypes() {
 Widget _onStart() => OnStart(() {
       pinMode(12, OUTPUT);
     });
+
+// Phase 6: the EEPROM wrapper, imported on its own. Never called: it only has to type-check.
+int _eeprom() {
+  EEPROM.update(0, EEPROM.read(1));
+  EEPROM.write(2, 3);
+  return EEPROM.length();
+}

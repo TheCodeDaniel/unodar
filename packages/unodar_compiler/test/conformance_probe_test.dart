@@ -5,6 +5,9 @@
 @Tags(['arduino'])
 library;
 
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/api/api_registry.dart';
 import 'package:unodar_compiler/src/api/binding_reader.dart';
@@ -13,6 +16,7 @@ import 'package:unodar_compiler/src/emitter/target.dart';
 
 import 'arduino_toolchain.dart';
 import 'resolve_snippet.dart';
+import 'test_paths.dart';
 
 void main() {
   final gate = arduinoGate();
@@ -20,16 +24,22 @@ void main() {
   late ApiBindings bindings;
 
   setUpAll(() async {
-    final library = await resolve("import 'package:unodar/unodar.dart';\n\nvoid setup() {}\n\nvoid loop() {}\n");
+    // Every public library of package:unodar: unodar.dart and each library wrapper (eeprom.dart, …).
+    final imports = [
+      for (final file in Directory(fromPackage('..', 'unodar', 'lib')).listSync().whereType<File>())
+        if (file.path.endsWith('.dart')) "import 'package:unodar/${p.basename(file.path)}';",
+    ]..sort();
+    final library = await resolve('${imports.join('\n')}\n\nvoid setup() {}\n\nvoid loop() {}\n');
     bindings = const BindingReader(UnoTarget()).readImportedUnodar(library);
   });
 
-  test('the first-party bindings (Wire, Servo) are probed, and the probe compiles', () async {
+  test('the first-party bindings (Wire, Servo, EEPROM) are probed, and the probe compiles', () async {
     gate.check();
-    expect(bindings.classes.map((c) => c.dartName), containsAll(['TwoWire', 'Servo']));
+    expect(bindings.classes.map((c) => c.dartName), containsAll(['TwoWire', 'Servo', 'EepromClass']));
     final probe = conformanceProbe(bindings);
     expect(probe, contains('Wire.requestFrom('));
     expect(probe, contains('unodar_probe_value<Servo &>().attach('));
+    expect(probe, contains('EEPROM.update(unodar_probe_value<int>(), unodar_probe_value<uint8_t>())'));
     final build = await compileSketch('conformance', probe);
     printOnFailure(probe);
     printOnFailure(build.rawOutput);

@@ -146,15 +146,15 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
 
 (Golden tests: `test/golden/e004_argument_out_of_range`, `e004_more_ranges`, `e004_core_io_ranges`,
 `e004_serial_digits`, `e004_binding_ranges`, `e004_wire_ranges`, `e004_servo_ranges`, `e004_servo_pulse_min`,
-`e004_servo_pulse_max`, `e004_widget_pins`, `e004_serial_baud`.)
+`e004_servo_pulse_max`, `e004_widget_pins`, `e004_serial_baud`, `e004_eeprom_ranges`.)
 
 ## E005: Unsupported top-level declaration
 
 Top-level functions and variables are supported, and so are your own classes and enums (checked by E027 and
 E028), binding classes (annotated `@CppClass`, checked by E017) and `external` objects of a binding type.
 Extensions, extension types, typedefs, and top-level getters/setters are not, nor are `late` variables or `external` variables of any
-other type. Also used for directives: any import other than an unprefixed `package:unodar/unodar.dart`, and
-`export`/`part`.
+other type. Also used for directives: any import other than an unprefixed `package:unodar/unodar.dart` or one of unodar's
+library wrappers (`package:unodar/eeprom.dart`), including `package:unodar/src/…`, and `export`/`part`.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -177,7 +177,7 @@ input.dart:7:1: error[E005]: a late variable ('ledPin') is not supported in this
   = help: Remove `late` and give the variable a constant initializer.
 ```
 
-(Golden tests: `test/golden/e005_extension`, `e005_import`, `e005_other_declarations`.)
+(Golden tests: `test/golden/e005_extension`, `e005_import`, `e005_other_declarations`, `e005_unodar_src_import`.)
 
 ## E006: Invalid `setup`/`loop` signature
 

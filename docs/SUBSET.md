@@ -388,11 +388,13 @@ program using `Serial`, `Wire`, a `SoftwareSerial` object and a `Servo` object t
 before any `loop()` locals. This is static allocation (arduino-cli reports it as "Global variables use …"), so it is
 fixed and visible at build time; leave room for the stack. The size budgets record RAM for every binding golden.
 
-### First-party libraries (Phase 6, not available yet)
+### First-party libraries
 
-Phase 6 adds wrappers for EEPROM, SPI and SoftwareSerial (part of the AVR core), LiquidCrystal 1.0.7 and, if time
-allows, the DHT sensor library 1.4.7, each imported on its own (`import 'package:unodar/eeprom.dart';`). Until each
-wrapper lands, its import is E005. Each wrapper's section will state its RAM and flash cost, the longest time each
+Each library wrapper is imported on its own, next to `package:unodar/unodar.dart`:
+`import 'package:unodar/eeprom.dart';`. Its names (classes, objects) are reserved (E014) only in a program that
+imports it. Any other import, including `package:unodar/src/…`, is E005. Available: **EEPROM** (below). Coming in
+Phase 6: SPI and SoftwareSerial (part of the AVR core), LiquidCrystal 1.0.7 and, if time allows, the DHT sensor
+library 1.4.7. Each wrapper's section will state its RAM and flash cost, the longest time each
 method waits, and a **Verified:** line saying what is checked in the avr8js simulator and what only on a real board.
 
 - **LiquidCrystal** means Arduino's official library for HD44780 character LCDs wired **in parallel** (RS, E and
@@ -402,6 +404,37 @@ method waits, and a **Verified:** line saying what is checked in the avr8js simu
   `updateLength()`) and Adafruit SSD1306 (allocates its 1 KB frame buffer with `malloc` in `begin()`). Displays come
   in Phase 8 and must use a heap-free driver (for example one with a page buffer or text-only output); addressable
   LEDs need fixed-size arrays first.
+
+### EEPROM, part of the AVR core
+
+```dart
+import 'package:unodar/eeprom.dart';
+import 'package:unodar/unodar.dart';
+
+final saved = EEPROM.read(0);     // 255 in an erased cell
+EEPROM.update(0, setpoint);       // writes only if the byte differs
+```
+
+| Dart (`EEPROM`, an `EepromClass`) | C++ (`EEPROM.h`) | Wait (avr8js) |
+|---|---|---|
+| `read(address)` → `int` | `uint8_t EEPROM.read(int)` | Up to 3.6 ms, only while an earlier write is still finishing |
+| `write(address, value)` | `void EEPROM.write(int, uint8_t)` | Starts a 3.6 ms erase-and-write and returns; waits first for an earlier write (two writes in a row: 7.2 ms) |
+| `update(address, value)` | `void EEPROM.update(int, uint8_t)` | As `read`, plus a write only if the byte differs |
+| `length()` → `int` | `uint16_t EEPROM.length()`: 1024 on the Uno | none |
+
+- Addresses are 0 to 1023; a constant outside is E004 (`@CppRange(0, 1023)`). A non-constant address outside wraps
+  around (the hardware uses its low 10 bits: 1024 is 0, -1 is 1023), and a value is stored as a byte (300 becomes
+  44), as for every binding parameter (see deviations). Constant values outside 0 to 255 are E004.
+- `EEPROM` is the library's one object: it cannot be created, held in a field, or passed (E018). `get`/`put`
+  (templates) and `EEPROM[i]` are not wrapped.
+- Each cell lasts about 100,000 writes: use `update`, and do not write on every `loop()` pass or on every tick.
+- Cost: 0 B of RAM (the object is an empty struct); a few tens of bytes of flash per kind of call (inline avr-libc
+  `eeprom_read_byte`/`eeprom_write_byte`).
+- **Verified:** in avr8js (its EEPROM model, kept in a file across two runs as a reset): the bytes written are read
+  back after the reset, `update` of an equal byte writes nothing (counted), and a write takes 3.6 ms of simulated
+  time (avr8js's 1.8 ms erase plus 1.8 ms write). The binding conforms to `EEPROM.h` (conformance probe). **Only on a
+  real board:** the real write time (3.3 ms per the datasheet), endurance, and corruption when power fails during a
+  write.
 
 ## Escape hatch: `cpp()` and `@CppInclude`
 

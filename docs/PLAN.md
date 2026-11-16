@@ -492,7 +492,7 @@ Every construct step adds its goldens first, and in the same commit:
 | 10 | (**done**) `@CppPin` (E017, E004, E022) on the existing bindings where it applies | Goldens `e022_binding_pin_conflict`, `e017_cpp_pin` |
 | 11 | (**done**) Binding conformance probe for Wire and Servo | Probe test; control: a deliberately wrong `@CppType` must fail it |
 | 12 | (**done**) Runner: cycle-stamped pin log, `--spi` scripted slave, `--eeprom FILE` backend with a write count | Runner tests on hand-written sketches, each with a negative control |
-| 13 | EEPROM wrapper (`read`, `write`, `update`, `length`; address `@CppRange(0, 1023)`) | Golden `eeprom`; avr8js: persistence across two runs, `update()` write count; control: `update` bound to `write` |
+| 13 | (**done**) EEPROM wrapper (`read`, `write`, `update`, `length`; address `@CppRange(0, 1023)`) | Golden `eeprom`; avr8js: persistence across two runs, `update()` write count; control: `update` bound to `write` |
 | 14 | SPI wrapper + `unodar_spi.h` shim (`begin`, `transfer`, `beginTransaction`/`endTransaction`; `MSBFIRST`, `SPI_MODE0`–`3`) | Golden `spi`; shim tested on its own; avr8js: scripted slave transcript, SPCR bits; control: wrong mode bits |
 | 15 | `@CppPrint` dispatch for `Print`-derived bindings, tested on a user `SoftwareSerial` binding (the SUBSET example) | Golden `cpp_print`; avr8js: bools print `true`/`false`; control: Arduino's plain `print(bool)` |
 | 16 | SoftwareSerial wrapper (`begin`, `print`/`println`, `available`, `read`, `write`) | Golden `software_serial`; avr8js: TX decoded from the pin log, RX by scheduled edges; control: wrong baud |

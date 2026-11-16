@@ -13,19 +13,24 @@ import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
 import 'rules.dart';
 
-/// Only `import 'package:unodar/unodar.dart';` (unprefixed) is allowed. `library;` is harmless and allowed.
-/// Unresolvable imports never reach this rule: they are analyzer errors (E007).
+/// Only unprefixed imports of `package:unodar/unodar.dart` and of unodar's library wrappers
+/// (`package:unodar/eeprom.dart`, docs/SUBSET.md "First-party libraries") are allowed; `package:unodar/src/…` is
+/// not, nor anything else. `library;` is harmless and allowed. Unresolvable imports never reach this rule: they are
+/// analyzer errors (E007).
 final class DirectiveRule implements ValidationRule {
   const DirectiveRule();
 
   static const allowedImport = 'package:unodar/unodar.dart';
+
+  /// `package:unodar/<name>.dart`: unodar itself or one of its library wrappers.
+  static bool isAllowedImport(String? uri) => uri != null && RegExp(r'^package:unodar/[a-z_]+\.dart$').hasMatch(uri);
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final directive in unit.directives) {
       final problem = switch (directive) {
         LibraryDirective() => null,
-        ImportDirective(:final uri) when uri.stringValue != allowedImport => "an import of '${uri.stringValue}'",
+        ImportDirective(:final uri) when !isAllowedImport(uri.stringValue) => "an import of '${uri.stringValue}'",
         ImportDirective(prefix: _?) => 'a prefixed import (`as …`)',
         ImportDirective(deferredKeyword: _?) => 'a deferred import',
         ImportDirective() => null,

@@ -987,6 +987,50 @@ void main() {
       });
     });
 
+    group('EEPROM keeps its bytes across a reset (golden eeprom, compiled by unodar)', () {
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'eeprom', 'input.dart'));
+        if (result is! CompileSuccess) fail('eeprom did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      /// Runs the program twice on one EEPROM file (a reset between): the serial output and byte writes of each run.
+      Future<List<(String, int)>> twice(String cpp) async {
+        final build = await compileSketch('eeprom', cpp);
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        final dir = Directory.systemTemp.createTempSync('unodar_eeprom_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final file = p.join(dir.path, 'eeprom.bin');
+        final writes = p.join(dir.path, 'writes.txt');
+        return [
+          for (var run = 0; run < 2; run++)
+            (
+              (await simulate(build.hexPath, extra: ['--eeprom', file, '--eeprom-writes', writes])).serial,
+              int.parse(File(writes).readAsStringSync().trim()),
+            ),
+        ];
+      }
+
+      test('the second run reads the first run\'s count; update writes only a changed byte', () async {
+        gate.check();
+        // Run 1: erased (255, so 0), writes byte 0 and the first update of byte 1: 2 writes. Run 2: reads 1, writes
+        // byte 0; byte 1 already holds 66, so both updates write nothing: 1 write.
+        expect(await twice(await generated()), [
+          ('boot 0\r\nsize 1024\r\nDONE', 2),
+          ('boot 1\r\nsize 1024\r\nDONE', 1),
+        ]);
+      });
+
+      test('negative control: update bound to write writes the unchanged byte on every call', () async {
+        gate.check();
+        final cpp = await generated();
+        expect(cpp, contains('EEPROM.update('), reason: 'the generated code changed; update the negative control');
+        final runs = await twice(cpp.replaceAll('EEPROM.update(', 'EEPROM.write('));
+        expect(runs.map((r) => r.$2), [3, 3]);
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.
