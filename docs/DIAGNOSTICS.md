@@ -705,7 +705,7 @@ input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
 ```
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
-`e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`, `e022_bound_led`.)
+`e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`, `e022_bound_led`, `e022_on_start`.)
 
 ## E023: `delay()` in a widget callback
 
@@ -743,7 +743,8 @@ input.dart:7:3: error[E023]: 'delay()' runs inside a widget callback (Button's o
   = help: Time things with an Every widget instead, keeping state in a top-level variable between ticks.
 ```
 
-(Golden tests: `test/golden/e023_delay_direct`, `e023_delay_indirect`, `e023_delay_watch`, `e023_delay_in_method`.)
+(Golden tests: `test/golden/e023_delay_direct`, `e023_delay_indirect`, `e023_delay_watch`, `e023_delay_in_method`,
+`e023_on_start`: a function with `delay()` is still rejected when a Button reaches it, even if OnStart calls it too.)
 
 ## E024: Signal misuse
 

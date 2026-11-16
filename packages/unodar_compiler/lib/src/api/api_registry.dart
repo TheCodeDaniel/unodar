@@ -166,6 +166,7 @@ final class ApiWidget {
     this.signals = const [],
     this.sink,
     this.hasObject = true,
+    this.runsAtSetup = false,
   });
 
   /// The [ApiClass.dartName] of its class.
@@ -192,6 +193,10 @@ final class ApiWidget {
   /// Whether the widget is a C++ object (declared, started in `setup()`). A `Watch` is not: it is only its callback,
   /// called from the generated `unodar_deliver()`.
   final bool hasObject;
+
+  /// Whether its callback runs once in the generated `setup()`, at its place in `children` (`OnStart`), instead of
+  /// when polled or delivered. Such a callback may call `delay()` (E023 does not apply).
+  final bool runsAtSetup;
 }
 
 /// An existing C++ object of an [ApiClass]: `Serial`, or an `external final` object of a binding class (`Wire`).
@@ -316,11 +321,13 @@ final class ApiRegistry {
           ApiWidget('Every', poll: 'due', callback: 'callback'),
           // No C++ class: a Watch is its callback, run by the generated unodar_deliver() (docs/SUBSET.md "Signals").
           ApiWidget('Watch', callback: 'callback', signals: ['signal'], hasObject: false),
+          // No C++ class: its callback runs once in setup(), in children order (docs/SUBSET.md "Widgets").
+          ApiWidget('OnStart', callback: 'callback', hasObject: false, runsAtSetup: true),
         ],
         // Not callable or constructible as API rows, but taken by the widget API and its C++ namespace (E014).
         otherNames: const {
           'runDevice', 'Device', 'Uno', 'Board', 'Widget', 'unodar', //
-          'Watch', 'Signal', 'ReadonlySignal',
+          'Watch', 'Signal', 'ReadonlySignal', 'OnStart',
         },
       );
 

@@ -36,6 +36,12 @@ void main() {
     expect(_isSubtype<Device, Widget>(), isFalse, reason: 'a Device is the root, never a child');
   });
 
+  // Phase 6 (docs/SUBSET.md "Widgets"): OnStart runs its callback once, in setup().
+  test('OnStart is a widget whose callback takes no parameters', () {
+    expect(_isSubtype<OnStart, Widget>(), isTrue);
+    expect(_onStart, isA<Widget Function()>());
+  });
+
   test('the Phase 4 goal program and widget handles type-check', () {
     expect(_goalProgram, isA<void Function()>());
     expect(_handles, isA<void Function()>());
@@ -152,3 +158,8 @@ void _staticTypes() {
   ];
   checked.clear();
 }
+
+// Never called: it only has to type-check (an OnStart callback takes no parameters).
+Widget _onStart() => OnStart(() {
+      pinMode(12, OUTPUT);
+    });

@@ -168,6 +168,14 @@ final class _Lowerer {
         for (final child in children)
           if (widget(child).hasObject)
             IrExpressionStatement(IrCall(widget(child).setup, const [], receiver: child.name),
+                line: _line(child.element))
+          // `OnStart`: its callback, at its place in children (docs/SUBSET.md "Widgets").
+          else if (widget(child).runsAtSetup)
+            IrExpressionStatement(
+                IrCall(
+                    callbackFunctionName(child.name,
+                        callbackOf(child.creation) ?? (throw LoweringError('no callback for ${child.name}'))),
+                    const []),
                 line: _line(child.element)),
         // Delivers every signal's initial value (docs/SUBSET.md "When changes are delivered").
         if (deliver != null) IrExpressionStatement(IrCall(deliver.name, const []), line: line),

@@ -642,6 +642,13 @@ abstract final class Diagnostics {
       );
 
   /// A Watch is not set up or polled: it only runs when its signal changes, from the generated delivery.
+  static Diagnostic onStartNotInChildren(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the OnStart '$name' is not listed in Device.children, so its callback would never run.",
+        suggestion: 'Add `$name` to `children: [...]` in main(), where it should run in setup().',
+      );
+
   static Diagnostic watchNotInChildren(String name, String signal, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,

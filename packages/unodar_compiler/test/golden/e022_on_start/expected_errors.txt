@@ -1,0 +1,2 @@
+input.dart:5:7: error[E022]: the OnStart 'boot' is not listed in Device.children, so its callback would never run.
+  = help: Add `boot` to `children: [...]` in main(), where it should run in setup().

@@ -187,4 +187,7 @@ const sizeBudgets = <String, SizeBudget>{
   // Serial 175 + core 9 + Every 8 + mode 2 (Signal<Mode>: a 1-byte enum and the mark) + thermostat 5 (int changes 4
   // + Mode previous 1) + readings 4 + "\r\n\0" 3.
   'enum_basics': SizeBudget(baselineFlash: 2340, baselineRam: 206, maxFlash: 3050, maxRam: 217),
+  // on_start: two OnStart callbacks around a Led, a Watch of a signal written in OnStart (step 8). RAM (avr-nm):
+  // Serial 175 + core 9 + level 5 + Led 2 + "\r\n\0" 3; an OnStart is only a function, 0 B.
+  'on_start': SizeBudget(baselineFlash: 2370, baselineRam: 194, maxFlash: 3100, maxRam: 205),
 };

@@ -249,9 +249,12 @@ final class WidgetChildrenRule implements ValidationRule {
       final signal = widgetClassOf(creation.staticType)?.name == 'Watch'
           ? creation.argumentList.arguments.where(isSignalArgument).firstOrNull?.argumentExpression
           : null;
+      final runsAtSetup = context.api.widgetOfType(creation.staticType)?.runsAtSetup ?? false;
       context.report(signal is SimpleIdentifier
           ? Diagnostics.watchNotInChildren(name, signal.name, context.at(variable.name))
-          : Diagnostics.widgetNotInChildren(name, context.at(variable.name)));
+          : runsAtSetup
+              ? Diagnostics.onStartNotInChildren(name, context.at(variable.name))
+              : Diagnostics.widgetNotInChildren(name, context.at(variable.name)));
     }
   }
 }
@@ -353,6 +356,8 @@ final class DelayInCallbackRule implements ValidationRule {
     final functions = {for (final f in compiledCallables(unit)) f.element: f};
     final reported = <MethodInvocation>{};
     for (final callback in widgetCallbacks(unit)) {
+      // OnStart runs once in setup(), before anything is polled: `delay()` stops nothing there.
+      if (context.api.widgetOfType(widgetOfCallback(callback)!.staticType)?.runsAtSetup ?? false) continue;
       final widget = widgetClassOf(widgetOfCallback(callback)!.staticType)!.name;
       final start = "$widget's ${callbackParameterName(callback)}";
       // Breadth first, so each function is reached by its shortest path.

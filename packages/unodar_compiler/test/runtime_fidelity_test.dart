@@ -847,6 +847,65 @@ void main() {
       });
     });
 
+    group('OnStart runs once in setup(), in children order, before the initial delivery (golden on_start)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'on_start', 'input.dart'));
+        if (result is! CompileSuccess) fail('on_start did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<({String serial, List<String> pinLog})> run(String cpp) async {
+        final build = await compileSketch('on_start', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return simulate(build.hexPath, until: null, cycles: 100 * 16000);
+      }
+
+      double at(List<String> log, String change) =>
+          double.parse(log.firstWhere((l) => l.endsWith(' $change'), orElse: () => 'NaN x').split(' ').first);
+
+      test('the first OnStart pulses D12 (delay allowed) before the Led starts; the signal it writes is delivered once',
+          () async {
+        gate.check();
+        final result = await run(await generated());
+        // The Watch prints the value written in OnStart, once: the initial delivery comes after every OnStart.
+        expect(result.serial, 'start\r\n7\r\n');
+        final log = result.pinLog;
+        expect(
+            at(
+                  log,
+                  'D12 low',
+                ) <
+                at(log, 'D13 low'),
+            isTrue,
+            reason: log.join('\n'));
+        // delay(5) inside OnStart: D12 stays high for 5 ms.
+        final high = at(log, 'D12 high');
+        final low = log.where((l) => l.endsWith(' D12 low')).map((l) => double.parse(l.split(' ').first));
+        expect(low.firstWhere((t) => t > high) - high, closeTo(5.0, 0.1));
+        // led.begin() (D13 low), then the second OnStart switches it on.
+        expect(at(log, 'D13 low') < at(log, 'D13 high'), isTrue);
+        expect(at(log, 'D13 high') > low.firstWhere((t) => t > high), isTrue);
+      });
+
+      test('negative control: OnStart run after the initial delivery prints the old value first', () async {
+        gate.check();
+        final cpp = await generated();
+        const call = '  unodar_onstart_0_callback();\n';
+        const deliver = '  unodar_deliver();\n}\n\n';
+        final setup = cpp.indexOf('void setup() {');
+        expect(setup, greaterThan(0));
+        expect(cpp.indexOf(call, setup), greaterThan(setup), reason: 'the generated code changed; update the control');
+        // In setup(): drop the call, and put it back right after unodar_deliver().
+        final tail =
+            cpp.substring(setup).replaceFirst(call, '').replaceFirst(deliver, '  unodar_deliver();\n$call}\n\n');
+        final moved = cpp.substring(0, setup) + tail;
+        expect((await run(moved)).serial, '0\r\nstart\r\n7\r\n');
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.
