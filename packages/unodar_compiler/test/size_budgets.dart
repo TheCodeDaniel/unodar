@@ -190,4 +190,8 @@ const sizeBudgets = <String, SizeBudget>{
   // on_start: two OnStart callbacks around a Led, a Watch of a signal written in OnStart (step 8). RAM (avr-nm):
   // Serial 175 + core 9 + level 5 + Led 2 + "\r\n\0" 3; an OnStart is only a function, 0 B.
   'on_start': SizeBudget(baselineFlash: 2370, baselineRam: 194, maxFlash: 3100, maxRam: 205),
+  // cpp_pin: a user SoftwareSerial binding with @CppPin pins next to a Led and a Button (step 10); @CppPin changes
+  // no code. RAM (avr-nm): core 9 + Led 2 + Button 7 + link 31 + SoftwareSerial's 64 B receive buffer, head, tail and
+  // active object 4 + its vtable 18 + 1 B of .data padding.
+  'cpp_pin': SizeBudget(baselineFlash: 2524, baselineRam: 136, maxFlash: 3300, maxRam: 147),
 };

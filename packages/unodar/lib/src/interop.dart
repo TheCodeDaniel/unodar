@@ -48,6 +48,13 @@ final class CppRange {
   final int max;
 }
 
+/// Marks an integer parameter of a binding constructor as an Arduino pin, e.g.
+/// `external LiquidCrystal(@CppPin() @CppType('uint8_t') int rs, …);`. A constant pin is checked like a widget's: 0 to
+/// 19 (E004), and used by no widget and no other bound object (E022).
+final class CppPin {
+  const CppPin();
+}
+
 /// An extra header for raw C++, e.g. `@CppInclude('avr/wdt.h') library;`. Allowed only on the `library;` directive.
 final class CppInclude {
   const CppInclude(this.header);

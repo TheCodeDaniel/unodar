@@ -117,8 +117,8 @@ An argument the unodar API function cannot accept:
   values are converted at runtime instead (see "Known deviations from Dart" in `docs/SUBSET.md`);
 - `digits:` given to `Serial.print`/`println` with a value that is not a `double` (for an `int`, Arduino's second
   argument would mean the number base);
-- a widget pin outside 0 to 19, the Uno's pins (D0–D13, and A0–A5 as 14–19), reported as "pin 20 is out of range
-  for Led: …";
+- a widget pin, or a `@CppPin` constructor argument of a binding, outside 0 to 19, the Uno's pins (D0–D13, and
+  A0–A5 as 14–19), reported as "pin 20 is out of range for Led: …";
 - a named argument the function does not declare. The analyzer already reports such a call as E007; E004 is the
   compiler's own guard behind it.
 
@@ -525,7 +525,8 @@ or an unsupported parameter or return type. Also an interop annotation in the wr
 not apply to, an argument that is not a string literal, a C++ name that is not a valid identifier, a header that
 is not a plain file path, a `@CppType` that is not one of the accepted types or does not fit the Dart type, or a
 `@CppRange` that is not on an integer binding parameter, whose bounds are not integer literals, are reversed, or lie
-outside the parameter's C++ type. All
+outside the parameter's C++ type; a `@CppPin` anywhere but an integer parameter of a binding constructor, or together
+with `@CppRange`. Interop annotations inside one of your own classes do not apply and are reported as misplaced. All
 problems with one member are listed in one diagnostic.
 
 ```dart
@@ -551,7 +552,7 @@ input.dart:7:19: error[E017]: unsupported binding method 'readTemperature': it h
 ```
 
 (Golden tests: `test/golden/e017_binding_members`, `e017_binding_signatures`, `e017_annotations`,
-`e017_cpp_range`.)
+`e017_cpp_range`, `e017_cpp_pin`.)
 
 ## E018: Object misuse
 
@@ -674,7 +675,8 @@ input.dart:7:6: error[E021]: a widget program cannot also declare 'loop()': main
 A widget (`Led`, `Button`, `Every`) is a top-level `final` or is written directly inside `Device(children: […])`;
 anywhere else (a local variable, inside a callback, a non-`final` variable) it is rejected. Its arguments are
 compile-time constants: the pin like any constant, the interval a `Duration(…)` with constant arguments adding up
-to a whole number of milliseconds from 1 to 2147483647. Each pin belongs to one widget. Every top-level widget is
+to a whole number of milliseconds from 1 to 2147483647. Each pin belongs to one widget, or to one top-level bound
+object whose constructor marks it `@CppPin`. Every top-level widget is
 listed in `children` exactly once, or it would never be set up and polled (a `Watch`, which has nothing to set up
 or poll, would never run when its signal changes, and its message says so). A top-level widget's callback may only
 use widgets declared above it. A widget handle can only be listed in `children` or used to call its methods
@@ -705,7 +707,8 @@ input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
 ```
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
-`e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`, `e022_bound_led`, `e022_on_start`.)
+`e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`, `e022_bound_led`, `e022_on_start`,
+`e022_binding_pins`.)
 
 ## E023: `delay()` in a widget callback
 

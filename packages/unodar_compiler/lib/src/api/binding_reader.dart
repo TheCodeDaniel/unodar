@@ -103,15 +103,21 @@ final class BindingReader {
     final cppType = _string(parameter, 'CppType') ?? target.cppType(type);
     final scalar = _scalar(cppType, parameter);
     final range = cppRangeOf(parameter);
+    // `@CppPin()`: a pin, checked like a widget's (0 to 19 within the C++ type; one owner per pin).
+    final isPin = hasInteropAnnotation(parameter, 'CppPin');
+    int? bound(int? value, int pinBound, bool lower) => !isPin || value == null
+        ? value
+        : (lower ? (value > pinBound ? value : pinBound) : (value < pinBound ? value : pinBound));
     return ApiParameter(
       parameter.name!,
       type: type,
       cppType: cppType,
-      min: range?.$1 ?? scalar.min,
-      max: range?.$2 ?? scalar.max,
+      min: bound(range?.$1 ?? scalar.min, 0, true),
+      max: bound(range?.$2 ?? scalar.max, 19, false),
       isNamed: parameter.isNamed,
       defaultValue: parameter.isOptionalNamed ? _defaultValue(parameter) : null,
       hasCppRange: range != null,
+      isPin: isPin,
     );
   }
 

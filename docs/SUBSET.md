@@ -329,6 +329,11 @@ Rules (E017 for any violation):
   arguments outside it are E004, like those outside the C++ type. Both bounds are integer literals within the C++
   type's range, and `min <= max`. It does not change the C++ type or the conversion; non-constant values are not
   checked (see deviations).
+- `@CppPin()` on an integer parameter of the constructor marks it as an Arduino pin: a constant argument must be
+  0 to 19 (E004), and no widget or other top-level bound object may use the same pin (E022), e.g.
+  `external SoftSerial(@CppPin() @CppType('uint8_t') int rx, @CppPin() @CppType('uint8_t') int tx);`. It cannot be
+  combined with `@CppRange`. Pins of member objects (inside your own classes) are not compared, because one class
+  may have several objects.
 - C++ names must be valid C++ identifiers, and header names plain file paths (`Wire.h`, `utility/twi.h`).
 
 **Using a binding** (E018 otherwise): a bound object is a top-level `final` variable initialized by its

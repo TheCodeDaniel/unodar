@@ -133,7 +133,7 @@ String? interopAnnotationName(ElementAnnotation annotation) {
   final element = annotation.element;
   final cls = element is ConstructorElement ? element.enclosingElement : null;
   if (cls is! ClassElement || !isUnodarElement(cls)) return null;
-  return const {'CppClass', 'CppHeader', 'CppName', 'CppType', 'CppRange', 'CppInclude'}.contains(cls.name)
+  return const {'CppClass', 'CppHeader', 'CppName', 'CppType', 'CppRange', 'CppPin', 'CppInclude'}.contains(cls.name)
       ? cls.name
       : null;
 }

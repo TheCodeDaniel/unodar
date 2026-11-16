@@ -118,6 +118,13 @@ List<Diagnostic> bindingClassDiagnostics(ClassDeclaration declaration, ResolvedS
     }
     final cppType = _cppTypeOf(parameter);
     if (cppType != null) problems.addAll(_cppTypeProblems(cppType, type, "'${parameter.name}'", target));
+    if (hasInteropAnnotation(parameter, 'CppPin')) {
+      if (!type.isInteger) {
+        problems.add("a @CppPin on a parameter that is not an int ('${parameter.name}')");
+      } else if (cppRangeOf(parameter) != null) {
+        problems.add("both @CppPin and @CppRange on '${parameter.name}' (a pin's range is 0 to 19)");
+      }
+    }
     if (cppRangeOf(parameter) case (final min, final max)) {
       final rangeProblems = _cppRangeProblems(parameter, type, cppType ?? target.cppType(type), min, max, target);
       if (rangeProblems.isNotEmpty && optional.isEmpty) {
@@ -198,12 +205,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
 
   @override
   void visitClassDeclaration(ClassDeclaration node) {
-    // Annotations inside a class without @CppClass are not checked: the class is E005 as a whole.
-    final element = node.declaredFragment?.element;
-    if (element != null && !hasInteropAnnotation(element, 'CppClass')) {
-      node.metadata.forEach(visitAnnotation);
-      return;
-    }
+    // Inside one of the user's own classes no interop annotation applies: each is reported as misplaced.
     super.visitClassDeclaration(node);
   }
 
@@ -218,6 +220,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
       'CppName' => _isBindingMethod(target) || _isExternalObject(target),
       'CppType' => _isBindingMethod(target) || _isBindingParameter(target),
       'CppRange' => _isBindingParameter(target),
+      'CppPin' => _isBindingParameter(target) && target.parent?.parent is ConstructorDeclaration,
       'CppInclude' => target is LibraryDirective,
       _ => false,
     };
@@ -225,6 +228,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
       context.report(Diagnostics.misplacedAnnotation(name, _allowedFor[name]!, context.at(node)));
       return;
     }
+    if (name == 'CppPin') return; // No argument; the parameter's type is checked with its signature.
     if (name == 'CppRange') {
       final arguments = node.arguments?.arguments;
       final bounds = [
@@ -261,14 +265,19 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
   }
 
   static bool _isBindingMethod(AstNode? node) =>
-      node is MethodDeclaration && node.parent?.parent is ClassDeclaration && node.externalKeyword != null;
+      node is MethodDeclaration && _isBindingClass(node.parent?.parent) && node.externalKeyword != null;
 
   static bool _isBindingParameter(AstNode? node) {
     if (node is! FormalParameter) return false;
     final executable = node.parent?.parent;
     return (executable is MethodDeclaration || executable is ConstructorDeclaration) &&
-        executable?.parent?.parent is ClassDeclaration;
+        _isBindingClass(executable?.parent?.parent);
   }
+
+  static bool _isBindingClass(AstNode? node) =>
+      node is ClassDeclaration &&
+      node.declaredFragment != null &&
+      hasInteropAnnotation(node.declaredFragment!.element, 'CppClass');
 
   static bool _isExternalObject(AstNode? node) =>
       node is TopLevelVariableDeclaration &&
@@ -281,6 +290,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     'CppName': 'methods of a binding class and external objects',
     'CppType': 'parameters and methods of a binding class',
     'CppRange': 'integer parameters of a binding class',
+    'CppPin': 'integer parameters of a binding constructor',
     'CppInclude': 'the `library;` directive',
   };
 

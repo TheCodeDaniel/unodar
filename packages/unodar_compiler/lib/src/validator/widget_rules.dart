@@ -205,7 +205,10 @@ final class WidgetPinRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    final owners = <int, String>{};
+    // Every constant pin, in source order: widget pins, and the `@CppPin` constructor arguments of top-level bound
+    // objects (`final lcd = LiquidCrystal(12, 11, 5, 4, 3, 2);`). Member objects are not checked (one class may have
+    // several objects, so a constant pin in its body is not one owner).
+    final pins = <(int offset, AstNode node, int pin, String owner)>[];
     for (final (name, creation) in acceptedWidgets(unit)) {
       final pin = namedArgument(creation, 'pin');
       final value = pin == null ? null : context.constants.valueOf(pin);
@@ -214,12 +217,34 @@ final class WidgetPinRule implements ValidationRule {
       final owner = name.startsWith('unodar_')
           ? 'the ${widgetClassOf(creation.staticType)!.name} on line $line'
           : "'$name' (line $line)";
-      final previous = owners[value];
+      pins.add((pin!.offset, pin.parent is NamedArgument ? pin.parent! : pin, value, owner));
+    }
+    for (final variable in topLevelVariables(unit)) {
+      final creation = variable.initializer;
+      if (creation is! InstanceCreationExpression || bindingClassOf(creation.staticType) == null) continue;
+      final parameters = context.api.classOfType(creation.staticType)?.constructor;
+      if (parameters == null) continue;
+      final positional = parameters.where((p) => !p.isNamed).toList();
+      var index = 0;
+      for (final argument in creation.argumentList.arguments) {
+        final parameter = argument is NamedArgument
+            ? parameters.where((p) => p.isNamed && p.name == argument.name.lexeme).firstOrNull
+            : (index < positional.length ? positional[index++] : null);
+        if (parameter == null || !parameter.isPin) continue;
+        final value = context.constants.valueOf(argument.argumentExpression);
+        if (value is! int) continue;
+        pins.add(
+            (argument.offset, argument, value, "'${variable.name.lexeme}' (line ${context.at(variable.name).line})"));
+      }
+    }
+    pins.sort((a, b) => a.$1.compareTo(b.$1));
+    final owners = <int, String>{};
+    for (final (_, node, pin, owner) in pins) {
+      final previous = owners[pin];
       if (previous != null) {
-        context.report(
-            Diagnostics.duplicatePin(value, previous, context.at(pin!.parent is NamedArgument ? pin.parent! : pin)));
+        context.report(Diagnostics.duplicatePin(pin, previous, context.at(node)));
       } else {
-        owners[value] = owner;
+        owners[pin] = owner;
       }
     }
   }
