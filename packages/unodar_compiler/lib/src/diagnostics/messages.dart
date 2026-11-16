@@ -88,8 +88,8 @@ abstract final class Diagnostics {
   static Diagnostic unsupportedDeclaration(String what, SourceLocation at, {String? suggestion}) => Diagnostic(
         code: DiagnosticCode.unsupportedDeclaration,
         location: at,
-        message: '$what is not supported in this version. Only top-level functions, variables, and binding classes '
-            'may be declared.',
+        message: '$what is not supported in this version. Only top-level functions, variables, classes, and binding '
+            'classes may be declared.',
         suggestion:
             suggestion ?? 'Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.',
       );
@@ -353,6 +353,89 @@ abstract final class Diagnostics {
         location: at,
         message: 'a $cls object can only be created as the initializer of a top-level `final` variable.',
         suggestion: 'Declare it at the top level, e.g. `final ${lowerFirst(cls)} = $cls(…);`, and use that.',
+      );
+
+  static Diagnostic objectNotFinal(String name, String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the object '$name' must be declared `final`.",
+        suggestion: 'Write `$example`. Objects are created once, as global variables.',
+      );
+
+  static Diagnostic objectInitializer(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the object '$name' must be initialized by calling the $cls constructor.",
+        suggestion: 'Write `final $name = $cls(…);` with constant arguments; an object cannot be copied or shared.',
+      );
+
+  /// [position] is `a local variable`, `a parameter`, or `a return value`.
+  static Diagnostic objectTypePosition(String position, String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "$position of the class type '$type' is not supported. Objects can only be top-level `final` "
+            'variables.',
+        suggestion: 'Use the top-level object directly instead of passing it around.',
+      );
+
+  static Diagnostic objectUse(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the object '$name' can only be used through its fields and methods.",
+        suggestion: 'Use a field or a method, e.g. `$name.count`; an object cannot be stored, compared, passed, or '
+            'printed.',
+      );
+
+  static Diagnostic objectCreationPosition(String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: 'a $cls object can only be created as the initializer of a top-level `final` variable.',
+        suggestion: 'Declare it at the top level, e.g. `final ${lowerFirst(cls)} = $cls(…);`, and use that.',
+      );
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // E015 for classes.
+
+  static Diagnostic nonConstantClassInitializer(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.nonConstantInitializer,
+        location: at,
+        message: '$what is not a compile-time constant.',
+        suggestion: 'Use only literals, unodar constants, `const` variables declared above the class, and the '
+            "constructor's parameters; set other values from setup() or a callback.",
+      );
+
+  static Diagnostic classForwardReference(String cls, String later, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.nonConstantInitializer,
+        location: at,
+        message: "the class '$cls' refers to '$later', which is declared later.",
+        suggestion: "Move the declaration of '$later' above the class '$cls'.",
+      );
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // E027: class rules.
+
+  /// [what] names the class feature ("an abstract class ('Shape')"); [help] is specific to it.
+  static Diagnostic classFeature(String what, String help, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.classRule,
+        location: at,
+        message: '$what is not supported in this version.',
+        suggestion: help,
+      );
+
+  static Diagnostic classExtends(String cls, String base, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.classRule,
+        location: at,
+        message: "a class cannot extend another class in this version ('$cls' extends '$base').",
+        suggestion: "Give '$cls' a field of type '$base' instead (composition), or merge the two classes.",
+      );
+
+  static Diagnostic constructorBody(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.classRule,
+        location: at,
+        message: 'a constructor cannot have a body in this version: objects are created before setup() runs, not '
+            'when Dart would first use them.',
+        suggestion: 'Move this code into a method, e.g. `void begin()`, and call it from setup() or from an OnStart '
+            'widget.',
       );
 
   // ---------------------------------------------------------------------------------------------------------------

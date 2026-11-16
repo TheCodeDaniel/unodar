@@ -165,4 +165,11 @@ const sizeBudgets = <String, SizeBudget>{
   // counter: examples/counter, the Phase 5 goal program (step 13); first measurement. RAM (avr-nm): Serial 175 +
   // core 9 + count 5 + isOdd 2 (watched by the Led) + Led 2 + two Buttons 14 + "\r\n\0" 3.
   'counter': SizeBudget(baselineFlash: 2894, baselineRam: 210, maxFlash: 3800, maxRam: 221),
+
+  // Phase 6 first measurements (arduino-cli 1.5.1, arduino:avr 1.8.8, -fwrapv), same rule as before: flash max =
+  // baseline + 30 % rounded up to 50 B, RAM max = baseline + 11 B.
+  // class_fields: two objects of one class (step 3). RAM (avr-nm): Serial 175 (157 + vtable 18) + core 9 + Button 7 +
+  // Every 8 + left 18 + right 18 (each the sum of its fields, 4 + 4 + 1 + 4 + 1 + 4: no padding, no vtable) + 15 B of
+  // .data strings ("\r\n\0" and Print's "nan"/"inf"/"ovf"). Most of the flash is float printing and arithmetic.
+  'class_fields': SizeBudget(baselineFlash: 4608, baselineRam: 250, maxFlash: 6000, maxRam: 261),
 };

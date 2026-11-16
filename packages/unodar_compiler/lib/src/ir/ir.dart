@@ -73,7 +73,7 @@ final class IrProgram {
   /// order. Emitted as `#include "…"` after [includes], each once.
   final List<String> localIncludes;
 
-  /// Top-level variables and bound objects, in source order.
+  /// Top-level variables, bound objects and the structs of the user's classes, in source order.
   final List<IrGlobalDeclaration> globals;
 
   /// Functions in source order.
@@ -120,6 +120,55 @@ final class IrBoundObject extends IrGlobalDeclaration {
   /// null for a plain class.
   final IrType? templateArgument;
   final List<IrExpression> arguments;
+}
+
+/// The C++ `struct` of one of the user's classes (docs/SUBSET.md "Your own classes"). Its objects are
+/// [IrBoundObject]s of [name].
+final class IrStruct extends IrGlobalDeclaration {
+  const IrStruct({required super.name, required super.line, this.fields = const [], this.constructor});
+
+  /// Instance fields, in declaration order.
+  final List<IrStructField> fields;
+
+  /// The constructor, or null for Dart's default constructor (the C++ implicit one).
+  final IrConstructor? constructor;
+}
+
+/// An instance field: `const int32_t id;`, `int32_t count = start;`.
+final class IrStructField {
+  const IrStructField({
+    required this.name,
+    required this.type,
+    required this.storage,
+    this.initializer,
+    required this.line,
+  });
+
+  final String name;
+  final IrType type;
+
+  /// [IrStorage.final_] or [IrStorage.mutable].
+  final IrStorage storage;
+
+  /// The Dart field initializer, a constant (a C++ default member initializer), or null.
+  final IrExpression? initializer;
+  final int line;
+}
+
+/// A struct's constructor: parameters in Dart declaration order (named ones included), and the members it
+/// initializes, in field declaration order. It never has a body (E027).
+final class IrConstructor {
+  const IrConstructor(
+      {required this.parameters, this.initializers = const [], this.isConstexpr = true, required this.line});
+
+  final List<IrParameter> parameters;
+
+  /// (field name, value) pairs: an initializing formal's parameter, or an initializer-list value.
+  final List<(String, IrExpression)> initializers;
+
+  /// Whether every member allows a `constexpr` constructor (scalars do; binding objects do not).
+  final bool isConstexpr;
+  final int line;
 }
 
 final class IrParameter {
@@ -195,7 +244,7 @@ enum IrAssignOp {
 final class IrAssign extends IrStatement {
   const IrAssign(this.target, this.op, this.value, {required super.line});
 
-  /// The variable assigned (a local, parameter, or global).
+  /// The C++ lvalue assigned: a local, parameter, or global, or a field (`left.count`).
   final String target;
   final IrAssignOp op;
   final IrExpression value;
@@ -322,6 +371,17 @@ final class IrVariable extends IrExpression {
   const IrVariable(this.name, this.type);
 
   final String name;
+
+  @override
+  final IrType type;
+}
+
+/// A field of an object: `left.count` (its [object]'s C++ name), or `this->count` when [object] is null.
+final class IrFieldRead extends IrExpression {
+  const IrFieldRead(this.object, this.field, this.type);
+
+  final String? object;
+  final String field;
 
   @override
   final IrType type;

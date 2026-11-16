@@ -10,6 +10,7 @@ import '../diagnostics/diagnostics.dart';
 import '../emitter/target.dart';
 import '../frontend/frontend.dart';
 import '../ir/ir.dart';
+import '../semantics/classes.dart';
 import '../semantics/elements.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
@@ -304,10 +305,28 @@ final class BoundObjectRule implements ValidationRule {
     for (final declaration in unit.declarations.whereType<TopLevelVariableDeclaration>()) {
       for (final variable in declaration.variables.variables) {
         final element = variable.declaredFragment?.element;
-        final cls = bindingClassOf(element?.type);
-        if (element == null || cls == null) continue;
         final name = variable.name.lexeme;
         final initializer = variable.initializer;
+        if (userClassOf(element?.type) case final userClass? when declaration.externalKeyword == null) {
+          // An object of the user's own class: `final left = Counter(1);`.
+          if (initializer is InstanceCreationExpression &&
+              initializer.constructorName.name == null &&
+              initializer.staticType?.element == userClass) {
+            constructorInitializers.add(initializer);
+          } else if (initializer != null) {
+            reportedInitializers.add(initializer);
+            context.report(Diagnostics.objectInitializer(name, userClass.name!, context.at(initializer)));
+          }
+          if (!element!.isFinal || element.isConst || variable.isLate) {
+            final example = initializer is InstanceCreationExpression
+                ? 'final $name = ${initializer.toSource()};'
+                : 'final $name = ${userClass.name}();';
+            context.report(Diagnostics.objectNotFinal(name, example, context.at(variable.name)));
+          }
+          continue;
+        }
+        final cls = bindingClassOf(element?.type);
+        if (element == null || cls == null) continue;
         if (declaration.externalKeyword != null) {
           if (!element.isFinal) {
             context.report(
@@ -336,14 +355,14 @@ final class BoundObjectRule implements ValidationRule {
 
     for (final function in compiledFunctions(unit)) {
       final expression = function.functionExpression;
-      if (function.returnType case final type? when bindingClassOf(type.type) != null) {
-        context.report(Diagnostics.bindingTypePosition('a return value', type.toSource(), context.at(type)));
+      if (function.returnType case final type? when isObjectType(type.type)) {
+        context.report(_typePosition('a return value', type.type!, type.toSource(), context.at(type)));
       }
       for (final parameter in expression.parameters?.parameters ?? const <FormalParameter>[]) {
         final type = parameter.declaredFragment?.element.type;
-        if (bindingClassOf(type) == null) continue;
+        if (!isObjectType(type)) continue;
         final node = _typeAnnotationOf(parameter) ?? parameter;
-        context.report(Diagnostics.bindingTypePosition('a parameter', displayType(type!), context.at(node)));
+        context.report(_typePosition('a parameter', type!, displayType(type), context.at(node)));
       }
     }
     for (final body in compiledBodies(unit)) {
@@ -355,9 +374,9 @@ final class BoundObjectRule implements ValidationRule {
         };
         for (final variable in list?.variables ?? const <VariableDeclaration>[]) {
           final type = variable.declaredFragment?.element.type;
-          if (bindingClassOf(type) == null) continue;
+          if (!isObjectType(type)) continue;
           final at = list!.type ?? variable.name;
-          context.report(Diagnostics.bindingTypePosition('a local variable', displayType(type!), context.at(at)));
+          context.report(_typePosition('a local variable', type!, displayType(type), context.at(at)));
         }
       }
     }
@@ -371,6 +390,18 @@ final class BoundObjectRule implements ValidationRule {
             if (!_isRejectedInitializer(expression)) {
               context
                   .report(Diagnostics.bindingConstructorPosition(staticType!.element!.name!, context.at(expression)));
+            }
+            return false;
+          case InstanceCreationExpression(:final staticType)
+              when userClassOf(staticType) != null && !constructorInitializers.contains(expression):
+            // A field's object is composition (ClassRule); a rejected top-level initializer is reported already.
+            if (!_isRejectedInitializer(expression) && enclosingUserClass(expression) == null) {
+              context.report(Diagnostics.objectCreationPosition(staticType!.element!.name!, context.at(expression)));
+            }
+            return false;
+          case SimpleIdentifier() when userClassOf(expression.staticType) != null:
+            if (referenceOf(expression) case GlobalReference()) {
+              context.report(Diagnostics.objectUse(expression.name, context.at(expression)));
             }
             return false;
           case SimpleIdentifier() when bindingClassOf(expression.staticType) != null:
@@ -397,7 +428,15 @@ final class BoundObjectRule implements ValidationRule {
   }
 
   static TypeAnnotation? _typeAnnotationOf(FormalParameter parameter) => parameter.type;
+
+  static Diagnostic _typePosition(String position, DartType type, String display, SourceLocation at) =>
+      userClassOf(type) != null
+          ? Diagnostics.objectTypePosition(position, display, at)
+          : Diagnostics.bindingTypePosition(position, display, at);
 }
 
 /// Whether [type] is a binding class type: E018 reports it in any other position, so E009 skips it.
 bool isBindingType(DartType? type) => bindingClassOf(type) != null;
+
+/// Whether [type] is a binding class or one of the user's classes: E018 decides where it may appear.
+bool isObjectType(DartType? type) => bindingClassOf(type) != null || userClassOf(type) != null;

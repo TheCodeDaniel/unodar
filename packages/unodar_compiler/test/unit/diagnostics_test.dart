@@ -19,8 +19,8 @@ void main() {
   });
 
   group('registry', () {
-    test('codes are E001..E026, unique, and in order', () {
-      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 26; i++) 'E${'$i'.padLeft(3, '0')}']);
+    test('codes are E001..E027, unique, and in order', () {
+      expect(DiagnosticCode.values.map((c) => c.id), [for (var i = 1; i <= 27; i++) 'E${'$i'.padLeft(3, '0')}']);
     });
 
     test('every code has a non-empty summary for docs/DIAGNOSTICS.md', () {
@@ -57,6 +57,7 @@ void main() {
         Diagnostics.signalUse('count', at),
         Diagnostics.reactiveCycle('Watch(count) → count', 'count', at),
         Diagnostics.computedSelf('total', at),
+        Diagnostics.classExtends('Fast', 'Blinker', at),
       ];
       expect(all.map((d) => d.code), DiagnosticCode.values, reason: 'one factory per code, in code order');
       for (final d in all) {

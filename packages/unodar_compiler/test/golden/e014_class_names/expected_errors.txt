@@ -1,0 +1,12 @@
+input.dart:3:7: error[E014]: 'byte' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
+  = help: Rename it, e.g. `byteValue`.
+input.dart:5:7: error[E014]: 'Servo' cannot be used as a name: it is a unodar API name.
+  = help: Rename it, e.g. `ServoValue`.
+input.dart:8:7: error[E014]: 'min' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
+  = help: Rename it, e.g. `minValue`.
+input.dart:9:13: error[E014]: 'LOW_LIMIT' cannot be used as a name: all-caps names are reserved for C and Arduino macros.
+  = help: Rename it, e.g. `lowLimit`.
+input.dart:10:7: error[E014]: 'unodar_top' cannot be used as a name: names starting with `unodar_` are reserved for generated code.
+  = help: Rename it.
+input.dart:12:32: error[E014]: 'max' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
+  = help: Rename it, e.g. `maxValue`.

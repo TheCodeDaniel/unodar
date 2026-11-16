@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 
+import 'classes.dart';
 import 'elements.dart';
 import 'signals.dart';
 import 'widgets.dart';
@@ -155,14 +156,15 @@ Iterable<Expression> rootsOfBody(FunctionBody body) sync* {
   }
 }
 
-/// Every root expression in the program: top-level initializers first, then the parts of a widget program's
-/// `main()` that are compiled (the widgets written in `Device.children` and `serialBaud:`), then each function in
-/// source order.
+/// Every root expression in the program: top-level initializers first, then what the user's classes compile (field
+/// initializers, initializer lists, constructor defaults), then the parts of a widget program's `main()` that are
+/// compiled (the widgets written in `Device.children` and `serialBaud:`), then each function in source order.
 Iterable<Expression> allRootExpressions(CompilationUnit unit) sync* {
   for (final variable in topLevelVariables(unit)) {
     final initializer = variable.initializer;
     if (initializer != null) yield initializer;
   }
+  yield* allClassRoots(unit);
   yield* deviceRoots(unit);
   for (final body in compiledBodies(unit)) {
     yield* rootsOfBody(body);

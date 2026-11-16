@@ -4,6 +4,7 @@ import 'package:analyzer/dart/element/type.dart';
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
+import '../semantics/classes.dart';
 import '../semantics/elements.dart';
 import '../semantics/signals.dart';
 import '../semantics/types.dart';
@@ -69,13 +70,11 @@ final class TopLevelDeclarationRule implements ValidationRule {
             when declaredFragment != null && hasInteropAnnotation(declaredFragment.element, 'CppClass'):
           break; // A binding class: BindingClassRule checks it (E017).
         case ClassDeclaration():
-          unsupported('a class without @CppClass',
-              suggestion: "Remove this declaration, or annotate it with `@CppClass('CppName')` if it describes a C++ "
-                  'class; see docs/SUBSET.md.');
+          break; // One of the user's classes: ClassRule checks it (E027).
+        case MixinDeclaration():
+          break; // ClassRule (E027).
         case EnumDeclaration():
           unsupported('an enum');
-        case MixinDeclaration():
-          unsupported('a mixin');
         case ExtensionDeclaration() || ExtensionTypeDeclaration():
           unsupported('an extension');
         case TypeAlias():
@@ -179,6 +178,21 @@ final class DeclaredTypeRule implements ValidationRule {
       }
       _locals(expression.body, context);
     }
+    for (final declaration in userClassDeclarations(unit).where((c) => c.extendsClause == null)) {
+      for (final member in declaration.body.members) {
+        switch (member) {
+          case FieldDeclaration(:final fields) when !member.isStatic && !fields.isLate:
+            _variables(fields, context);
+          case ConstructorDeclaration(name: null, factoryKeyword: null):
+            for (final parameter in member.parameters.parameters) {
+              if (parameter.type case final type? when parameter.functionTypedSuffix == null) {
+                _annotation(type, context);
+              }
+            }
+          default:
+        }
+      }
+    }
     for (final callback in widgetCallbacks(unit)) {
       // `Watch(ratio, (num r) { … })`: an annotated callback parameter must have a supported type.
       for (final parameter in callback.parameters?.parameters ?? const <FormalParameter>[]) {
@@ -202,7 +216,7 @@ final class DeclaredTypeRule implements ValidationRule {
 
   void _variables(VariableDeclarationList list, ValidationContext context) {
     final annotation = list.type;
-    if (isBindingType(annotation?.type)) return; // E018 decides where a binding type may appear.
+    if (isObjectType(annotation?.type)) return; // E018 decides where a binding or class type may appear.
     if (widgetClassOf(annotation?.type) != null) return; // E022 decides where a widget type may appear.
     if (isSignalType(annotation?.type)) return; // E024 decides where a signal type may appear (E009: its `T`).
     if (annotation != null) {
@@ -220,7 +234,7 @@ final class DeclaredTypeRule implements ValidationRule {
 
   void _annotation(TypeAnnotation annotation, ValidationContext context, {bool allowVoid = false}) {
     final type = annotation.type;
-    if (type == null || isBindingType(type) || widgetClassOf(type) != null || isSignalType(type)) return;
+    if (type == null || isObjectType(type) || widgetClassOf(type) != null || isSignalType(type)) return;
     final irType = irTypeOf(type);
     if (irType != null && (allowVoid || irType != IrType.void_)) return;
     context.report(typeDiagnostic(type, context.at(annotation)));

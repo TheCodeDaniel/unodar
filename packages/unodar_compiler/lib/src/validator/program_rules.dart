@@ -7,6 +7,7 @@ import '../api/api_resolution.dart';
 
 import '../diagnostics/diagnostics.dart';
 import '../emitter/cpp_names.dart';
+import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
 import '../semantics/signals.dart';
@@ -52,6 +53,17 @@ final class InitializerRule implements ValidationRule {
       } else if (bindingClassOf(variable.declaredFragment?.element.type) != null) {
         if (initializer is! InstanceCreationExpression) continue;
         values = [for (final a in initializer.argumentList.arguments) a.argumentExpression];
+      } else if (userClassOf(variable.declaredFragment?.element.type) case final cls?) {
+        // An object (`final left = Counter(1);`): its class must be declared above it, its arguments constant. Any
+        // other initializer is E018.
+        if (objectCreation(initializer) == null) continue;
+        final creation = initializer as InstanceCreationExpression;
+        final declaration = cls.firstFragment.nameOffset;
+        if (declaration != null && declaration > variable.offset) {
+          context.report(Diagnostics.forwardReference(name, cls.name!, context.at(creation.constructorName)));
+          continue;
+        }
+        values = [for (final a in creation.argumentList.arguments) a.argumentExpression];
       } else {
         values = [initializer];
       }
@@ -64,6 +76,65 @@ final class InitializerRule implements ValidationRule {
           context.report(Diagnostics.forwardReference(name, later.name, context.at(later)));
         } else if (!isWidget && context.constants.evaluate(value) is NotConstant) {
           context.report(Diagnostics.nonConstantInitializer(name, context.at(value)));
+        }
+      }
+    }
+  }
+}
+
+/// What the user's classes compile must be constant (E015): field initializers over constants, initializer-list
+/// values over constants and the constructor's parameters, and nothing declared below the class.
+final class ClassInitializerRule implements ValidationRule {
+  const ClassInitializerRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    final globals = {
+      for (final variable in topLevelVariables(unit)) variable.declaredFragment?.element: variable.offset
+    };
+    for (final declaration in userClassDeclarations(unit).where((c) => c.extendsClause == null)) {
+      final cls = declaration.namePart.typeName.lexeme;
+      bool skip(Expression root) => subexpressions(root).any((e) =>
+          expressionIssue(e) != null ||
+          isSignalType(e.staticType) ||
+          widgetClassOf(e.staticType) != null ||
+          userClassOf(e.staticType) != null);
+      void check(Expression root, String what, {bool parameters = false}) {
+        if (skip(root)) return;
+        final later = subexpressions(root).whereType<SimpleIdentifier>().where((identifier) {
+          final reference = referenceOf(identifier);
+          return reference is GlobalReference && (globals[reference.element] ?? 0) > declaration.offset;
+        }).firstOrNull;
+        if (later != null) {
+          context.report(Diagnostics.classForwardReference(cls, later.name, context.at(later)));
+          return;
+        }
+        final constant = subexpressions(root).every((e) => switch (e) {
+              MethodInvocation() => false,
+              SimpleIdentifier() when parameters && constructorParameterOf(e) != null => true,
+              SimpleIdentifier() ||
+              PrefixedIdentifier() ||
+              PropertyAccess() =>
+                context.constants.evaluate(e) is! NotConstant,
+              _ => true,
+            });
+        if (!constant) context.report(Diagnostics.nonConstantClassInitializer(what, context.at(root)));
+      }
+
+      for (final member in declaration.body.members) {
+        switch (member) {
+          case FieldDeclaration(:final fields) when !member.isStatic:
+            for (final variable in fields.variables) {
+              if (variable.initializer case final initializer?) {
+                check(initializer, "the initializer of field '${variable.name.lexeme}'");
+              }
+            }
+          case ConstructorDeclaration(name: null, factoryKeyword: null, :final initializers):
+            for (final initializer in initializers.whereType<ConstructorFieldInitializer>()) {
+              check(initializer.expression, "the value of '${initializer.fieldName.name}' in the initializer list",
+                  parameters: true);
+            }
+          default:
         }
       }
     }
@@ -94,6 +165,23 @@ final class ReservedNameRule implements ValidationRule {
       if (api.contains(name.lexeme)) {
         context.report(Diagnostics.reservedName(
             name.lexeme, 'it is a unodar API name', '${name.lexeme}Binding', context.at(name)));
+      }
+    }
+    // A class, its fields and its constructor's parameters become C++ names; Arduino's macros ignore C++ scopes.
+    for (final declaration in userClassDeclarations(unit)) {
+      checkName(declaration.namePart.typeName);
+      for (final member in declaration.body.members) {
+        switch (member) {
+          case FieldDeclaration(:final fields):
+            for (final variable in fields.variables) {
+              checkName(variable.name);
+            }
+          case ConstructorDeclaration(:final parameters):
+            for (final parameter in parameters.parameters) {
+              if (parameter is! FieldFormalParameter && parameter.name != null) checkName(parameter.name!);
+            }
+          default:
+        }
       }
     }
     for (final function in compiledFunctions(unit)) {
@@ -258,7 +346,7 @@ final class EvaluationOrderRule implements ValidationRule {
             !variable.isFinal &&
             !isUnodarElement(variable)) {
           group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
-        } else if (signalOfValue(leftHandSide) != null) {
+        } else if (signalOfValue(leftHandSide) != null || fieldAccessOf(leftHandSide) != null) {
           // `count.value += next()` is `count.set(count.value() + next())`: the read and the call are unsequenced.
           group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
         }
@@ -296,7 +384,10 @@ final class _Member {
       // A signal's `.value` is mutable top-level state too.
       [
         for (final e in all)
-          if (e is SimpleIdentifier && _mutableGlobal(e)) e.name else if (signalOfValue(e) != null) e.toSource(),
+          if (e is SimpleIdentifier && _mutableGlobal(e))
+            e.name
+          else if (signalOfValue(e) != null || (fieldAccessOf(e)?.isMutable ?? false))
+            e.toSource(),
       ].firstOrNull,
     );
   }

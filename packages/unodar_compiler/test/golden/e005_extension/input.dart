@@ -1,6 +1,8 @@
 import 'package:unodar/unodar.dart';
 
-class Blinker {}
+extension Doubled on int {
+  int get doubled => this * 2;
+}
 
 late int ledPin;
 

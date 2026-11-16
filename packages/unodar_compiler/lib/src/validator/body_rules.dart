@@ -6,6 +6,7 @@ import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
+import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
 import '../semantics/signals.dart';
@@ -76,13 +77,15 @@ final class StatementRule implements ValidationRule {
       case AssignmentExpression(:final operator) when !supportedAssignmentOperators.contains(operator.type):
         unsupported('the `${operator.lexeme}` operator', compoundAssignmentHelp);
       case AssignmentExpression(:final leftHandSide)
-          when leftHandSide is! SimpleIdentifier && !_isSignalWrite(leftHandSide):
+          when leftHandSide is! SimpleIdentifier &&
+              !_isSignalWrite(leftHandSide) &&
+              fieldAccessOf(leftHandSide) == null:
         unsupported('an assignment to `${leftHandSide.toSource()}`', 'Assign to a variable name.');
       case AssignmentExpression():
         break;
       case PrefixExpression(:final operand) || PostfixExpression(:final operand)
           when isIncrementOrDecrement(expression):
-        if (operand is! SimpleIdentifier && !_isSignalWrite(operand)) {
+        if (operand is! SimpleIdentifier && !_isSignalWrite(operand) && fieldAccessOf(operand) == null) {
           unsupported('`++`/`--` on `${operand.toSource()}`', 'Apply `++` and `--` to a variable name.');
         }
       case ThrowExpression():
@@ -171,6 +174,9 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     // A signal is created where E024 says (a top-level `final` initializer) and only in a widget program (E021).
     case InstanceCreationExpression() when signalObjectCreation(expression) != null:
       return null;
+    // An object of the user's class is created where E018 says (a top-level `final` initializer).
+    case InstanceCreationExpression() when objectCreation(expression) != null:
+      return null;
     case InstanceCreationExpression(:final staticType)
         when isUnodarClass(staticType, 'Device') || isUnodarClass(staticType, 'Uno'):
       final name = isUnodarClass(staticType, 'Device') ? 'Device(…)' : 'Uno()';
@@ -179,8 +185,10 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
       // A binding constructor is allowed where E018 says (a top-level `final` initializer).
       return staticType != null && (sizedTypeOf(staticType) != null || bindingClassOf(staticType) != null)
           ? null
-          : e002('a constructor call',
-              'Only Uint8(…), Uint16(…), Int16(…), and binding classes can be constructed in this version.');
+          : e002(
+              'a constructor call',
+              'Only Uint8(…), Uint16(…), Int16(…), binding classes and your own classes can be constructed '
+                  'in this version.');
     case FunctionExpression() when widgetOfCallback(expression) != null:
       return null; // A widget callback: its body is compiled like a function body (CallbackRule checks its shape).
     case FunctionExpression() when isComputedClosure(expression):
@@ -193,6 +201,12 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
       return e002('an assignment inside an expression', 'Assign in a statement of its own, then use the variable.');
     // `count.value`: a signal read (where the signal may be used is for E024).
     case PrefixedIdentifier() || PropertyAccess() when signalOfValue(expression) != null:
+      return null;
+    // `left.count`: a field of an object (whether `left` may be used is for E018).
+    case PrefixedIdentifier() || PropertyAccess() when fieldAccessOf(expression) != null:
+      return null;
+    // A field of a parameter or local of a class type: E018 reports the parameter or local.
+    case PrefixedIdentifier(:final prefix) when userClassOf(prefix.staticType) != null:
       return null;
     case PrefixedIdentifier() || PropertyAccess():
       return e002("a property access ('${expression.toSource()}')",
@@ -261,6 +275,7 @@ final class ExpressionTypeRule implements ValidationRule {
     final roots = [
       for (final variable in topLevelVariables(unit))
         if (variable.initializer case final initializer?) initializer,
+      ...allClassRoots(unit),
       ...deviceRoots(unit),
       for (final function in compiledFunctions(unit))
         if (!genericFunctions.contains(function)) ...rootsOfFunction(function),
@@ -280,8 +295,10 @@ final class ExpressionTypeRule implements ValidationRule {
         final type = expression.staticType;
         // An unresolved name has no real type; the analyzer (E007) or ApiCallRule (E003) reports it.
         if (type is InvalidType) return false;
-        // Bound objects and binding constructors: E018 decides where they may appear.
+        // Bound objects and binding constructors: E018 decides where they may appear. The same for objects of the
+        // user's classes, but their constructor arguments are ordinary expressions.
         if (bindingClassOf(type) != null) return false;
+        if (userClassOf(type) != null) return objectCreation(expression) != null;
         // A widget handle used as a value: E022.
         if (expression is SimpleIdentifier && widgetClassOf(type) != null) return false;
         // A signal used as a value: E024. A signal's constructor: E024 checks its type argument, and its initial

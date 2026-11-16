@@ -3,6 +3,7 @@ import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
 
 import '../diagnostics/diagnostics.dart';
+import '../semantics/classes.dart';
 import '../semantics/elements.dart';
 import '../semantics/signals.dart';
 import '../semantics/types.dart';
@@ -51,7 +52,7 @@ final class SignalRule implements ValidationRule {
       }
     }
     for (final creation in creations) {
-      if (!accepted.contains(creation)) {
+      if (!accepted.contains(creation) && !isFieldInitializer(creation)) {
         context.report(Diagnostics.signalCreationPosition(_example(creation), context.at(creation)));
       }
       _checkValueType(creation, context);

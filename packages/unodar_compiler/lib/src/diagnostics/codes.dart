@@ -7,7 +7,7 @@ enum DiagnosticCode {
   unsupportedStatement('E002', 'Unsupported statement or expression kind'),
   unknownFunction('E003', 'Call to a function that is not part of the supported unodar API'),
   unsupportedArgument('E004', 'Unsupported argument (constant out of range for the Arduino parameter, or named)'),
-  unsupportedDeclaration('E005', 'Unsupported top-level declaration (classes, enums, typedefs, getters, late)'),
+  unsupportedDeclaration('E005', 'Unsupported top-level declaration (enums, extensions, typedefs, getters, late)'),
   invalidEntrySignature('E006', 'Invalid `setup`/`loop` signature (must be `void`, no parameters)'),
   analysisError('E007', 'Dart analysis error in the source file (type error, syntax error, unresolved import)'),
   unsupportedMain('E008', '`main()` other than a single `runDevice(Device(…))` call'),
@@ -20,7 +20,7 @@ enum DiagnosticCode {
   nonConstantInitializer('E015', 'Top-level initializer is not a compile-time constant'),
   recursion('E016', 'Recursive function (direct or mutual)'),
   invalidBinding('E017', 'Invalid binding class or interop annotation'),
-  boundObjectMisuse('E018', 'Bound object misuse'),
+  boundObjectMisuse('E018', 'Object misuse (bound objects and objects of your classes)'),
   cppMisuse('E019', '`cpp()` misuse'),
   cppHeap('E020', 'Heap allocation in `cpp()`'),
   widgetProgram('E021', 'Widget program shape (main() with setup/loop, widgets without runDevice, Device arguments)'),
@@ -28,7 +28,8 @@ enum DiagnosticCode {
   delayInCallback('E023', '`delay()` in a widget callback, directly or through a called function'),
   signalMisuse('E024', 'Signal misuse (placement, value uses, signal-typed locals/parameters/returns, Watch source)'),
   reactiveCycle('E025', 'Reactive cycle: a Watch writes the signal it watches, or Watches write signals in a cycle'),
-  computedRule('E026', 'Computed rules (a single expression over signals and Computeds declared above, constants)');
+  computedRule('E026', 'Computed rules (a single expression over signals and Computeds declared above, constants)'),
+  classRule('E027', 'Class rules (inheritance, modifiers, constructor bodies and kinds, setters, operators, late)');
 
   const DiagnosticCode(this.id, this.summary);
 

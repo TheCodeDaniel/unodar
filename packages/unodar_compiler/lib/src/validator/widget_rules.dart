@@ -4,6 +4,7 @@ import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
+import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
 import '../semantics/signals.dart';
@@ -118,7 +119,7 @@ final class WidgetRule implements ValidationRule {
           continue;
         }
       } else if (!inline.contains(creation)) {
-        context.report(Diagnostics.widgetPlacement(name, context.at(creation)));
+        if (!isFieldInitializer(creation)) context.report(Diagnostics.widgetPlacement(name, context.at(creation)));
         continue;
       }
       _constantArguments(creation, name, context);

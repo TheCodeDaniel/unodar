@@ -1,0 +1,20 @@
+input.dart:7:5: error[E018]: the object 'shared' must be declared `final`.
+  = help: Write `final shared = Counter();`. Objects are created once, as global variables.
+input.dart:9:23: error[E018]: the object 'alias' must be initialized by calling the Counter constructor.
+  = help: Write `final alias = Counter(…);` with constant arguments; an object cannot be copied or shared.
+input.dart:11:13: error[E018]: a parameter of the class type 'Counter' is not supported. Objects can only be top-level `final` variables.
+  = help: Use the top-level object directly instead of passing it around.
+input.dart:13:1: error[E018]: a return value of the class type 'Counter' is not supported. Objects can only be top-level `final` variables.
+  = help: Use the top-level object directly instead of passing it around.
+input.dart:13:19: error[E018]: the object 'first' can only be used through its fields and methods.
+  = help: Use a field or a method, e.g. `first.count`; an object cannot be stored, compared, passed, or printed.
+input.dart:16:9: error[E018]: a local variable of the class type 'Counter' is not supported. Objects can only be top-level `final` variables.
+  = help: Use the top-level object directly instead of passing it around.
+input.dart:16:17: error[E018]: a Counter object can only be created as the initializer of a top-level `final` variable.
+  = help: Declare it at the top level, e.g. `final counter = Counter(…);`, and use that.
+input.dart:18:18: error[E018]: the object 'first' can only be used through its fields and methods.
+  = help: Use a field or a method, e.g. `first.count`; an object cannot be stored, compared, passed, or printed.
+input.dart:19:7: error[E018]: the object 'first' can only be used through its fields and methods.
+  = help: Use a field or a method, e.g. `first.count`; an object cannot be stored, compared, passed, or printed.
+input.dart:19:16: error[E018]: the object 'alias' can only be used through its fields and methods.
+  = help: Use a field or a method, e.g. `alias.count`; an object cannot be stored, compared, passed, or printed.

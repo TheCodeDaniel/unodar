@@ -632,6 +632,53 @@ void main() {
       });
     });
 
+    group('two objects of one class keep their own state (golden class_fields, compiled by unodar)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+      // Two bouncing presses on D2 (settled at 305 and 1205 ms); the Every ticks at 500, 1000 and 1500 ms.
+      const pins = ['D2=low@300', 'D2=open@302', 'D2=low@305', 'D2=open@700', 'D2=low@1200', 'D2=open@1600'];
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'class_fields', 'input.dart'));
+        if (result is! CompileSuccess) fail('class_fields did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<String> run(String cpp) async {
+        final build = await compileSketch('class_fields', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, pins: pins, until: null, cycles: 1800 * 16000)).serial;
+      }
+
+      test('a press changes only left, a tick only right; constructor values, defaults and Uint8 wrap as in Dart',
+          () async {
+        gate.check();
+        // left = Counter(1, scale: 2): step 1 (default), limit Uint8(200), count 10, ratio 0.5.
+        // right = Counter(2, step: 5, scale: 3): limit Uint8(300) = 44, count 10, ratio 0.75.
+        // Press 1: left.count 110 (not above 200), ratio 1.0. Ticks 1 and 2: right.count 15, 20.
+        // Press 2: left.count 210 > 200, so 0 and wrapped; ratio 2.0. Tick 3: right.count 25.
+        expect(
+            await run(await generated()),
+            '1 110 false 1.00 | 2 15 44 0.75\r\n'
+            '1 110 false 1.00 | 2 20 44 0.75\r\n'
+            '1 0 true 2.00 | 2 25 44 0.75\r\n');
+      });
+
+      test('negative control: with count a static member, the two objects share it', () async {
+        gate.check();
+        final cpp = await generated();
+        const field = '  int32_t count = start;\n';
+        const end = '      : id(id),\n        step(step),\n        limit(uint8_t(scale * 100)),\n'
+            '        ratio(float(scale) / float(4)) {}\n};\n';
+        expect(cpp, allOf(contains(field), contains(end)), reason: 'the generated code changed; update the control');
+        final shared = cpp
+            .replaceFirst(field, '  static int32_t count;\n')
+            .replaceFirst(end, '${end}int32_t Counter::count = start;\n');
+        // Press 1 makes the shared count 110; tick 1 adds right's step: both print 115.
+        expect(await run(shared), startsWith('1 115 false 1.00 | 2 115 44 0.75\r\n'));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

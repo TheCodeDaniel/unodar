@@ -150,8 +150,8 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
 
 ## E005: Unsupported top-level declaration
 
-Top-level functions and variables are supported, and so are binding classes (annotated `@CppClass`, checked by
-E017) and `external` objects of a binding type. Classes without `@CppClass`, enums, mixins, extensions, extension
+Top-level functions and variables are supported, and so are your own classes (checked by E027), binding classes
+(annotated `@CppClass`, checked by E017) and `external` objects of a binding type. Enums, extensions, extension
 types, typedefs, and top-level getters/setters are not, nor are `late` variables or `external` variables of any
 other type. Also used for directives: any import other than an unprefixed `package:unodar/unodar.dart`, and
 `export`/`part`.
@@ -159,7 +159,9 @@ other type. Also used for directives: any import other than an unprefixed `packa
 ```dart
 import 'package:unodar/unodar.dart';
 
-class Blinker {}
+extension Doubled on int {
+  int get doubled => this * 2;
+}
 
 late int ledPin;
 
@@ -169,13 +171,13 @@ void loop() {}
 ```
 
 ```text
-input.dart:3:1: error[E005]: a class without @CppClass is not supported in this version. Only top-level functions, variables, and binding classes may be declared.
-  = help: Remove this declaration, or annotate it with `@CppClass('CppName')` if it describes a C++ class; see docs/SUBSET.md.
-input.dart:5:1: error[E005]: a late variable ('ledPin') is not supported in this version. Only top-level functions, variables, and binding classes may be declared.
+input.dart:3:1: error[E005]: an extension is not supported in this version. Only top-level functions, variables, classes, and binding classes may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+input.dart:7:1: error[E005]: a late variable ('ledPin') is not supported in this version. Only top-level functions, variables, classes, and binding classes may be declared.
   = help: Remove `late` and give the variable a constant initializer.
 ```
 
-(Golden tests: `test/golden/e005_class`, `e005_import`, `e005_other_declarations`.)
+(Golden tests: `test/golden/e005_extension`, `e005_import`, `e005_other_declarations`.)
 
 ## E006: Invalid `setup`/`loop` signature
 

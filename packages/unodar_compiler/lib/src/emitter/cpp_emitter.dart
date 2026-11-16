@@ -70,7 +70,11 @@ final class CppEmitter {
 
     final file = _cppString(program.sourceName);
     if (program.globals.isNotEmpty) out.writeln();
+    IrGlobalDeclaration? previous;
     for (final global in program.globals) {
+      // A struct stands apart from the variables around it.
+      if (previous != null && (global is IrStruct || previous is IrStruct)) out.writeln();
+      previous = global;
       out.writeln('#line ${global.line} $file');
       switch (global) {
         case IrGlobal(:final storage, :final type, :final name, :final initializer):
@@ -83,6 +87,8 @@ final class CppEmitter {
           final list = arguments.isEmpty ? '' : '(${arguments.map(argument).join(', ')})';
           final cls = templateArgument == null ? cppClass : '$cppClass<${target.cppType(templateArgument)}>';
           out.writeln('$cls $name$list;');
+        case IrStruct():
+          _struct(out, global, file);
       }
     }
     for (final function in program.functions) {
@@ -94,6 +100,33 @@ final class CppEmitter {
       out.writeln('}');
     }
     return out.toString();
+  }
+
+  /// `struct Counter { … };`: every member after its own `#line`, then the constructor (no body, E027) with one
+  /// member initializer per line. Members are public; Dart privacy is the analyzer's.
+  void _struct(StringBuffer out, IrStruct struct, String file) {
+    out.writeln('struct ${struct.name} {');
+    for (final field in struct.fields) {
+      final initializer = field.initializer == null ? '' : ' = ${_expr(field.initializer!)}';
+      out
+        ..writeln('#line ${field.line} $file')
+        ..writeln('  ${_declaration(field.storage, field.type, field.name)}$initializer;');
+    }
+    if (struct.constructor case final constructor?) {
+      final parameters = constructor.parameters.map((p) => '${target.cppType(p.type)} ${p.name}').join(', ');
+      final head = '  ${constructor.isConstexpr ? 'constexpr ' : ''}explicit ${struct.name}($parameters)';
+      out.writeln('#line ${constructor.line} $file');
+      if (constructor.initializers.isEmpty) {
+        out.writeln('$head {}');
+      } else {
+        out.writeln(head);
+        for (final (index, (field, value)) in constructor.initializers.indexed) {
+          final last = index == constructor.initializers.length - 1;
+          out.writeln('${index == 0 ? '      : ' : '        '}$field(${_expr(value)})${last ? ' {}' : ','}');
+        }
+      }
+    }
+    out.writeln('};');
   }
 
   String _signature(IrFunction function) {
@@ -225,6 +258,8 @@ final class CppEmitter {
         IrDoubleLiteral(:final value) => _Rendered(_doubleLiteral(value), _atomic),
         IrBoolLiteral(:final value) => _Rendered('$value', _atomic),
         IrConstant(:final name) || IrVariable(:final name) => _Rendered(name, _atomic),
+        IrFieldRead(:final object, :final field) =>
+          _Rendered(object == null ? 'this->$field' : '$object.$field', _atomic),
         IrStringLiteral(:final value) => _Rendered('F(${cppStringLiteral(value)})', _atomic),
         IrCall() => _Rendered(_call(expression), _atomic),
         IrConvert(:final type, :final operand) => _Rendered('${target.cppType(type)}(${_expr(operand)})', _atomic),
@@ -430,7 +465,11 @@ final class CppEmitter {
       // Every other integer operation is emitted in 32 bits (or as int32_t-returning unodar_mod).
       IrUnary() || IrBinary() => _Promotion.wide,
       IrCall() => _callPromotion(expression),
-      IrVariable(:final type) || IrConvert(:final type) || IrConstant(:final type) => _typePromotion(type),
+      IrVariable(:final type) ||
+      IrFieldRead(:final type) ||
+      IrConvert(:final type) ||
+      IrConstant(:final type) =>
+        _typePromotion(type),
       IrDoubleLiteral() || IrBoolLiteral() || IrStringLiteral() => _Promotion.wide,
     };
   }
@@ -461,6 +500,8 @@ final class CppEmitter {
       program.globals.any((g) => switch (g) {
             IrGlobal(:final initializer) => _modInExpression(initializer),
             IrBoundObject(:final arguments) => arguments.any(_modInExpression),
+            IrStruct(:final fields, :final constructor) => fields.any((f) => _modInExpression(f.initializer)) ||
+                (constructor?.initializers.any((i) => _modInExpression(i.$2)) ?? false),
           }) ||
       program.functions.any((f) => _modInStatements(f.body));
 
@@ -477,7 +518,8 @@ final class CppEmitter {
         IrBoolLiteral() ||
         IrStringLiteral() ||
         IrConstant() ||
-        IrVariable() =>
+        IrVariable() ||
+        IrFieldRead() =>
           false,
       };
 
