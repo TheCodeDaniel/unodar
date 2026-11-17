@@ -1,6 +1,15 @@
 # Phase 6 plan — Classes and library wrappers
 
-**Status: in progress on the `phase-6` branch.** The maintainer approved D1–D10 as recommended on 2026-11-16 (D9 is
+**Status: done on the `phase-6` branch (2026-11-17), awaiting review; not tagged.** Every step was built in order,
+one construct per commit; step 20 (value classes) was not built, because D3 left them out of Phase 6. Two fixes landed
+between steps 17 and 18 as their own commits: SPI's pins checked against widgets and bound objects (`@CppUsesPins`),
+and a SoftwareSerial on Serial's pins 0/1 rejected. Final state: 544 tests, none skipped; 201 goldens (51 positive,
+each compiled with arduino-cli, size-budgeted and checked heap-free); every construct and wrapper tested in avr8js with
+a negative control; every first-party binding passing its conformance probe; the goal program `examples/thermostat`
+run in avr8js (presses, the LCD text, the heater against a temperature sweep, the setpoint across a reset) with a
+negative control, and built by `tool/check_arduino.sh`. PRD §13.6 is closed (conformance probe, no generator).
+
+The maintainer approved D1–D10 as recommended on 2026-11-16 (D9 is
 PRD §13.6, D10 is PRD §13.4), with two additions: the docs state that LiquidCrystal means the official
 parallel-wired library (I²C backpack LCDs are not covered) and that Phase 8 displays need a heap-free driver
 (Adafruit SSD1306 and NeoPixel call `malloc`); and the library manifest lists every dependency explicitly, checked
@@ -506,7 +515,7 @@ Every construct step adds its goldens first, and in the same commit:
 | 20 | (only if D3 = include) immutable value classes | Golden `value_class`; avr8js; control: a mutable field accepted |
 | 21 | Size-budget review (dedicated commit): every Phase 6 budget, RAM per object golden, §5 replaced by measurements | `size_budgets.dart` |
 | 22 | (**done**) `examples/thermostat` (the goal program; DHT22 instead of the potentiometer if step 19 landed) with `wokwi/` (lcd1602, two buttons, a potentiometer or DHT22, an LED as the heater), built by `tool/check_arduino.sh` | avr8js goal test: bouncing presses, the A0 sweep, the exact LCD text, the heater pin log, the setpoint kept across a reset; negative control |
-| 23 | Final docs pass (README status and known limits, PRD status, PLAN); full check suite; end report | — |
+| 23 | (**done**) Final docs pass (README status and known limits, PRD status, PLAN); full check suite; end report | — |
 
 ## 8. Open decisions (for the maintainer)
 

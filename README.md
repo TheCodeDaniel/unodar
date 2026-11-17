@@ -7,29 +7,49 @@ emits plain, readable, heap-free Arduino C++, which the standard `arduino-cli` t
 It is its own framework: written in Dart, with **no** dependency on the Flutter SDK.
 
 ## Status
-Phase 5 (signals, v0.5) is done on the `phase-5` branch, awaiting review: hold state in a `Signal`, derive values
-with `Computed`, and react with `Watch` or a `Led` that follows a signal. No heap, no closures that capture.
+Phase 6 (classes and library wrappers, v0.6) is done on the `phase-6` branch, awaiting review: organise a program
+into your own classes and enums, and use EEPROM, SPI, SoftwareSerial, LiquidCrystal and DHT sensors. No heap, no
+vtables, no objects copied.
 
 ```dart
-final count = Signal<int>(0);
-final isOdd = Computed(() => count.value % 2 == 1);
-final led = Led(pin: 13, on: isOdd);
-final plus = Button(
-    pin: 2,
-    onPressed: () {
-      count.value++;
-    });
+enum Mode { idle, heating }
 
-void main() => runDevice(Device(board: Uno(), children: [
-      led,
-      plus,
-      Watch(count, (v) {
-        Serial.println(v);
-      }),
-    ]));
+class Thermostat {
+  final int hysteresis;
+  Mode mode = Mode.idle;
+
+  Thermostat({this.hysteresis = 1});
+
+  void update(double temperature, int target) {
+    if (mode == Mode.idle && temperature < target - hysteresis) {
+      mode = Mode.heating;
+    } else if (mode == Mode.heating && temperature > target + hysteresis) {
+      mode = Mode.idle;
+    }
+  }
+
+  bool get heating => mode == Mode.heating;
+}
+
+final thermostat = Thermostat(hysteresis: 1);
+final sensor = Dht(8, DHT22);
+final lcd = LiquidCrystal(12, 11, 5, 4, 3, 2);
 ```
 
-- **Signals:** `Signal<T>` (`int`, `double`, `bool`, `Uint8`, `Uint16`, `Int16`) read and written through `.value`;
+- **Classes:** fields, one constructor without a body (named parameters, initializing formals, an initializer
+  list), methods, getters, static members, and composition (a `final` field holding another object, created in
+  place). An object is a top-level `final` or such a field, used only through its fields and methods; it becomes a
+  C++ `struct` global, constant-initialized. No inheritance, interfaces, mixins, operators or setters (E027), and
+  objects are never passed, stored or compared (E018).
+- **Enums and `switch`:** simple enums (`enum class : uint8_t`, `.index`, `Signal<Mode>`); `switch` statements on
+  ints and enums with constant cases, Dart 3 semantics (no fall-through).
+- **`OnStart(() { … })`:** a widget that runs once in `setup()`, at its place in `children`, for library setup.
+- **Library wrappers,** each imported on its own (`import 'package:unodar/eeprom.dart';`): EEPROM, SPI,
+  SoftwareSerial, LiquidCrystal (parallel HD44780 LCDs) and DHT (DHT11/DHT22). Each is checked against its C++
+  header by a conformance probe, and each SUBSET section says what is verified in the simulator and what only on a
+  real board. Pins are checked across widgets and bindings (`@CppPin`, `@CppUsesPins`).
+- **Phase 5 (v0.5), signals:** `Signal<T>`, `Computed`, `Watch`, and a `Led` that follows a signal.
+- **Signals (Phase 5):** `Signal<T>` (`int`, `double`, `bool`, `Uint8`, `Uint16`, `Int16`) read and written through `.value`;
   `Watch(signal, (v) { … })`; `Computed(() => …)`, a single expression over signals declared above; `Led(on: …)`
   and `led.set(b)`. A write only marks the signal; at the end of every `loop()` pass, one generated function delivers
   each change once, in declaration order (a write made by a Watch arrives in the next pass). Equal writes deliver
@@ -50,11 +70,12 @@ void main() => runDevice(Device(board: Uno(), children: [
 
 Examples: [`examples/blink`](examples/blink), [`examples/pulse`](examples/pulse),
 [`examples/dial`](examples/dial) (a potentiometer turns a servo), [`examples/button_led`](examples/button_led)
-(a button toggles the LED, a timer prints `tick`), and [`examples/counter`](examples/counter) (two buttons count and
-clear, the LED shows odd counts); `dial`, `button_led` and `counter` run in Wokwi (see their `wokwi/` folders). See
-[`docs/SUBSET.md`](docs/SUBSET.md) for exactly what is accepted and [`docs/DIAGNOSTICS.md`](docs/DIAGNOSTICS.md) for
-every error code (E001–E026). The roadmap is in [`docs/PRD.md`](docs/PRD.md); Phase 6 (classes and library
-wrappers) is next.
+(a button toggles the LED, a timer prints `tick`), [`examples/counter`](examples/counter) (two buttons count and
+clear, the LED shows odd counts), and [`examples/thermostat`](examples/thermostat) (a DHT22, a 16×2 LCD, two
+buttons, a heater LED, and the setpoint kept in EEPROM); `dial`, `button_led`, `counter` and `thermostat` run in
+Wokwi (see their `wokwi/` folders). See [`docs/SUBSET.md`](docs/SUBSET.md) for exactly what is accepted and
+[`docs/DIAGNOSTICS.md`](docs/DIAGNOSTICS.md) for every error code (E001–E028). The roadmap is in
+[`docs/PRD.md`](docs/PRD.md); Phase 7 (CLI and developer experience) is next.
 
 ## Known limits
 Unodar is experimental. Beyond the subset itself (`docs/SUBSET.md`), these are the limits to know about:
@@ -72,9 +93,18 @@ Unodar is experimental. Beyond the subset itself (`docs/SUBSET.md`), these are t
   Runtime values are converted by C++ rules.
 - **Strings exist only as `Serial.print` literals**: no `String` variables, interpolation, or string arguments to
   your own functions.
-- **Objects exist only through bindings**, as top-level `final` objects or `external final` existing ones: no
-  classes of your own yet (Phase 6), and no binding objects as locals, parameters, or results.
-- **Widgets are static and few:** `Led`, `Button`, `Every`, `Watch` only, every argument a compile-time constant
+- **Objects are places, not values:** an object of your class or a binding is a top-level `final` (or a field
+  created in place), used only through its fields and methods: no locals, parameters, results or fields that refer
+  to an object, no `==` on objects, and no inheritance (E018, E027). Composition gives the reuse.
+- **Wrapped libraries are a fixed set** (EEPROM, SPI, SoftwareSerial, LiquidCrystal, DHT); anything else needs your
+  own binding (`@CppClass`) or `cpp('…')`. No library that allocates (NeoPixel, Adafruit SSD1306), no I²C LCD
+  backpacks, and nothing that needs arrays (`createChar`, SPI buffers); fixed-size lists are a later decision.
+- **Library calls can block,** and that is documented, not rejected: an LCD `clear()` waits 2.3 ms, a DHT exchange
+  6.2 ms with interrupts off for about 4 ms (`millis()` loses about 3 ms each time), a SoftwareSerial byte keeps
+  interrupts off for its whole frame. Each wrapper's section in `docs/SUBSET.md` lists the measured waits.
+- **Pins of member objects are not compared,** only those of widgets, top-level bound objects and objects the
+  program uses (`SPI` takes 10–13).
+- **Widgets are static and few:** `Led`, `Button`, `Every`, `Watch`, `OnStart` only, every argument a compile-time constant
   (or, for `Watch` and `Led(on:)`, the name of a top-level signal), each widget a top-level `final` or written in
   `children`, one widget per pin. No release callback, and `Button` always uses the internal pull-up (button to GND).
 - **Signals are static too:** top-level `final`s with a constant initial value, only in widget programs, used only
@@ -87,8 +117,9 @@ Unodar is experimental. Beyond the subset itself (`docs/SUBSET.md`), these are t
   mutable variables (E026). Each read evaluates it, so keep it cheap.
 - **Callbacks run inside `loop()`, one after another**, so a slow callback delays the others; `delay()` is
   rejected in callbacks (E023). An `Every` that falls behind catches up one tick per pass.
-- **Libraries reserve RAM** before your code runs, out of 2048 B. Measured: Serial about 200 B, Wire about 200 B
-  more, Servo about 50 B. arduino-cli reports the total as "Global variables use …".
+- **Libraries reserve RAM** before your code runs, out of 2048 B. Measured: Serial 175 B, Wire about 200 B more,
+  Servo about 50 B, a SoftwareSerial 117 B, an LCD 36 B, a DHT sensor 19 B **plus Serial's 175 B even if you never
+  use `Serial`** (its dependency links it). arduino-cli reports the total as "Global variables use …".
 - **`cpp('…')` is not checked**, except that heap words are rejected (E020). What it does is up to you.
 - **Wokwi on wokwi.com builds without `-fwrapv`.** The examples never overflow, so they behave the same there; Wokwi
   for VS Code runs the firmware you build with the flags. For a widget or signal program, add `unodar_widgets.h`
@@ -98,7 +129,8 @@ Unodar is experimental. Beyond the subset itself (`docs/SUBSET.md`), these are t
   watched `Computed` as a `Signal` of its type. A `Watch`, an unwatched `Computed` and the delivery itself use 0 B
   (measured with `avr-nm`).
 - **Requirements:** arduino-cli with `arduino:avr` 1.8.8 and the libraries pinned in `tool/arduino_libraries.txt`
-  (today `Servo` 1.3.0) for builds, and Node.js 20.19+ for the runtime tests (`(cd tool/avr_runner && npm ci)`). Tests that need them skip with install instructions; CI
+  (`Servo` 1.3.0, `LiquidCrystal` 1.0.7, `DHT sensor library` 1.4.7 and `Adafruit Unified Sensor` 1.1.15) for
+  builds, and Node.js 20.19+ for the runtime tests (`(cd tool/avr_runner && npm ci)`). Tests that need them skip with install instructions; CI
   requires them.
 
 ## Quick start
@@ -115,9 +147,9 @@ arduino-cli compile --fqbn arduino:avr:uno --build-property compiler.c.extra_fla
 |---|---|
 | `packages/unodar` | User-facing API. Declarations only (for autocomplete and `dart analyze`); never executed. |
 | `packages/unodar_compiler` | Analyzer-based compiler and the `unodar` CLI. |
-| `runtime/` | `unodar_widgets.h`, the hand-written widget and signal runtime that widget programs include (embedded in the compiler). |
-| `examples/` | Example sketches written in Dart (`blink`, `pulse`, `dial`, `button_led`, `counter`, each with notes for running it). |
-| `tool/` | `check_arduino.sh` (builds the examples with arduino-cli), the E014 name extractor, `embed_runtime.sh` (embeds the widget header in the compiler), and `avr_runner/` (avr8js simulator with pin I/O for the runtime tests). |
+| `runtime/` | `unodar_widgets.h`, the hand-written widget and signal runtime that widget programs include, and `unodar_spi.h`, the SPI shim (both embedded in the compiler). |
+| `examples/` | Example sketches written in Dart (`blink`, `pulse`, `dial`, `button_led`, `counter`, `thermostat`, each with notes for running it). |
+| `tool/` | `check_arduino.sh` (builds the examples with arduino-cli), the E014 name extractor, `embed_runtime.sh` (embeds the runtime headers in the compiler), `arduino_libraries.txt` (the pinned libraries), and `avr_runner/` (avr8js simulator with pin I/O and models of EEPROM, an SPI slave, an HD44780 LCD and a DHT22, for the runtime tests). |
 | `docs/` | PRD, plan, subset spec, diagnostics reference, decisions log. |
 
 ## License
