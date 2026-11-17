@@ -10,6 +10,21 @@ the text shown. Every diagnostic has a stable code, a severity, a `file:line:col
 
 The file is the source's base name. Diagnostics are printed in source order, followed by a count line (`2 errors.`).
 
+In a terminal, `unodar build` and `unodar flash` also show the source line with a caret under the column, and a link
+to the code's section of this file at the compiler's release tag, with colour unless `NO_COLOR` is set:
+
+```text
+main.dart:5:17: error[E022]: pin A4 (18) is already used by Wire (SDA), which this program uses.
+  |
+5 | final sda = Led(pin: A4);
+  |                 ^
+  = help: Use another pin: Wire takes pins A4 (SDA) and A5 (SCL).
+  = see: https://github.com/TheCodeDaniel/unodar/blob/v0.7.0/docs/DIAGNOSTICS.md#e022-widget-rules
+```
+
+`--plain` prints only the two lines above per diagnostic, which is what the examples below show and what scripts and
+editors should parse.
+
 ## Exit codes
 
 Every `unodar` command uses the same codes:

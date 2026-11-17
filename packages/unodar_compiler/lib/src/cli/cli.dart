@@ -12,6 +12,7 @@ import '../toolchain/setup.dart';
 import '../toolchain/toolchain.dart';
 import '../version.dart';
 import 'new_project.dart';
+import 'render.dart';
 
 /// Process exit codes (PRD §9.6; 3 and 4 from Phase 7, see docs/DIAGNOSTICS.md "Exit codes").
 abstract final class ExitCodes {
@@ -35,12 +36,20 @@ abstract final class ExitCodes {
 /// What a command runs with: its output streams, the environment and the working directory (injectable so that
 /// tests run commands in-process against fake toolchains).
 final class CliContext {
-  const CliContext({required this.out, required this.err, required this.environment, required this.workingDirectory});
+  const CliContext(
+      {required this.out,
+      required this.err,
+      required this.environment,
+      required this.workingDirectory,
+      this.color = false});
 
   final StringSink out;
   final StringSink err;
   final Map<String, String> environment;
   final String workingDirectory;
+
+  /// Whether diagnostics may use ANSI colours (stderr is a terminal and `NO_COLOR` is not set).
+  final bool color;
 
   UnodarHome get home => UnodarHome.fromEnvironment(environment);
 
@@ -59,6 +68,9 @@ final class _Command {
   final Future<int> Function(ArgResults args, CliContext context) run;
 }
 
+const _plainHelp = 'Print diagnostics as `file:line:col: error[Exxx]: message` and `= help:` lines only (no source '
+    'line, link or colour), e.g. for scripts and editors.';
+
 ArgParser _withHelp(ArgParser parser) => parser..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
 
 final _commands = [
@@ -70,7 +82,8 @@ final _commands = [
       ..addOption('output',
           abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')
       ..addFlag('cpp-only',
-          negatable: false, help: 'Only write the C++; do not build it with arduino-cli (needs no toolchain).')),
+          negatable: false, help: 'Only write the C++; do not build it with arduino-cli (needs no toolchain).')
+      ..addFlag('plain', negatable: false, help: _plainHelp)),
     _build,
   ),
   _Command(
@@ -93,7 +106,8 @@ final _commands = [
           help: 'The serial port of the board, e.g. /dev/cu.usbmodem1101 or /dev/ttyACM0. Without it, unodar uploads '
               'to the one port identified as an Arduino Uno.')
       ..addOption('output',
-          abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')),
+          abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')
+      ..addFlag('plain', negatable: false, help: _plainHelp)),
     _flash,
   ),
   _Command(
@@ -146,12 +160,15 @@ Future<int> runCli(List<String> arguments,
     {required StringSink out,
     required StringSink err,
     Map<String, String>? environment,
-    String? workingDirectory}) async {
+    String? workingDirectory,
+    bool color = false}) async {
+  final env = environment ?? Platform.environment;
   final context = CliContext(
       out: out,
       err: err,
-      environment: environment ?? Platform.environment,
-      workingDirectory: workingDirectory ?? Directory.current.path);
+      environment: env,
+      workingDirectory: workingDirectory ?? Directory.current.path,
+      color: color && !env.containsKey('NO_COLOR'));
   try {
     final global = _globalParser();
     final ArgResults top;
@@ -254,8 +271,16 @@ Future<BuiltProgram> buildProgram(ArgResults args, CliContext context,
     case final CompileSuccess success:
       result = success;
     case CompileFailure(:final diagnostics):
+      final plain = args.flag('plain');
+      String? source;
+      try {
+        source = File(context.resolve(input)).readAsStringSync();
+      } on FileSystemException {
+        source = null;
+      }
       for (final diagnostic in diagnostics) {
-        err.writeln(diagnostic.format());
+        err.writeln(plain ? diagnostic.format() : renderDiagnostic(diagnostic, source: source, color: context.color));
+        if (!plain) err.writeln();
       }
       err.writeln('${diagnostics.length} ${diagnostics.length == 1 ? 'error' : 'errors'}.');
       return (exitCode: ExitCodes.diagnostics, sketchFolder: null, buildPath: null, cli: null);
