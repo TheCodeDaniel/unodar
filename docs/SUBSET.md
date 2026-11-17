@@ -378,6 +378,9 @@ Wire.requestFrom(0x68, 2);
 final high = Wire.read();
 ```
 
+Wire uses A4 (SDA) and A5 (SCL), so a program that uses `Wire` cannot put a widget or a `@CppPin` argument on them
+(E022; `Wire` is declared with `@CppUsesPins`).
+
 | Dart (`Wire`, a `TwoWire`) | C++ |
 |---|---|
 | `begin()`, `setClock(hz)` | `Wire.begin()`, `Wire.setClock(uint32_t)` |

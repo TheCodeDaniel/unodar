@@ -1,0 +1,4 @@
+input.dart:5:17: error[E022]: pin A4 (18) is already used by Wire (SDA), which this program uses.
+  = help: Use another pin: Wire takes pins A4 (SDA) and A5 (SCL).
+input.dart:6:20: error[E022]: pin A5 (19) is already used by Wire (SCL), which this program uses.
+  = help: Use another pin: Wire takes pins A4 (SDA) and A5 (SCL).

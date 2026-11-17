@@ -655,7 +655,7 @@ abstract final class Diagnostics {
   static Diagnostic pinUsedByObject(int pin, String object, String role, String pins, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,
-        message: 'pin $pin is already used by $object ($role), which this program uses.',
+        message: 'pin ${pinLabel(pin)} is already used by $object ($role), which this program uses.',
         suggestion: 'Use another pin: $object takes ${pins.contains(',') || pins.contains(' and ') ? 'pins' : 'pin'} '
             '$pins.',
       );
@@ -844,6 +844,12 @@ abstract final class Diagnostics {
 }
 
 /// `[a]` → `a`; `[a, b]` → `a and b`; `[a, b, c]` → `a, b, and c`.
+/// An Uno pin by its name on the board: `13`, or `A4` for the analog pins 14 to 19.
+String pinName(int pin) => pin >= 14 && pin <= 19 ? 'A${pin - 14}' : '$pin';
+
+/// An Uno pin for a message: `13`, or `A4 (18)`, so that both spellings a program may use appear.
+String pinLabel(int pin) => pin >= 14 && pin <= 19 ? '${pinName(pin)} ($pin)' : '$pin';
+
 String englishList(List<String> items) => switch (items) {
       [] => 'none',
       [final only] => only,

@@ -244,7 +244,8 @@ final class WidgetPinRule implements ValidationRule {
     // Pins taken by an external object the program uses (`@CppUsesPins`, SPI's 10 to 13) belong to it first.
     final objectPins = <int, (String object, String role, String all)>{};
     for (final object in _usedObjects(unit, context)) {
-      final all = englishList([for (final MapEntry(:key, :value) in object.usesPins.entries) '$key ($value)']);
+      final all =
+          englishList([for (final MapEntry(:key, :value) in object.usesPins.entries) '${pinName(key)} ($value)']);
       for (final MapEntry(:key, :value) in object.usesPins.entries) {
         objectPins.putIfAbsent(key, () => (object.dartName, value, all));
       }

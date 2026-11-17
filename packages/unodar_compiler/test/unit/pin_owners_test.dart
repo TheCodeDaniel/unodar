@@ -41,6 +41,17 @@ void main() => runDevice(Device(board: Uno(), children: [led, button]));
 '''));
   });
 
+  test('A4 and A5 are free in a program that does not use Wire', () async {
+    expectCompiles(await compile('''
+import 'package:unodar/unodar.dart';
+
+final led = Led(pin: A4);
+final button = Button(pin: A5, onPressed: () { led.toggle(); });
+
+void main() => runDevice(Device(board: Uno(), children: [led, button]));
+'''));
+  });
+
   test('the DHT wrapper does not take pins 0 and 1: it links Serial but never opens it', () async {
     expectCompiles(await compile('''
 import 'package:unodar/dht.dart';

@@ -103,7 +103,7 @@ Unodar is experimental. Beyond the subset itself (`docs/SUBSET.md`), these are t
   6.2 ms with interrupts off for about 4 ms (`millis()` loses about 3 ms each time), a SoftwareSerial byte keeps
   interrupts off for its whole frame. Each wrapper's section in `docs/SUBSET.md` lists the measured waits.
 - **Pins of member objects are not compared,** only those of widgets, top-level bound objects and objects the
-  program uses (`SPI` takes 10–13).
+  program uses (`SPI` takes 10–13, `Wire` A4/A5, `Serial` 0/1).
 - **Widgets are static and few:** `Led`, `Button`, `Every`, `Watch`, `OnStart` only, every argument a compile-time constant
   (or, for `Watch` and `Led(on:)`, the name of a top-level signal), each widget a top-level `final` or written in
   `children`, one widget per pin. No release callback, and `Button` always uses the internal pull-up (button to GND).

@@ -39,4 +39,7 @@ abstract final class TwoWire {
 }
 
 /// The Uno's I²C bus (A4 = SDA, A5 = SCL). Compiles to C++ `Wire`.
+///
+/// A program that uses it cannot put a widget or a `@CppPin` argument on A4 or A5 (E022).
+@CppUsesPins({18: 'SDA', 19: 'SCL'})
 external final TwoWire Wire;
