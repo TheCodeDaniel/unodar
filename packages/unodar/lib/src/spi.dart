@@ -33,8 +33,10 @@ abstract final class SpiClass {
   external void endTransaction();
 }
 
-/// The SPI bus (C++ `unodar_spi`, which forwards to Arduino's `SPI`).
+/// The SPI bus (C++ `unodar_spi`, which forwards to Arduino's `SPI`). A program that uses it cannot put a widget or a
+/// bound object's pin on 10 to 13.
 @CppName('unodar_spi')
+@CppUsesPins({10: 'SS', 11: 'MOSI', 12: 'MISO', 13: 'SCK'})
 external final SpiClass SPI;
 
 /// Most significant bit first (C++ `MSBFIRST`).

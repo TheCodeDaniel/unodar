@@ -527,7 +527,8 @@ not apply to, an argument that is not a string literal, a C++ name that is not a
 is not a plain file path, a `@CppType` that is not one of the accepted types or does not fit the Dart type, or a
 `@CppRange` that is not on an integer binding parameter, whose bounds are not integer literals, are reversed, or lie
 outside the parameter's C++ type; a `@CppPin` anywhere but an integer parameter of a binding constructor, or together
-with `@CppRange`; a `@CppPrint` anywhere but a binding class, on a class without `print` or `println`, or with a
+with `@CppRange`; a `@CppUsesPins` anywhere but an external object, or whose argument is not a map literal from pins
+0 to 19 to non-empty role strings; a `@CppPrint` anywhere but a binding class, on a class without `print` or `println`, or with a
 `print`/`println` not declared exactly as `external void print(Object value, {int digits = 2})` (an `Object`
 parameter without `@CppPrint` is an unsupported type, with a hint to add it). Interop annotations inside one of your own classes do not apply and are reported as misplaced. All
 problems with one member are listed in one diagnostic.
@@ -555,7 +556,7 @@ input.dart:7:19: error[E017]: unsupported binding method 'readTemperature': it h
 ```
 
 (Golden tests: `test/golden/e017_binding_members`, `e017_binding_signatures`, `e017_annotations`,
-`e017_cpp_range`, `e017_cpp_pin`, `e017_annotations_in_classes`, `e017_cpp_print`.)
+`e017_cpp_range`, `e017_cpp_pin`, `e017_annotations_in_classes`, `e017_cpp_print`, `e017_cpp_uses_pins`.)
 
 ## E018: Object misuse
 
@@ -679,7 +680,8 @@ A widget (`Led`, `Button`, `Every`) is a top-level `final` or is written directl
 anywhere else (a local variable, inside a callback, a non-`final` variable) it is rejected. Its arguments are
 compile-time constants: the pin like any constant, the interval a `Duration(…)` with constant arguments adding up
 to a whole number of milliseconds from 1 to 2147483647. Each pin belongs to one widget, or to one top-level bound
-object whose constructor marks it `@CppPin`. Every top-level widget is
+object whose constructor marks it `@CppPin`, or to an external object the program uses that declares it with
+`@CppUsesPins` (`SPI` takes pins 10 to 13: "pin 13 is already used by SPI (SCK), which this program uses"). Every top-level widget is
 listed in `children` exactly once, or it would never be set up and polled (a `Watch`, which has nothing to set up
 or poll, would never run when its signal changes, and its message says so). A top-level widget's callback may only
 use widgets declared above it. A widget handle can only be listed in `children` or used to call its methods
@@ -711,7 +713,7 @@ input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
 `e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`, `e022_bound_led`, `e022_on_start`,
-`e022_binding_pins`.)
+`e022_binding_pins`, `e022_spi_pins`.)
 
 ## E023: `delay()` in a widget callback
 

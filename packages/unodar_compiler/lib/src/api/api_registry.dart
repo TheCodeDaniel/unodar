@@ -214,13 +214,16 @@ final class ApiWidget {
 
 /// An existing C++ object of an [ApiClass]: `Serial`, or an `external final` object of a binding class (`Wire`).
 final class ApiObject {
-  const ApiObject(this.dartName, {required this.cppName, required this.className});
+  const ApiObject(this.dartName, {required this.cppName, required this.className, this.usesPins = const {}});
 
   final String dartName;
   final String cppName;
 
   /// The [ApiClass.dartName] of its class.
   final String className;
+
+  /// The pins the object takes whenever the program uses it, with their roles (`@CppUsesPins`, SPI's `13: 'SCK'`).
+  final Map<int, String> usesPins;
 }
 
 /// Binding classes and objects read from annotations (`binding_reader.dart`).

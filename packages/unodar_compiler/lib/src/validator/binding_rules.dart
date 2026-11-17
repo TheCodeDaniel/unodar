@@ -268,6 +268,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
       'CppType' => _isBindingMethod(target) || _isBindingParameter(target),
       'CppRange' => _isBindingParameter(target),
       'CppPin' => _isBindingParameter(target) && target.parent?.parent is ConstructorDeclaration,
+      'CppUsesPins' => _isExternalObject(target),
       'CppInclude' => target is LibraryDirective,
       _ => false,
     };
@@ -277,6 +278,30 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     }
     // No argument: a pin's type is checked with its signature, a @CppPrint class's print methods with the class.
     if (name == 'CppPin' || name == 'CppPrint') return;
+    if (name == 'CppUsesPins') {
+      final argument = node.arguments?.arguments.singleOrNull;
+      final entries = argument is SetOrMapLiteral && argument.isMap ? argument.elements : null;
+      final pins = <int>{};
+      final valid = entries != null &&
+          entries.isNotEmpty &&
+          entries.every((e) =>
+              e is MapLiteralEntry &&
+              e.key is IntegerLiteral &&
+              ((e.key as IntegerLiteral).value ?? -1) >= 0 &&
+              ((e.key as IntegerLiteral).value ?? 20) <= 19 &&
+              pins.add((e.key as IntegerLiteral).value!) &&
+              e.value is SimpleStringLiteral &&
+              (e.value as SimpleStringLiteral).value.isNotEmpty);
+      if (!valid) {
+        context.report(Diagnostics.annotationArgument(
+            name,
+            'its argument must be a map literal from pins (integer literals 0 to 19) to their roles (string '
+                'literals)',
+            "Write it directly, e.g. `@CppUsesPins({11: 'MOSI', 13: 'SCK'})`.",
+            context.at(node)));
+      }
+      return;
+    }
     if (name == 'CppRange') {
       final arguments = node.arguments?.arguments;
       final bounds = [
@@ -339,6 +364,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     'CppType': 'parameters and methods of a binding class',
     'CppRange': 'integer parameters of a binding class',
     'CppPin': 'integer parameters of a binding constructor',
+    'CppUsesPins': 'external objects',
     'CppPrint': 'binding classes',
     'CppInclude': 'the `library;` directive',
   };

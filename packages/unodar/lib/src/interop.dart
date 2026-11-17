@@ -55,6 +55,15 @@ final class CppPin {
   const CppPin();
 }
 
+/// The pins an `external final` object takes whenever the program uses it, each with its role, e.g.
+/// `@CppUsesPins({10: 'SS', 11: 'MOSI', 12: 'MISO', 13: 'SCK'})` on `SPI`. In a program that uses the object, no
+/// widget and no `@CppPin` of a bound object may use one of them (E022).
+final class CppUsesPins {
+  const CppUsesPins(this.pins);
+
+  final Map<int, String> pins;
+}
+
 /// Gives the `print` and `println` of a binding class the dispatch `Serial` has, for a C++ class derived from
 /// Arduino's `Print` (LiquidCrystal, SoftwareSerial): a string literal is a flash string, a `bool` prints
 /// `true`/`false`, and a `double` takes `digits`. Declare them as

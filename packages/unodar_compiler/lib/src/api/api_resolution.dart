@@ -137,13 +137,22 @@ bool isPrintMethod(MethodElement method) {
 }
 
 /// The name of the unodar interop annotation [annotation] (`CppClass`, `CppHeader`, `CppName`, `CppType`,
-/// `CppRange`, `CppPin`, `CppPrint`, `CppInclude`), or null if it is not one.
+/// `CppRange`, `CppPin`, `CppUsesPins`, `CppPrint`, `CppInclude`), or null if it is not one.
 String? interopAnnotationName(ElementAnnotation annotation) {
   final element = annotation.element;
   final cls = element is ConstructorElement ? element.enclosingElement : null;
   if (cls is! ClassElement || !isUnodarElement(cls)) return null;
-  return const {'CppClass', 'CppHeader', 'CppName', 'CppType', 'CppRange', 'CppPin', 'CppPrint', 'CppInclude'}
-          .contains(cls.name)
+  return const {
+    'CppClass',
+    'CppHeader',
+    'CppName',
+    'CppType',
+    'CppRange',
+    'CppPin',
+    'CppUsesPins',
+    'CppPrint',
+    'CppInclude',
+  }.contains(cls.name)
       ? cls.name
       : null;
 }

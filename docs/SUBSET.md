@@ -338,6 +338,11 @@ Rules (E017 for any violation):
   `external SoftSerial(@CppPin() @CppType('uint8_t') int rx, @CppPin() @CppType('uint8_t') int tx);`. It cannot be
   combined with `@CppRange`. Pins of member objects (inside your own classes) are not compared, because one class
   may have several objects.
+- `@CppUsesPins({10: 'SS', 11: 'MOSI', 12: 'MISO', 13: 'SCK'})` on an external object lists the pins it takes,
+  each with its role, whenever the program uses the object (names it anywhere). In such a program no widget and no
+  `@CppPin` of a top-level bound object may use one of them (E022, "pin 13 is already used by SPI (SCK)"); a
+  program that does not use the object keeps the pins free. The argument is a map literal from integer literals 0
+  to 19 to non-empty string literals (E017). It changes no generated code.
 - `@CppPrint()` on the class gives its `print` and `println` the dispatch `Serial` has (see "Serial"): any printable
   value, a string literal as a flash string (`F("…")`), a `bool` as `true`/`false` (C++ would print `1`/`0`), and
   `digits:` for a `double` only. Use it for a C++ class derived from Arduino's `Print` (LiquidCrystal,
@@ -478,9 +483,11 @@ SPI.endTransaction();
   C++ `SPI_MODEn` macros are the same modes shifted into the control register (`SPI_MODE1` is 4), so the shim
   shifts the number itself, and a constant outside 0 to 3 is E004. In C++ a plain `1` would silently be mode 0; here
   it is mode 1.
-- **Pins:** SPI uses pins 11 (MOSI), 12 (MISO) and 13 (SCK), and `begin()` makes pin 10 an output. Pin 13 is also
-  the built-in LED: **do not use a `Led` or `Button` on pins 10–13 with SPI**. Unodar does not check this yet (E022
-  only compares constructor pins, and `SPI` has none). Any free pin can be the chip select; pin 10 is the usual one.
+- **Pins:** SPI uses pins 11 (MOSI), 12 (MISO) and 13 (SCK), and `begin()` makes pin 10 (SS) an output, so a
+  program that uses `SPI` cannot put a widget or a `@CppPin` of a bound object on pins 10 to 13 (E022; `SPI` is
+  declared with `@CppUsesPins`). Pin 13 is also the built-in LED, so a `Led(pin: LED_BUILTIN)` is rejected too.
+  Pin 10 is the usual chip select, driven with `digitalWrite`; another device's chip select can be any free pin.
+  Pins of member objects (inside your own classes) are not compared, as for `@CppPin`.
 - `SPI` is the library's one object (E018 otherwise). Not wrapped: `transfer(buffer, size)` (needs arrays),
   `usingInterrupt`, and the deprecated `setBitOrder`/`setDataMode`/`setClockDivider`.
 - Cost: 3 B of RAM (the SPI library's state); the shim object is an empty `constexpr` struct, 0 B. The `spi` golden

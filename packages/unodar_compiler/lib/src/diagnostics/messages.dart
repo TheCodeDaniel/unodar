@@ -641,6 +641,15 @@ abstract final class Diagnostics {
         suggestion: 'Give each widget its own pin.',
       );
 
+  /// [object] (`SPI`) takes [pin] as [role] (`SCK`) in a program that uses it; [pins] lists all its pins.
+  static Diagnostic pinUsedByObject(int pin, String object, String role, String pins, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'pin $pin is already used by $object ($role), which this program uses.',
+        suggestion: 'Use another pin: $object takes ${pins.contains(',') || pins.contains(' and ') ? 'pins' : 'pin'} '
+            '$pins.',
+      );
+
   static Diagnostic widgetNotInChildren(String name, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,

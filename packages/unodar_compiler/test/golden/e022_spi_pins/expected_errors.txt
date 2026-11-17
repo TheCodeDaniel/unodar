@@ -1,0 +1,10 @@
+input.dart:16:17: error[E022]: pin 13 is already used by SPI (SCK), which this program uses.
+  = help: Use another pin: SPI takes pins 10 (SS), 11 (MOSI), 12 (MISO), and 13 (SCK).
+input.dart:17:27: error[E022]: pin 12 is already used by SPI (MISO), which this program uses.
+  = help: Use another pin: SPI takes pins 10 (SS), 11 (MOSI), 12 (MISO), and 13 (SCK).
+input.dart:17:31: error[E022]: pin 11 is already used by SPI (MOSI), which this program uses.
+  = help: Use another pin: SPI takes pins 10 (SS), 11 (MOSI), 12 (MISO), and 13 (SCK).
+input.dart:18:23: error[E022]: pin 10 is already used by SPI (SS), which this program uses.
+  = help: Use another pin: SPI takes pins 10 (SS), 11 (MOSI), 12 (MISO), and 13 (SCK).
+input.dart:25:20: error[E022]: pin 2 is already used by radio (IRQ), which this program uses.
+  = help: Use another pin: radio takes pin 2 (IRQ).

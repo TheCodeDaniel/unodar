@@ -1,6 +1,9 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
+
+import '../api/api_registry.dart';
 
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
@@ -238,15 +241,39 @@ final class WidgetPinRule implements ValidationRule {
       }
     }
     pins.sort((a, b) => a.$1.compareTo(b.$1));
+    // Pins taken by an external object the program uses (`@CppUsesPins`, SPI's 10 to 13) belong to it first.
+    final objectPins = <int, (String object, String role, String all)>{};
+    for (final object in _usedObjects(unit, context)) {
+      final all = englishList([for (final MapEntry(:key, :value) in object.usesPins.entries) '$key ($value)']);
+      for (final MapEntry(:key, :value) in object.usesPins.entries) {
+        objectPins.putIfAbsent(key, () => (object.dartName, value, all));
+      }
+    }
     final owners = <int, String>{};
     for (final (_, node, pin, owner) in pins) {
       final previous = owners[pin];
-      if (previous != null) {
+      if (objectPins[pin] case (final object, final role, final all)) {
+        context.report(Diagnostics.pinUsedByObject(pin, object, role, all, context.at(node)));
+      } else if (previous != null) {
         context.report(Diagnostics.duplicatePin(pin, previous, context.at(node)));
       } else {
         owners[pin] = owner;
       }
     }
+  }
+
+  /// The external objects with `@CppUsesPins` that [unit] names anywhere, in the order of their first use.
+  static List<ApiObject> _usedObjects(CompilationUnit unit, ValidationContext context) {
+    final used = <ApiObject>{};
+    unit.accept(_IdentifierVisitor((identifier) {
+      final element = identifier.element;
+      if (element is! GetterElement || element.variable is! TopLevelVariableElement) return;
+      final variable = element.variable as TopLevelVariableElement;
+      if (!variable.isExternal) return;
+      final object = context.api.object(variable.name!);
+      if (object != null && object.usesPins.isNotEmpty) used.add(object);
+    }));
+    return used.toList();
   }
 }
 

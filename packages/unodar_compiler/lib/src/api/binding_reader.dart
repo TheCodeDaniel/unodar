@@ -61,9 +61,26 @@ final class BindingReader {
         for (final variable in variables)
           if (_classOfObject(variable) case final cls? when bound.containsKey(cls))
             ApiObject(variable.name!,
-                cppName: _string(variable, 'CppName') ?? variable.name!, className: bound[cls]!.dartName),
+                cppName: _string(variable, 'CppName') ?? variable.name!,
+                className: bound[cls]!.dartName,
+                usesPins: _usesPins(variable)),
       ],
     );
+  }
+
+  /// The pins of a `@CppUsesPins` on an external object (empty without one).
+  Map<int, String> _usesPins(TopLevelVariableElement variable) {
+    for (final metadata in variable.metadata.annotations) {
+      if (interopAnnotationName(metadata) != 'CppUsesPins') continue;
+      final map = metadata.computeConstantValue()?.getField('pins')?.toMapValue();
+      final pins = {
+        for (final MapEntry(:key, :value) in map?.entries ?? const <MapEntry<DartObject?, DartObject?>>[])
+          if ((key?.toIntValue(), value?.toStringValue()) case (final int pin, final String role)) pin: role,
+      };
+      if (map == null || pins.length != map.length) throw BindingError(variable, 'unreadable @CppUsesPins');
+      return pins;
+    }
+    return const {};
   }
 
   /// A library wrapper's `const int`: emitted as its `@CppName` (a C++ macro of the same value, which the conformance
