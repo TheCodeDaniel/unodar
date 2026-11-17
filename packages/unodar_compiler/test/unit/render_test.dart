@@ -32,7 +32,7 @@ void main() {
     message: 'argument -13 is out of range for parameter \'pin\' of digitalWrite, which is a uint8_t (0 to 255).',
     suggestion: 'Pass a value from 0 to 255.',
   );
-  final source = List.generate(7, (i) => '// line ${i + 1}').join('\n') + '\n  digitalWrite(-13, HIGH);\n}\n';
+  final source = '${List.generate(7, (i) => '// line ${i + 1}').join('\n')}\n  digitalWrite(-13, HIGH);\n}\n';
 
   test('the source line with a caret under the column, the help, and the link', () {
     expect(
