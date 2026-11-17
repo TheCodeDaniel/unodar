@@ -926,7 +926,10 @@ Objects are statically allocated and created before `setup()`, so a constructor 
 constructor body would run before Arduino's `init()`, where Dart would run it when the object is first used.
 Inheritance is rejected because faithful virtual dispatch needs vtables, which AVR copies into RAM; composition
 (a field holding another object) gives the reuse. A class with a problem is reported once per problem; the
-problems of a class that extends another are reported only once, at `extends`.
+problems of a class that extends another are reported only once, at `extends`. A class that extends Flutter's
+`StatelessWidget`, `StatefulWidget`, `State`, `InheritedWidget` or `ChangeNotifier` gets its own message (unodar
+widgets are not Flutter widgets), and the Dart errors inside it (`BuildContext` is undefined without Flutter) are not
+reported.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -954,7 +957,8 @@ input.dart:10:19: error[E027]: a class cannot extend another class in this versi
   = help: Give 'FastBlinker' a field of type 'Blinker' instead (composition), or merge the two classes.
 ```
 
-(Golden tests: `test/golden/e027_class_header`, `e027_constructors`, `e027_members`, `e027_composition`.)
+(Golden tests: `test/golden/e027_class_header`, `e027_constructors`, `e027_members`, `e027_composition`,
+`newcomer_stateless_widget`.)
 
 ## E028: Enum rules
 

@@ -580,6 +580,16 @@ abstract final class Diagnostics {
         suggestion: "Give '$cls' a field of type '$base' instead (composition), or merge the two classes.",
       );
 
+  /// A user class that extends Flutter's `StatelessWidget` & co. (E027).
+  static Diagnostic flutterWidgetClass(String cls, String base, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.classRule,
+        location: at,
+        message: "'$cls' cannot extend $base: unodar widgets are not Flutter widgets, and nothing calls a build().",
+        suggestion: 'Describe the device in main() instead, e.g. '
+            '`void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`. Classes of your own with a '
+            'build() that returns widgets are planned for a later version.',
+      );
+
   static Diagnostic constructorBody(SourceLocation at) => Diagnostic(
         code: DiagnosticCode.classRule,
         location: at,

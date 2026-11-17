@@ -79,7 +79,12 @@ final class Compiler {
     // `tone(8, 440);`. The analyzer calls that an undefined name, but the user's real problem is "not part of the
     // unodar API", which the validator reports as E003 with a better suggestion.
     final unresolvedCalls = unresolvedCallStatementOffsets(source.unit);
-    final fatal = analysisErrors.where((e) => !unresolvedCalls.contains(e.offset));
+    // `class MyApp extends StatelessWidget { Widget build(BuildContext context) … }` is one problem (E027), not one
+    // analyzer error per Flutter name inside it.
+    final flutterClasses = offsetsInFlutterWidgetClasses(source.unit);
+    bool explained(AnalysisError e) =>
+        unresolvedCalls.contains(e.offset) || flutterClasses.any((r) => e.offset >= r.$1 && e.offset < r.$2);
+    final fatal = analysisErrors.where((e) => !explained(e));
     if (fatal.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
 
     final (programApi, unodarApi) = _registryFor(source);

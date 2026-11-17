@@ -66,3 +66,18 @@ Set<int> unresolvedCallStatementOffsets(CompilationUnit unit) => {
         if (expression case MethodInvocation(target: null, :final methodName) when methodName.element == null)
           methodName.offset,
     };
+
+/// Flutter's widget base classes. A class of the user's that extends one is E027 with its own message
+/// ([ClassRule]); nothing else in it is checked, and the analyzer's errors inside it (`BuildContext`, `Text`, …, all
+/// undefined without Flutter) are explained by that diagnostic ([offsetsInFlutterWidgetClasses]).
+const flutterWidgetClasses = {'StatelessWidget', 'StatefulWidget', 'State', 'InheritedWidget', 'ChangeNotifier'};
+
+/// Whether [declaration] extends one of [flutterWidgetClasses].
+bool extendsFlutterWidget(ClassDeclaration declaration) =>
+    flutterWidgetClasses.contains(declaration.extendsClause?.superclass.name.lexeme);
+
+/// The source ranges of the user's classes that extend a Flutter widget class.
+List<(int, int)> offsetsInFlutterWidgetClasses(CompilationUnit unit) => [
+      for (final declaration in unit.declarations.whereType<ClassDeclaration>())
+        if (extendsFlutterWidget(declaration)) (declaration.offset, declaration.end),
+    ];

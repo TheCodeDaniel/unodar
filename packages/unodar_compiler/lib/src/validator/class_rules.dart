@@ -43,7 +43,10 @@ final class ClassRule implements ValidationRule {
         context.report(Diagnostics.classFeature(what, help, context.at(at)));
 
     if (declaration.extendsClause case final clause?) {
-      context.report(Diagnostics.classExtends(name, clause.superclass.name.lexeme, context.at(clause.extendsKeyword)));
+      final base = clause.superclass.name.lexeme;
+      context.report(extendsFlutterWidget(declaration)
+          ? Diagnostics.flutterWidgetClass(name, base, context.at(clause.extendsKeyword))
+          : Diagnostics.classExtends(name, base, context.at(clause.extendsKeyword)));
       return;
     }
     for (final (keyword, word) in [
