@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../compiler.dart';
 import '../toolchain/arduino_build.dart';
 import '../toolchain/doctor.dart';
+import '../toolchain/ports.dart';
 import '../toolchain/setup.dart';
 import '../toolchain/toolchain.dart';
 import '../version.dart';
@@ -78,6 +79,20 @@ final _commands = [
       ..addFlag('dev',
           negatable: false, help: 'Also check what contributors need: Node.js and the avr8js runner of the tests.')),
     _doctor,
+  ),
+  _Command(
+    'flash',
+    'Build a Dart program and upload it to the Uno plugged in',
+    'unodar flash [<file.dart>] [--port <port>] [-o <outdir>]',
+    () => _withHelp(ArgParser()
+      ..addOption('port',
+          abbr: 'p',
+          valueHelp: 'port',
+          help: 'The serial port of the board, e.g. /dev/cu.usbmodem1101 or /dev/ttyACM0. Without it, unodar uploads '
+              'to the one port identified as an Arduino Uno.')
+      ..addOption('output',
+          abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')),
+    _flash,
   ),
   _Command(
     'setup',
@@ -270,6 +285,61 @@ Future<BuiltProgram> buildProgram(ArgResults args, CliContext context,
   }
   context.out.writeln(compiled.sizeLine);
   return (exitCode: ExitCodes.success, sketchFolder: p.dirname(ino), buildPath: buildPath, cli: cli);
+}
+
+Future<int> _flash(ArgResults args, CliContext context) async {
+  final built = await buildProgram(args, context, cppOnly: false, command: 'flash');
+  if (built.exitCode != ExitCodes.success) return built.exitCode;
+  final cli = built.cli!;
+  final err = context.err;
+  var port = args.option('port');
+  if (port == null) {
+    final listed = await cli.run(['board', 'list', '--format', 'json']);
+    if (listed.exitCode != 0) {
+      err.writeln('error: `arduino-cli board list` failed: ${'${listed.stderr}'.trim()}');
+      return ExitCodes.board;
+    }
+    switch (choosePort(parseBoardList('${listed.stdout}'))) {
+      case PortChosen(:final address):
+        port = address;
+      case final problem:
+        err.writeln('error: ${portProblem(problem, command: 'unodar flash', os: Platform.operatingSystem)}');
+        return ExitCodes.board;
+    }
+  }
+  context.out.writeln('Uploading to $port...');
+  final upload =
+      await cli.run(['upload', '--fqbn', 'arduino:avr:uno', '--port', port, '--input-dir', built.buildPath!]);
+  if (upload.exitCode != 0) {
+    final output = '${upload.stderr}\n${upload.stdout}'.trim();
+    err
+      ..writeln(output)
+      ..writeln()
+      ..writeln('error: ${uploadProblem(output, port)}');
+    return ExitCodes.board;
+  }
+  context.out.writeln('Done: the program is running on the board.');
+  return ExitCodes.success;
+}
+
+/// What to tell the user about a failed upload, from avrdude's and arduino-cli's output.
+String uploadProblem(String output, String port) {
+  final text = output.toLowerCase();
+  if (text.contains('resource busy') || text.contains('access is denied') || text.contains('port busy')) {
+    return 'the port $port is busy: close any serial monitor (or the Arduino IDE) that has it open, and try again.';
+  }
+  if (text.contains('permission denied')) {
+    return 'you may not open $port. On Linux, add yourself to the dialout group (`sudo usermod -aG dialout \$USER`, '
+        'then log out and in), or see `unodar doctor`.';
+  }
+  if (text.contains('no such file') || text.contains('not found') || text.contains('cannot find')) {
+    return 'there is no port $port (any more). Plug the board in and check the port with `unodar doctor`.';
+  }
+  if (text.contains('not in sync') || text.contains('programmer is not responding') || text.contains('timeout')) {
+    return 'the board on $port did not answer. Check that it is an Arduino Uno (or a clone with the Uno '
+        'bootloader), that nothing is wired to pins 0 and 1 during the upload, and try again.';
+  }
+  return 'the upload to $port failed (output above).';
 }
 
 Future<int> _doctor(ArgResults args, CliContext context) async {

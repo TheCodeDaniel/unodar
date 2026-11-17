@@ -21,6 +21,7 @@ final class FakeArduinoCli {
       },
       List<Map<String, Object?>> ports = const [],
       Map<String, Object?>? compileResult,
+      String? uploadError,
       Map<String, int> failing = const {}}) {
     Directory(dir).createSync(recursive: true);
     _write('version.json', {'Application': 'arduino-cli', 'VersionString': version});
@@ -30,6 +31,12 @@ final class FakeArduinoCli {
         .writeAsStringSync([for (final MapEntry(:key, :value) in libraries.entries) '$key\t$value\n'].join());
     _write('board.json', {'detected_ports': ports});
     _write('compile.json', compileResult ?? successfulCompile);
+    final uploadErr = File(p.join(dir, 'upload_err.txt'));
+    if (uploadError != null) {
+      uploadErr.writeAsStringSync(uploadError);
+    } else if (uploadErr.existsSync()) {
+      uploadErr.deleteSync();
+    }
     final fail = [
       for (final MapEntry(:key, :value) in failing.entries) '  "$key") echo "fake failure of $key" >&2; exit $value ;;',
     ].join('\n');
@@ -85,6 +92,8 @@ case "$1 $2" in
   "core install") spec="$3"; replace "$here/cores.txt" "${spec%@*}" "${spec##*@}" ;;
   "lib install") spec="$4"; replace "$here/libs.txt" "${spec%@*}" "${spec##*@}" ;;
   "config get") echo "$here/data" ;;
+  "upload "*) if [ -f "$here/upload_err.txt" ]; then cat "$here/upload_err.txt" >&2; exit 1; fi
+    echo "New upload port: $3 (serial)" ;;
   "compile "*) cat "$here/compile.json"; grep -q '"success":true' "$here/compile.json" || exit 1 ;;
   *) echo "{}" ;;
 esac
