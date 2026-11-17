@@ -25,6 +25,10 @@ main.dart:5:17: error[E022]: pin A4 (18) is already used by Wire (SDA), which th
 `--plain` prints only the two lines above per diagnostic, which is what the examples below show and what scripts and
 editors should parse.
 
+Golden tests named `newcomer_*` hold first attempts by a Flutter developer who has not read these docs (Dart's
+`print`, a Flutter import, `async`, a `String` variable, …). Each must give exactly one diagnostic whose help says
+what to write instead.
+
 ## Exit codes
 
 Every `unodar` command uses the same codes:

@@ -1,0 +1,2 @@
+input.dart:6:3: error[E002]: a for-in loop is not supported in this version.
+  = help: Use a counting loop instead: `for (int i = 0; i < n; i++) { ... }`.
