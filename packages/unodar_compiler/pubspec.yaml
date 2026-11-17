@@ -12,6 +12,7 @@ executables:
 dependencies:
   analyzer: ^14.7.0
   args: ^2.7.0
+  crypto: ^3.0.8
   path: ^1.9.1
   unodar:
     path: ../unodar

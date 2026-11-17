@@ -23,39 +23,15 @@ final class FakeArduinoCli {
       Map<String, int> failing = const {}}) {
     Directory(dir).createSync(recursive: true);
     _write('version.json', {'Application': 'arduino-cli', 'VersionString': version});
-    _write('core.json', {
-      'platforms': [
-        for (final MapEntry(:key, :value) in cores.entries) {'id': key, 'installed_version': value},
-      ]
-    });
-    _write('lib.json', {
-      'installed_libraries': [
-        for (final MapEntry(:key, :value) in libraries.entries)
-          {
-            'library': {'name': key, 'version': value}
-          },
-      ]
-    });
+    File(p.join(dir, 'cores.txt'))
+        .writeAsStringSync([for (final MapEntry(:key, :value) in cores.entries) '$key\t$value\n'].join());
+    File(p.join(dir, 'libs.txt'))
+        .writeAsStringSync([for (final MapEntry(:key, :value) in libraries.entries) '$key\t$value\n'].join());
     _write('board.json', {'detected_ports': ports});
     final fail = [
       for (final MapEntry(:key, :value) in failing.entries) '  "$key") echo "fake failure of $key" >&2; exit $value ;;',
     ].join('\n');
-    File(executable).writeAsStringSync('''
-#!/bin/sh
-# Fake arduino-cli for unodar's tests.
-here="\$(cd "\$(dirname "\$0")" && pwd)"
-printf '%s\\n' "\$*" >> "\$here/calls.log"
-case "\$1" in
-$fail
-esac
-case "\$1 \$2" in
-  "version "*) cat "\$here/version.json" ;;
-  "core list") cat "\$here/core.json" ;;
-  "lib list") cat "\$here/lib.json" ;;
-  "board list") cat "\$here/board.json" ;;
-  *) echo "{}" ;;
-esac
-''');
+    File(executable).writeAsStringSync(_script.replaceFirst('__FAIL__', fail));
     Process.runSync('chmod', ['+x', executable]);
   }
 
@@ -71,3 +47,29 @@ esac
 
   void _write(String name, Object json) => File(p.join(dir, name)).writeAsStringSync(jsonEncode(json));
 }
+
+/// The fake's shell script. `__FAIL__` becomes the `case` arms of the commands told to fail. Installed cores and
+/// libraries are tab-separated `name<TAB>version` lines in `cores.txt`/`libs.txt`; an install replaces a name's line.
+const _script = r'''#!/bin/sh
+# Fake arduino-cli for unodar's tests.
+here="$(cd "$(dirname "$0")" && pwd)"
+printf '%s\n' "$*" >> "$here/calls.log"
+case "$1" in
+__FAIL__
+esac
+json() { awk -F'\t' -v key="$1" -v ver="$2" -v wrap="$3" 'BEGIN { printf "{\"%s\":[", wrap }
+  NF == 2 { if (n++) printf ","; if (wrap == "platforms") printf "{\"%s\":\"%s\",\"%s\":\"%s\"}", key, $1, ver, $2;
+            else printf "{\"library\":{\"%s\":\"%s\",\"%s\":\"%s\"}}", key, $1, ver, $2 }
+  END { print "]}" }' "$4"; }
+replace() { grep -v "^$2	" "$1" > "$1.tmp" || true; printf '%s\t%s\n' "$2" "$3" >> "$1.tmp"; mv "$1.tmp" "$1"; }
+case "$1 $2" in
+  "version "*) cat "$here/version.json" ;;
+  "core list") json id installed_version platforms "$here/cores.txt" ;;
+  "lib list") json name version installed_libraries "$here/libs.txt" ;;
+  "board list") cat "$here/board.json" ;;
+  "core install") spec="$3"; replace "$here/cores.txt" "${spec%@*}" "${spec##*@}" ;;
+  "lib install") spec="$4"; replace "$here/libs.txt" "${spec%@*}" "${spec##*@}" ;;
+  "config get") echo "$here/data" ;;
+  *) echo "{}" ;;
+esac
+''';

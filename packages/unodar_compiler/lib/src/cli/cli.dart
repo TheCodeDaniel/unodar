@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../compiler.dart';
 import '../toolchain/doctor.dart';
+import '../toolchain/setup.dart';
 import '../toolchain/toolchain.dart';
 import '../version.dart';
 
@@ -74,6 +75,17 @@ final _commands = [
       ..addFlag('dev',
           negatable: false, help: 'Also check what contributors need: Node.js and the avr8js runner of the tests.')),
     _doctor,
+  ),
+  _Command(
+    'setup',
+    'Install the tested Arduino toolchain into ~/.unodar (safe to re-run)',
+    'unodar setup [--dev]',
+    () => _withHelp(ArgParser()
+      ..addFlag('dev',
+          negatable: false,
+          help: 'Also install what the tests of a unodar checkout need (npm ci in tool/avr_runner; Node.js itself is '
+              'yours to install).')),
+    _setup,
   ),
 ];
 
@@ -224,6 +236,17 @@ Future<int> _doctor(ArgResults args, CliContext context) async {
       checkout: dev ? findCheckout(context.workingDirectory) : null);
   context.out.writeln(renderDoctor(checks));
   return checks.any((c) => c.status == CheckStatus.problem) ? ExitCodes.toolchain : ExitCodes.success;
+}
+
+Future<int> _setup(ArgResults args, CliContext context) {
+  final dev = args.flag('dev');
+  return runSetup(
+      home: context.home,
+      environment: context.environment,
+      out: context.out,
+      err: context.err,
+      dev: dev,
+      checkout: dev ? findCheckout(context.workingDirectory) : null);
 }
 
 /// Writes [result] as `<outDir>/<name>/<name>.ino` (arduino-cli requires the sketch folder and the `.ino` to share a
