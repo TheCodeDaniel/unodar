@@ -167,8 +167,8 @@ bool _isPrintSignature(MethodDeclaration method) {
     if (hasInteropAnnotation(parameter, 'CppPin')) {
       if (!type.isInteger) {
         problems.add("a @CppPin on a parameter that is not an int ('${parameter.name}')");
-      } else if (cppRangeOf(parameter) != null) {
-        problems.add("both @CppPin and @CppRange on '${parameter.name}' (a pin's range is 0 to 19)");
+      } else if (cppRangeOf(parameter) case (final min, final max) when min < 0 || max > 19) {
+        problems.add("a @CppRange on the pin '${parameter.name}' outside 0 to 19 ($min to $max)");
       }
     }
     if (cppRangeOf(parameter) case (final min, final max)) {

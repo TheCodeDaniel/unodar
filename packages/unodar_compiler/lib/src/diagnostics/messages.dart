@@ -542,6 +542,16 @@ abstract final class Diagnostics {
         suggestion: 'Pass a pin from 0 to 19, e.g. `13` or `A0`.',
       );
 
+  /// A `@CppPin` narrowed by `@CppRange` (SoftwareSerial's 2 to 19). Pins 0 and 1 get the reason: they are the Uno's
+  /// hardware serial port.
+  static Diagnostic pinOutsideCppRange(int value, String function, int min, int max, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedArgument,
+        location: at,
+        message: 'pin $value is out of range for $function, which accepts pins $min to $max (`@CppRange`)'
+            '${(value == 0 || value == 1) && min > value ? ": pins 0 and 1 are Serial's (RX and TX, also the USB connection)" : ''}.',
+        suggestion: 'Pass a pin from $min to $max.',
+      );
+
   // E021: widget program shape.
 
   static Diagnostic widgetProgramEntryPoint(String name, SourceLocation at) => Diagnostic(

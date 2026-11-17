@@ -335,8 +335,9 @@ Rules (E017 for any violation):
   checked (see deviations).
 - `@CppPin()` on an integer parameter of the constructor marks it as an Arduino pin: a constant argument must be
   0 to 19 (E004), and no widget or other top-level bound object may use the same pin (E022), e.g.
-  `external SoftSerial(@CppPin() @CppType('uint8_t') int rx, @CppPin() @CppType('uint8_t') int tx);`. It cannot be
-  combined with `@CppRange`. Pins of member objects (inside your own classes) are not compared, because one class
+  `external SoftSerial(@CppPin() @CppType('uint8_t') int rx, @CppPin() @CppType('uint8_t') int tx);`. A
+  `@CppRange` within 0 to 19 narrows it further (`@CppPin() @CppRange(2, 19)` where Serial's pins 0 and 1 cannot
+  work); a constant outside is E004, which names Serial when the pin is 0 or 1. Pins of member objects (inside your own classes) are not compared, because one class
   may have several objects.
 - `@CppUsesPins({10: 'SS', 11: 'MOSI', 12: 'MISO', 13: 'SCK'})` on an external object lists the pins it takes,
   each with its role, whenever the program uses the object (names it anywhere). In such a program no widget and no
@@ -520,7 +521,7 @@ void loop() {
 
 | Dart (`SoftwareSerial`) | C++ (`SoftwareSerial.h`) | Wait (avr8js, 9600 baud) |
 |---|---|---|
-| `SoftwareSerial(rx, tx, {inverseLogic = false})` | `SoftwareSerial(uint8_t, uint8_t, bool)`; `rx` and `tx` are `@CppPin`s | none |
+| `SoftwareSerial(rx, tx, {inverseLogic = false})` | `SoftwareSerial(uint8_t, uint8_t, bool)`; `rx` and `tx` are `@CppPin`s, 2 to 19 | none |
 | `begin(baud)` | `void begin(long)`, 300 to 115200 (E004 outside) | none |
 | `print(value)`, `println(value)` | `Print`'s, with `Serial`'s dispatch (`@CppPrint`) | 1.04 ms per byte sent, interrupts off for 0.94 ms of it |
 | `write(byte)` → `int` | `size_t write(uint8_t)`, returns 1 | 1.04 ms, as above |
@@ -534,9 +535,10 @@ void loop() {
 - **Sending blocks.** Each byte keeps interrupts off for 9 bit times (0.94 ms at 9600 baud, 78 µs at 115200), so
   nothing is received meanwhile, by any `SoftwareSerial` or by `Serial`'s receive interrupt at high speeds, and a
   widget's debounce timing shifts by up to that much. Bytes that arrive while you send are lost.
-- **Pins.** Any pins 2 to 19, given as constants (E004 outside 0 to 19; E022 if a widget or another bound object
-  uses one). Pins 0 and 1 are `Serial`'s; unodar does not check them against `Serial` yet. A `SoftwareSerial` inside
-  your own class (a member object) works, but its pins are not compared (see "Binding C++ classes").
+- **Pins.** Any pins 2 to 19, given as constants (E004 outside, E022 if a widget or another bound object uses
+  one). Pins 0 and 1 are E004 in every program, also one that does not use `Serial`: they are the hardware serial
+  port, wired to the USB chip, which drives RX and listens on TX. A `SoftwareSerial` inside your own class (a member
+  object) works, but its pins are not compared (see "Binding C++ classes"); the 2 to 19 range applies to them too.
 - Speeds: 57600 and below receive reliably; at 115200 sending is within tolerance (measured below), receiving is
   marginal on a real board.
 - Cost: 68 B of RAM shared by all objects (the 64-byte buffer and its state) and an 18-byte table of virtual

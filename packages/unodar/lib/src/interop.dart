@@ -50,7 +50,8 @@ final class CppRange {
 
 /// Marks an integer parameter of a binding constructor as an Arduino pin, e.g.
 /// `external LiquidCrystal(@CppPin() @CppType('uint8_t') int rs, …);`. A constant pin is checked like a widget's: 0 to
-/// 19 (E004), and used by no widget and no other bound object (E022).
+/// 19 (E004), and used by no widget and no other bound object (E022). A `@CppRange` narrows it further, e.g.
+/// `@CppPin() @CppRange(2, 19)` where pins 0 and 1 (Serial's) cannot work.
 final class CppPin {
   const CppPin();
 }

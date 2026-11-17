@@ -470,7 +470,9 @@ final class ArgumentRule implements ValidationRule {
       final (min, max) = (parameter.min, parameter.max);
       if (min == null || max == null) continue;
       final value = context.constants.valueOf(argument.argumentExpression);
-      if (value is int && (value < min || value > max) && parameter.isPin) {
+      if (value is int && (value < min || value > max) && parameter.isPin && parameter.hasCppRange) {
+        context.report(Diagnostics.pinOutsideCppRange(value, name, min, max, context.at(argument)));
+      } else if (value is int && (value < min || value > max) && parameter.isPin) {
         context.report(Diagnostics.pinOutOfRange('$value', name, context.at(argument)));
       } else if (value is int && (value < min || value > max)) {
         context.report(parameter.hasCppRange

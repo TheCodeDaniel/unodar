@@ -118,7 +118,9 @@ An argument the unodar API function cannot accept:
 - `digits:` given to `Serial.print`/`println` with a value that is not a `double` (for an `int`, Arduino's second
   argument would mean the number base);
 - a widget pin, or a `@CppPin` constructor argument of a binding, outside 0 to 19, the Uno's pins (D0–D13, and
-  A0–A5 as 14–19), reported as "pin 20 is out of range for Led: …";
+  A0–A5 as 14–19), reported as "pin 20 is out of range for Led: …", or outside the pin's `@CppRange`
+  (SoftwareSerial's 2 to 19: "pin 0 is out of range for SoftwareSerial, which accepts pins 2 to 19 (`@CppRange`):
+  pins 0 and 1 are Serial's …");
 - a named argument the function does not declare. The analyzer already reports such a call as E007; E004 is the
   compiler's own guard behind it.
 
@@ -147,7 +149,7 @@ input.dart:9:9: error[E004]: argument -250 is out of range for parameter 'ms' of
 (Golden tests: `test/golden/e004_argument_out_of_range`, `e004_more_ranges`, `e004_core_io_ranges`,
 `e004_serial_digits`, `e004_binding_ranges`, `e004_wire_ranges`, `e004_servo_ranges`, `e004_servo_pulse_min`,
 `e004_servo_pulse_max`, `e004_widget_pins`, `e004_serial_baud`, `e004_eeprom_ranges`, `e004_spi_ranges`,
-`e004_software_serial_ranges`, `e004_liquid_crystal_ranges`.)
+`e004_software_serial_ranges`, `e004_software_serial_pins`, `e004_liquid_crystal_ranges`.)
 
 ## E005: Unsupported top-level declaration
 
@@ -526,8 +528,8 @@ or an unsupported parameter or return type. Also an interop annotation in the wr
 not apply to, an argument that is not a string literal, a C++ name that is not a valid identifier, a header that
 is not a plain file path, a `@CppType` that is not one of the accepted types or does not fit the Dart type, or a
 `@CppRange` that is not on an integer binding parameter, whose bounds are not integer literals, are reversed, or lie
-outside the parameter's C++ type; a `@CppPin` anywhere but an integer parameter of a binding constructor, or together
-with `@CppRange`; a `@CppUsesPins` anywhere but an external object, or whose argument is not a map literal from pins
+outside the parameter's C++ type; a `@CppPin` anywhere but an integer parameter of a binding constructor, or with a
+`@CppRange` that leaves 0 to 19; a `@CppUsesPins` anywhere but an external object, or whose argument is not a map literal from pins
 0 to 19 to non-empty role strings; a `@CppPrint` anywhere but a binding class, on a class without `print` or `println`, or with a
 `print`/`println` not declared exactly as `external void print(Object value, {int digits = 2})` (an `Object`
 parameter without `@CppPrint` is an unsupported type, with a hint to add it). Interop annotations inside one of your own classes do not apply and are reported as misplaced. All

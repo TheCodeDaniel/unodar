@@ -9,8 +9,10 @@ import 'interop.dart';
 @CppClass('SoftwareSerial')
 @CppPrint()
 final class SoftwareSerial {
-  /// Receives on [rx] and sends on [tx]. [inverseLogic] inverts both lines (idle low), for some RS-232 level shifters.
-  external SoftwareSerial(@CppPin() @CppType('uint8_t') int rx, @CppPin() @CppType('uint8_t') int tx,
+  /// Receives on [rx] and sends on [tx], pins 2 to 19: pins 0 and 1 are `Serial`'s (and the USB connection's).
+  /// [inverseLogic] inverts both lines (idle low), for some RS-232 level shifters.
+  external SoftwareSerial(
+      @CppPin() @CppRange(2, 19) @CppType('uint8_t') int rx, @CppPin() @CppRange(2, 19) @CppType('uint8_t') int tx,
       {bool inverseLogic = false});
 
   /// Starts the port at [baud] bits per second (300 to 115200; 57600 and below receive reliably) and makes this the

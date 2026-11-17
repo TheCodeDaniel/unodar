@@ -1,5 +1,5 @@
-input.dart:4:32: error[E004]: pin 20 is out of range for SoftwareSerial: the Uno has pins 0 to 19 (D0–D13, and A0–A5 as 14–19).
-  = help: Pass a pin from 0 to 19, e.g. `13` or `A0`.
+input.dart:4:32: error[E004]: pin 20 is out of range for SoftwareSerial, which accepts pins 2 to 19 (`@CppRange`).
+  = help: Pass a pin from 2 to 19.
 input.dart:5:28: error[E022]: pin 10 is already used by 'gps' (line 4).
   = help: Give each widget its own pin.
 input.dart:8:13: error[E004]: argument 250000 is out of range for parameter 'baud' of gps.begin, which accepts 300 to 115200 (`@CppRange`).
