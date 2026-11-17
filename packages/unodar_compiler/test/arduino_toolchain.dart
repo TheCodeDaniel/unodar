@@ -28,7 +28,9 @@ String installCommand(({String name, String version}) library) {
 
 final installHelp = '''
 arduino-cli, the arduino:avr core and the libraries of tool/arduino_libraries.txt are required for this check.
-Install with:
+Install them into ~/.unodar, from the repository root:
+  dart run unodar_compiler:unodar setup --dev
+or install them yourself (arduino-cli on PATH is used when ~/.unodar has none):
   brew install arduino-cli            # macOS; other platforms: https://arduino.github.io/arduino-cli/latest/installation/
   arduino-cli core update-index
   arduino-cli core install arduino:avr
@@ -159,7 +161,7 @@ final String avrRunner = p.join(packageRoot, '..', '..', 'tool', 'avr_runner', '
 const nodeHelp = '''
 The runtime fidelity harness runs programs in avr8js, which needs Node.js 20.19 or later. Install with:
   brew install node                   # macOS; other platforms: https://nodejs.org/
-  (cd tool/avr_runner && npm ci)      # installs the pinned avr8js from package-lock.json''';
+  dart run unodar_compiler:unodar setup --dev   # runs npm ci in tool/avr_runner (the pinned avr8js)''';
 
 /// Null when Node.js and the runner's pinned avr8js are installed; otherwise what is missing.
 String? missingRunner() {

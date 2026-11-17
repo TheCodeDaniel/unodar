@@ -46,11 +46,11 @@ void main() {
     }
   });
 
-  test('CI installs the pinned arduino-cli and core', () {
+  test('CI installs the toolchain through `unodar setup --dev`, so it has no second set of pins', () {
     final ci = File(fromPackage('..', '..', '.github', 'workflows', 'ci.yml')).readAsStringSync();
-    final pins = ToolchainPins.embedded;
-    expect(ci, contains('ARDUINO_CLI_VERSION: ${pins.cliVersion}\n'));
-    expect(ci, contains('ARDUINO_AVR_CORE: ${pins.core.name}@${pins.core.version}\n'));
+    expect(ci, contains('run: dart run unodar_compiler:unodar setup --dev\n'));
+    expect(ci, isNot(contains('arduino-cli core install')));
+    expect(ci, isNot(contains('setup-arduino-cli')));
   });
 
   test('a malformed line is an error, not ignored', () {
