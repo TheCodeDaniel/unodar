@@ -688,7 +688,8 @@ to a whole number of milliseconds from 1 to 2147483647. Each pin belongs to one 
 object whose constructor marks it `@CppPin`, or to an external object the program uses that declares it with
 `@CppUsesPins` (`SPI` takes pins 10 to 13: "pin 13 is already used by SPI (SCK), which this program uses"), `Wire`
 takes A4 and A5, and `Serial` takes pins 0 and 1 in a program that names it (the DHT wrapper links `Serial` but never opens it, so it does
-not count). Every top-level widget is
+not count). Two such objects that one program uses may not take the same pin either ("pins 12 and 13 are taken by
+both SPI and display"), reported once per pair at the first use of the object used later. Every top-level widget is
 listed in `children` exactly once, or it would never be set up and polled (a `Watch`, which has nothing to set up
 or poll, would never run when its signal changes, and its message says so). A top-level widget's callback may only
 use widgets declared above it. A widget handle can only be listed in `children` or used to call its methods
@@ -720,7 +721,7 @@ input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
 `e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`, `e022_bound_led`, `e022_on_start`,
-`e022_binding_pins`, `e022_spi_pins`, `e022_serial_pins`, `e022_wire_pins`.)
+`e022_binding_pins`, `e022_spi_pins`, `e022_serial_pins`, `e022_wire_pins`, `e022_object_pins`.)
 
 ## E023: `delay()` in a widget callback
 

@@ -350,7 +350,8 @@ Rules (E017 for any violation):
   (`Serial` takes 0 and 1 the same way),
   each with its role, whenever the program uses the object (names it anywhere). In such a program no widget and no
   `@CppPin` of a top-level bound object may use one of them (E022, "pin 13 is already used by SPI (SCK)"); a
-  program that does not use the object keeps the pins free. The argument is a map literal from integer literals 0
+  program that does not use the object keeps the pins free. Two objects that one program uses may not take the same
+  pin (E022, at the first use of the one used later). The argument is a map literal from integer literals 0
   to 19 to non-empty string literals (E017). It changes no generated code.
 - `@CppPrint()` on the class gives its `print` and `println` the dispatch `Serial` has (see "Serial"): any printable
   value, a string literal as a flash string (`F("…")`), a `bool` as `true`/`false` (C++ would print `1`/`0`), and

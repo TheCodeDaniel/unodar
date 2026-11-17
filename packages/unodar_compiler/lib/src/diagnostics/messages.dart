@@ -660,6 +660,15 @@ abstract final class Diagnostics {
             '$pins.',
       );
 
+  /// [later] (first used after [earlier]) takes [pins] that [earlier] takes too; both are used by the program.
+  static Diagnostic pinSharedByObjects(List<int> pins, String earlier, String later, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: '${pins.length == 1 ? 'pin' : 'pins'} ${englishList([for (final pin in pins) pinLabel(pin)])} '
+            '${pins.length == 1 ? 'is' : 'are'} taken by both $earlier and $later, and this program uses both.',
+        suggestion: 'Use only one of them in this program, or correct the `@CppUsesPins` of the one you declared.',
+      );
+
   static Diagnostic widgetNotInChildren(String name, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,
