@@ -1,5 +1,6 @@
 import 'package:test/test.dart';
 import 'package:unodar/eeprom.dart';
+import 'package:unodar/software_serial.dart';
 import 'package:unodar/spi.dart';
 import 'package:unodar/unodar.dart';
 
@@ -43,6 +44,10 @@ void main() {
   // Phase 6 (docs/SUBSET.md "Widgets"): OnStart runs its callback once, in setup().
   test('EEPROM is the one object of EepromClass, and its methods type-check', () {
     expect(_eeprom, isA<int Function()>());
+  });
+
+  test('SoftwareSerial is a class with a constructor and Serial\'s print methods', () {
+    expect(_softwareSerial, isA<int Function()>());
   });
 
   test('SPI is the one object of SpiClass; MSBFIRST/LSBFIRST mirror Arduino.h, the modes are the mode numbers', () {
@@ -179,6 +184,16 @@ Widget _onStart() => OnStart(() {
     });
 
 // Phase 6: the EEPROM wrapper, imported on its own. Never called: it only has to type-check.
+final _gps = SoftwareSerial(10, 11);
+
+int _softwareSerial() {
+  _gps.begin(9600);
+  _gps.println('hello');
+  _gps.print(1.5, digits: 1);
+  if (!_gps.isListening() && _gps.listen()) _gps.end();
+  return _gps.available() + _gps.read() + _gps.peek() + _gps.write(65) + (_gps.overflow() ? 1 : 0);
+}
+
 int _spi() {
   SPI.begin();
   SPI.beginTransaction(1000000, MSBFIRST, SPI_MODE0);

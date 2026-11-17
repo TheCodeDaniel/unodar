@@ -401,9 +401,9 @@ fixed and visible at build time; leave room for the stack. The size budgets reco
 
 Each library wrapper is imported on its own, next to `package:unodar/unodar.dart`:
 `import 'package:unodar/eeprom.dart';`. Its names (classes, objects) are reserved (E014) only in a program that
-imports it. Any other import, including `package:unodar/src/…`, is E005. Available: **EEPROM** and **SPI**
-(below). Coming in Phase 6: SoftwareSerial (part of the AVR core), LiquidCrystal 1.0.7 and, if time allows, the DHT
-sensor library 1.4.7. Each wrapper's section will state its RAM and flash cost, the longest time each
+imports it. Any other import, including `package:unodar/src/…`, is E005. Available: **EEPROM**, **SPI**
+and **SoftwareSerial** (below). Coming in Phase 6: LiquidCrystal 1.0.7 and, if time allows, the DHT sensor library
+1.4.7. Each wrapper's section will state its RAM and flash cost, the longest time each
 method waits, and a **Verified:** line saying what is checked in the avr8js simulator and what only on a real board.
 
 - A wrapper whose C++ API cannot be bound directly comes with a **shim header**, a fixed hand-written file
@@ -492,6 +492,55 @@ SPI.endTransaction();
   not a compile-time constant. The binding conforms to the shim, and the shim compiles against `SPI.h`, with a
   `static_assert` that `SPI_MODEn` is `n << 2` (conformance probe). **Only on a real board:** real chips at speed,
   signal integrity on long wires, and each device's own timing (chip-select setup times are the program's job).
+
+### SoftwareSerial, part of the AVR core
+
+```dart
+import 'package:unodar/software_serial.dart';
+import 'package:unodar/unodar.dart';
+
+final gps = SoftwareSerial(10, 11);   // RX on pin 10, TX on pin 11
+
+void setup() {
+  Serial.begin(9600);
+  gps.begin(9600);
+}
+
+void loop() {
+  if (gps.available() > 0) Serial.println(gps.read());
+}
+```
+
+| Dart (`SoftwareSerial`) | C++ (`SoftwareSerial.h`) | Wait (avr8js, 9600 baud) |
+|---|---|---|
+| `SoftwareSerial(rx, tx, {inverseLogic = false})` | `SoftwareSerial(uint8_t, uint8_t, bool)`; `rx` and `tx` are `@CppPin`s | none |
+| `begin(baud)` | `void begin(long)`, 300 to 115200 (E004 outside) | none |
+| `print(value)`, `println(value)` | `Print`'s, with `Serial`'s dispatch (`@CppPrint`) | 1.04 ms per byte sent, interrupts off for 0.94 ms of it |
+| `write(byte)` → `int` | `size_t write(uint8_t)`, returns 1 | 1.04 ms, as above |
+| `available()` → `int`, `read()` → `int`, `peek()` → `int` | `int`; `read()`/`peek()` are -1 when nothing is waiting | none |
+| `listen()` → `bool`, `isListening()` → `bool`, `end()` | only one object receives at a time | none |
+| `overflow()` → `bool` | true once after a byte was lost (buffer full) | none |
+
+- **Receiving.** Only the object that called `begin()` or `listen()` last receives; the others return 0 from
+  `available()` and lose what arrives. The receive buffer is shared and holds **63 bytes**; later bytes are dropped
+  and `overflow()` reports it. Read often, or keep the other side from sending more than 63 bytes at a time.
+- **Sending blocks.** Each byte keeps interrupts off for 9 bit times (0.94 ms at 9600 baud, 78 µs at 115200), so
+  nothing is received meanwhile, by any `SoftwareSerial` or by `Serial`'s receive interrupt at high speeds, and a
+  widget's debounce timing shifts by up to that much. Bytes that arrive while you send are lost.
+- **Pins.** Any pins 2 to 19, given as constants (E004 outside 0 to 19; E022 if a widget or another bound object
+  uses one). Pins 0 and 1 are `Serial`'s; unodar does not check them against `Serial` yet. A `SoftwareSerial` inside
+  your own class (a member object) works, but its pins are not compared (see "Binding C++ classes").
+- Speeds: 57600 and below receive reliably; at 115200 sending is within tolerance (measured below), receiving is
+  marginal on a real board.
+- Cost: 68 B of RAM shared by all objects (the 64-byte buffer and its state) and an 18-byte table of virtual
+  functions, plus 31 B per object. The `software_serial` golden (two ports and `Serial`) uses 340 B of RAM and
+  3996 B of flash.
+- **Verified:** in avr8js, from the cycle-stamped pin log: the bytes sent on each TX pin, decoded as 8N1 (the largest
+  edge error is 0.011 bit at 9600 baud and 0.12 bit at 115200, where a receiver tolerates about 0.4); bytes
+  scheduled bit by bit on the RX pin are received, the 64th to 70th are dropped and `overflow()` is true; a port
+  that is a member of a user class sends on its own pins. The binding conforms to `SoftwareSerial.h`, which derives
+  from `Print` (conformance probe). **Only on a real board:** baud tolerance against real devices' clocks, receiving
+  above 57600, and interaction with other interrupt users (Servo, `Serial` at high speeds).
 
 ## Escape hatch: `cpp()` and `@CppInclude`
 

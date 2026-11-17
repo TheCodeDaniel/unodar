@@ -1147,6 +1147,7 @@ void main() {
         final result = await simulate(build.hexPath,
             pins: ['D2=low@0'], until: null, cycles: 2400000, extra: ['--pin-log-cycles']);
         final uart = decodeUart(result.pinLog, 'D11', 9600);
+        expect(uart.framingErrors, 0);
         return String.fromCharCodes(uart.bytes);
       }
 
@@ -1164,6 +1165,74 @@ void main() {
             .replaceAll(dispatch, 'link.println(ready);')
             .replaceAll('link.println(!ready ? F("true") : F("false"));', 'link.println(!ready);'));
         expect(text, startsWith('ready 1\r\n0\r\n'));
+      });
+    });
+
+    group('SoftwareSerial sends and receives on its pins (golden software_serial, compiled by unodar)', () {
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'software_serial', 'input.dart'));
+        if (result is! CompileSuccess) fail('software_serial did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      /// `--pin` edges that send [bytes] (8N1, idle high) on [pin] at [baud], from [startMs] on.
+      List<String> uartEdges(String pin, List<int> bytes, int baud, double startMs) {
+        final bitMs = 1000 / baud;
+        final edges = ['$pin=high@0'];
+        var level = true;
+        var t = startMs;
+        for (final byte in bytes) {
+          final bits = [false, for (var b = 0; b < 8; b++) byte & (1 << b) != 0, true];
+          for (final (k, high) in bits.indexed) {
+            if (high != level) edges.add('$pin=${high ? 'high' : 'low'}@${(t + k * bitMs).toStringAsFixed(4)}');
+            level = high;
+          }
+          t += 10 * bitMs + 0.05; // a short idle gap between bytes, as a real sender may leave
+        }
+        return edges;
+      }
+
+      // 70 digits, sent on D10 from 30 ms on, after the program's own sending is over (sending blocks receiving).
+      final incoming = [for (var i = 0; i < 70; i++) 0x30 + i % 10];
+
+      Future<({String serial, List<String> pinLog})> run(String cpp, {int rxBaud = 9600}) async {
+        final build = await compileSketch('software_serial', cpp);
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return simulate(build.hexPath,
+            pins: uartEdges('D10', incoming, rxBaud, 30), cycles: 8000000, extra: ['--pin-log-cycles']);
+      }
+
+      test('TX of both ports decoded from their pins; RX keeps 63 bytes and reports the overflow', () async {
+        gate.check();
+        final result = await run(await generated());
+        final gps = decodeUart(result.pinLog, 'D11', 9600);
+        final radio = decodeUart(result.pinLog, 'D9', 9600);
+        expect(String.fromCharCodes(gps.bytes), 'gps true\r\nA');
+        expect(String.fromCharCodes(radio.bytes), 'radio\r\n', reason: 'the member object sends on its own pin');
+        expect([gps.framingErrors, radio.framingErrors], [0, 0]);
+        printOnFailure('largest TX edge error: ${gps.maxEdgeError} bit');
+        expect(gps.maxEdgeError, lessThan(0.05), reason: 'bit timing within 5 % of a bit at 9600 baud');
+        // The ring buffer holds 63 of the 70; the 63rd byte is digit 2.
+        expect(result.serial, 'overflow true\r\nkept 63\r\nlast ${0x30 + 62 % 10}\r\nempty -1\r\nDONE');
+      });
+
+      test('negative control: bytes sent at the wrong baud (4800) are not received as sent', () async {
+        gate.check();
+        final result = await run(await generated(), rxBaud: 4800);
+        expect(result.serial, isNot(contains('last ${0x30 + 62 % 10}\r\n')), reason: result.serial);
+        final wrong = decodeUart(result.pinLog, 'D11', 4800);
+        expect(String.fromCharCodes(wrong.bytes), isNot('gps true\r\nA'), reason: 'TX decoded at the wrong baud');
+      });
+
+      test('at 115200 baud, the fastest begin() accepts, TX stays within a receiver\'s tolerance', () async {
+        gate.check();
+        final cpp = (await generated()).replaceAll('gps.begin(9600);', 'gps.begin(115200);');
+        final result = await run(cpp);
+        final gps = decodeUart(result.pinLog, 'D11', 115200);
+        printOnFailure('largest TX edge error at 115200: ${gps.maxEdgeError} bit');
+        expect(String.fromCharCodes(gps.bytes), 'gps true\r\nA');
+        expect(gps.maxEdgeError, lessThan(0.25));
       });
     });
 

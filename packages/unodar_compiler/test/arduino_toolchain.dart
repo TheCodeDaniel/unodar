@@ -261,8 +261,8 @@ Future<({String serial, List<String> pinLog})> simulate(String hexPath,
 /// The bytes a UART transmitter sent on [pin] (`D11`), decoded from a cycle-stamped pin log (`--pin-log-cycles`): 8N1
 /// at [baud], idle high, sampled in the middle of each bit as a receiver does. Also the largest distance, in bits, of
 /// any edge inside a frame from its ideal position (0 for perfect timing; a receiver tolerates roughly ±0.4 at the
-/// last bit). A frame without its stop bit fails the test.
-({List<int> bytes, double maxEdgeError}) decodeUart(List<String> pinLog, String pin, int baud,
+/// last bit), and the number of frames without a stop bit (a receiver's framing errors; such a frame is still read).
+({List<int> bytes, double maxEdgeError, int framingErrors}) decodeUart(List<String> pinLog, String pin, int baud,
     {int clockHz = 16000000}) {
   final edges = <(int, bool)>[];
   for (final line in pinLog) {
@@ -281,6 +281,7 @@ Future<({String serial, List<String> pinLog})> simulate(String hexPath,
 
   final bytes = <int>[];
   var maxError = 0.0;
+  var framingErrors = 0;
   var i = 0;
   while (true) {
     // The next falling edge is a start bit.
@@ -293,7 +294,7 @@ Future<({String serial, List<String> pinLog})> simulate(String hexPath,
     for (var b = 0; b < 8; b++) {
       if (levelAt(start + (1.5 + b) * bit)) value |= 1 << b;
     }
-    if (!levelAt(start + 9.5 * bit)) fail('UART on $pin: no stop bit in the frame starting at cycle $start');
+    if (!levelAt(start + 9.5 * bit)) framingErrors++;
     bytes.add(value);
     final end = start + 9.5 * bit;
     for (i++; i < edges.length && edges[i].$1 < end; i++) {
@@ -302,5 +303,5 @@ Future<({String serial, List<String> pinLog})> simulate(String hexPath,
       if (error > maxError) maxError = error;
     }
   }
-  return (bytes: bytes, maxEdgeError: maxError);
+  return (bytes: bytes, maxEdgeError: maxError, framingErrors: framingErrors);
 }

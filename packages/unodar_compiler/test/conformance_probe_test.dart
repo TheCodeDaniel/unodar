@@ -34,9 +34,11 @@ void main() {
     bindings = const BindingReader(UnoTarget()).readImportedUnodar(library);
   });
 
-  test('the first-party bindings (Wire, Servo, EEPROM, SPI) are probed, and the probe compiles', () async {
+  test('the first-party bindings (Wire, Servo, EEPROM, SPI, SoftwareSerial) are probed, and the probe compiles',
+      () async {
     gate.check();
-    expect(bindings.classes.map((c) => c.dartName), containsAll(['TwoWire', 'Servo', 'EepromClass', 'SpiClass']));
+    expect(bindings.classes.map((c) => c.dartName),
+        containsAll(['TwoWire', 'Servo', 'EepromClass', 'SpiClass', 'SoftwareSerial']));
     final probe = conformanceProbe(bindings);
     expect(probe, contains('Wire.requestFrom('));
     expect(probe, contains('unodar_probe_value<Servo &>().attach('));
@@ -45,6 +47,8 @@ void main() {
     expect(probe, contains('#include "unodar_spi.h"'));
     expect(probe, contains('unodar_spi.beginTransaction(unodar_probe_value<uint32_t>(), '));
     expect(probe, contains('static_assert(MSBFIRST == 1,'));
+    expect(probe, contains('SoftwareSerial(unodar_probe_value<uint8_t>(), unodar_probe_value<uint8_t>(), '));
+    expect(probe, contains('unodar_probe_print(static_cast<SoftwareSerial *>(nullptr))'));
     expect(probe, isNot(contains('SPI_MODE1 ==')), reason: 'a constant without @CppName is emitted as its value');
     final build = await compileSketch('conformance', probe, files: runtimeFiles);
     printOnFailure(probe);

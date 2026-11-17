@@ -205,4 +205,8 @@ const sizeBudgets = <String, SizeBudget>{
   // RAM (avr-nm): core 9 + link 31 + SoftwareSerial's 64 B receive buffer, head, tail and active object 4 + its
   // vtable 18 + 4 B of .data; the "true"/"false" texts are flash strings (F()), 0 B.
   'cpp_print': SizeBudget(baselineFlash: 3632, baselineRam: 130, maxFlash: 4750, maxRam: 141),
+  // software_serial: the SoftwareSerial wrapper (step 16), a top-level port and one as a member object. RAM (avr-nm):
+  // Serial 175 + core 9 + SoftwareSerial's shared 64 B receive buffer, head, tail and active object 4 + its vtable
+  // 18 + gps 31 + radio 35 (link 31, sent 4) + 4 B of .data.
+  'software_serial': SizeBudget(baselineFlash: 3996, baselineRam: 340, maxFlash: 5200, maxRam: 351),
 };
