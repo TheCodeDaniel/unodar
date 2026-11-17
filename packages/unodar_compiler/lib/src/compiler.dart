@@ -9,7 +9,6 @@ import 'emitter/emitter.dart';
 import 'frontend/frontend.dart';
 import 'lowering/lowering.dart';
 import 'runtime/runtime_files.dart';
-import 'validator/declaration_rules.dart';
 import 'validator/rules.dart';
 import 'validator/validator.dart';
 

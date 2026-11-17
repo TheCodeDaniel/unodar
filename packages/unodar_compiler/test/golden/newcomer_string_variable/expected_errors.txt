@@ -1,0 +1,2 @@
+input.dart:5:1: error[E009]: the type 'String' is not supported: a String would need the heap, which unodar programs never use.
+  = help: Text exists only as a literal that is printed, e.g. `Serial.println('Uno');`, which stays in flash.

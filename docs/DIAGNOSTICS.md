@@ -295,7 +295,9 @@ declared types (variables, parameters, return types) and for the inferred static
 `Serial.print`/`println`; any other type passed there is rejected too. Binding types outside a top-level `final`
 are E018 instead. Signal type arguments follow the same list: `Signal<String>`, `Signal<num>`, `Signal<int?>` are
 E009. Printing an enum value is E009 too (print its `.index`), and so is `Signal<C>` of a class `C`. Nullable
-types get their own wording. Also used for `==`/`!=` between a
+types get their own wording, and so do `String` (it would need the heap) and collections (`List`, `Map`, `Set`,
+`Iterable`). A variable whose declared type is rejected is reported once, at the type: its initializer is checked
+once the type is fixed (`String name = 'Uno';` is one diagnostic). Also used for `==`/`!=` between a
 `bool` and a number: Dart says they are never equal, C++ says `true == 1`.
 
 ```dart
@@ -318,7 +320,7 @@ input.dart:8:17: error[E009]: the type 'num' is not supported in this version. O
 ```
 
 (Golden tests: `test/golden/e009_nullable_type`, `e009_unsupported_type`, `e009_types`,
-`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`, `e009_watch_parameter`, `e009_field_types`.)
+`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`, `e009_watch_parameter`, `e009_field_types`, `newcomer_string_variable`, `newcomer_list`.)
 
 ## E010: Constant out of range
 

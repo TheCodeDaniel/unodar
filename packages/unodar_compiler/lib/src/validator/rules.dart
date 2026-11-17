@@ -34,9 +34,13 @@ final class ValidationContext {
   final ConstantEvaluator constants = const ConstantEvaluator();
   final List<Diagnostic> diagnostics = [];
 
-  /// The argument lists of calls reported as unknown (E003), from start to end. Nothing inside them is reported:
-  /// the call is wrong as a whole, and its arguments are checked once it is rewritten (`Validator.validate`).
-  final List<(SourceLocation, SourceLocation)> unknownCallArguments = [];
+  /// Source ranges, from start to end, inside which nothing is reported (`Validator.validate`), because the code
+  /// around them is already wrong as a whole and they are checked once it is rewritten: the argument lists of calls
+  /// reported as unknown (E003), and the initializers of variables whose declared type is rejected (E009).
+  final List<(SourceLocation, SourceLocation)> silenced = [];
+
+  /// Silences [node] (see [silenced]).
+  void silence(AstNode node) => silenced.add((at(node), source.locationOf(node.end)));
 
   void report(Diagnostic diagnostic) => diagnostics.add(diagnostic);
 

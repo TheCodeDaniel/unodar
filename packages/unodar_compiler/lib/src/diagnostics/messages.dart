@@ -195,6 +195,24 @@ abstract final class Diagnostics {
             : 'Use one of the supported types; see docs/SUBSET.md.',
       );
 
+  /// A `String` variable, parameter, field or return type (E009).
+  static Diagnostic stringType(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedType,
+        location: at,
+        message: "the type 'String' is not supported: a String would need the heap, which unodar programs never use.",
+        suggestion: "Text exists only as a literal that is printed, e.g. `Serial.println('Uno');`, which stays in "
+            'flash.',
+      );
+
+  /// A `List`, `Map`, `Set` or `Iterable` type (E009).
+  static Diagnostic collectionType(String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedType,
+        location: at,
+        message: "the type '$type' is not supported: collections would need the heap, which unodar programs never "
+            'use (fixed-size lists are a later decision).',
+        suggestion: 'Use one variable per value, or a function that returns the value for an index with a `switch`.',
+      );
+
   static Diagnostic boolNumberComparison(SourceLocation at) => Diagnostic(
         code: DiagnosticCode.unsupportedType,
         location: at,

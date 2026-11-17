@@ -68,6 +68,6 @@ final class Validator {
     bool inside(SourceLocation at, (SourceLocation, SourceLocation) range) =>
         !before(at, range.$1) && before(at, range.$2);
     return sortDiagnostics(
-        context.diagnostics.where((d) => !context.unknownCallArguments.any((range) => inside(d.location, range))));
+        context.diagnostics.where((d) => !context.silenced.any((range) => inside(d.location, range))));
   }
 }

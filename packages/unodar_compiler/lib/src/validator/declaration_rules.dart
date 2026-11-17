@@ -239,7 +239,12 @@ final class DeclaredTypeRule implements ValidationRule {
     if (widgetClassOf(annotation?.type) != null) return; // E022 decides where a widget type may appear.
     if (isSignalType(annotation?.type)) return; // E024 decides where a signal type may appear (E009: its `T`).
     if (annotation != null) {
-      _annotation(annotation, context);
+      // `String name = 'Uno';` is one problem: the type. Its initializer is checked once the type is fixed.
+      if (!_annotation(annotation, context)) {
+        for (final variable in list.variables) {
+          if (variable.initializer case final initializer?) context.silence(initializer);
+        }
+      }
       return;
     }
     // `var x;`: no annotation and nothing to infer from, so the type is dynamic.
@@ -251,12 +256,14 @@ final class DeclaredTypeRule implements ValidationRule {
     }
   }
 
-  void _annotation(TypeAnnotation annotation, ValidationContext context, {bool allowVoid = false}) {
+  /// Reports [annotation]'s type if it is not supported; returns whether it is.
+  bool _annotation(TypeAnnotation annotation, ValidationContext context, {bool allowVoid = false}) {
     final type = annotation.type;
-    if (type == null || isObjectType(type) || widgetClassOf(type) != null || isSignalType(type)) return;
+    if (type == null || isObjectType(type) || widgetClassOf(type) != null || isSignalType(type)) return true;
     final irType = irTypeOf(type);
-    if (irType != null && (allowVoid || irType != IrType.void_)) return;
+    if (irType != null && (allowVoid || irType != IrType.void_)) return true;
     context.report(typeDiagnostic(type, context.at(annotation)));
+    return false;
   }
 }
 
@@ -264,5 +271,9 @@ final class DeclaredTypeRule implements ValidationRule {
 Diagnostic typeDiagnostic(DartType type, SourceLocation at, {bool isConditional = false}) {
   final display = displayType(type);
   if (isNullable(type)) return Diagnostics.nullableType(display, display.substring(0, display.length - 1), at);
+  if (type.isDartCoreString) return Diagnostics.stringType(at);
+  if (type.isDartCoreList || type.isDartCoreMap || type.isDartCoreSet || type.isDartCoreIterable) {
+    return Diagnostics.collectionType(display, at);
+  }
   return Diagnostics.unsupportedType(display, at, isConditional: isConditional);
 }

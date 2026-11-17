@@ -1,0 +1,2 @@
+input.dart:5:7: error[E009]: the type 'List<int>' is not supported: collections would need the heap, which unodar programs never use (fixed-size lists are a later decision).
+  = help: Use one variable per value, or a function that returns the value for an index with a `switch`.
