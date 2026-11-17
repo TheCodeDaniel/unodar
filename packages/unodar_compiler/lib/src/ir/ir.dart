@@ -14,22 +14,43 @@
 library;
 
 /// The value types of the subset (docs/SUBSET.md "Types"). The target maps them to C++ type names.
-enum IrType {
-  void_,
-  bool_,
+///
+/// A class rather than an `enum`, so that types the program declares itself (Phase 6: the user's enums) can join
+/// the fixed ones. Every type is a canonical instance compared by identity; the fixed ones are the constants below,
+/// listed in [values].
+final class IrType {
+  const IrType._(this.name, {this.isEnum = false});
+
+  /// The Dart-side name of the type, for messages and debugging (`int32`, `bool_`, …); for an enum, its name,
+  /// which is also its C++ name.
+  final String name;
+
+  /// One of the user's enums (docs/SUBSET.md "Enums"): C++ `enum class Name : uint8_t`.
+  final bool isEnum;
+
+  /// The canonical type of the user's enum [name].
+  static IrType enumeration(String name) => _enums.putIfAbsent(name, () => IrType._(name, isEnum: true));
+
+  static final _enums = <String, IrType>{};
+
+  static const void_ = IrType._('void_');
+  static const bool_ = IrType._('bool_');
 
   /// A string literal. Only an argument of `Serial.print`/`println` (C++ `F("…")`, a flash string); never the
   /// type of a variable.
-  string,
+  static const string = IrType._('string');
 
   /// Dart `int`.
-  int32,
+  static const int32 = IrType._('int32');
 
   /// Dart `double`.
-  float32,
-  uint8,
-  uint16,
-  int16;
+  static const float32 = IrType._('float32');
+  static const uint8 = IrType._('uint8');
+  static const uint16 = IrType._('uint16');
+  static const int16 = IrType._('int16');
+
+  /// The fixed types, in this order.
+  static const values = [void_, bool_, string, int32, float32, uint8, uint16, int16];
 
   /// Whether this is one of the integer types (`int` or a sized type).
   bool get isInteger => this == int32 || isSized;
@@ -38,6 +59,9 @@ enum IrType {
   bool get isSized => this == uint8 || this == uint16 || this == int16;
 
   bool get isNumeric => isInteger || this == float32;
+
+  @override
+  String toString() => 'IrType.$name';
 }
 
 /// How a variable may change. Dart `const` / `final` / neither.
@@ -58,6 +82,7 @@ final class IrProgram {
     required this.sourceName,
     this.includes = const [],
     this.localIncludes = const [],
+    this.enums = const [],
     this.globals = const [],
     required this.functions,
   });
@@ -73,11 +98,23 @@ final class IrProgram {
   /// order. Emitted as `#include "…"` after [includes], each once.
   final List<String> localIncludes;
 
-  /// Top-level variables and bound objects, in source order.
+  /// The user's enums, in source order. Emitted before the prototypes, so every declaration can use them.
+  final List<IrEnum> enums;
+
+  /// Top-level variables, bound objects and the structs of the user's classes, in source order.
   final List<IrGlobalDeclaration> globals;
 
   /// Functions in source order.
   final List<IrFunction> functions;
+}
+
+/// One of the user's enums: `enum class Mode : uint8_t { idle, heating };`.
+final class IrEnum {
+  const IrEnum({required this.name, required this.values, required this.line});
+
+  final String name;
+  final List<String> values;
+  final int line;
 }
 
 sealed class IrGlobalDeclaration {
@@ -122,6 +159,88 @@ final class IrBoundObject extends IrGlobalDeclaration {
   final List<IrExpression> arguments;
 }
 
+/// The C++ `struct` of one of the user's classes (docs/SUBSET.md "Your own classes"). Its objects are
+/// [IrBoundObject]s of [name].
+final class IrStruct extends IrGlobalDeclaration {
+  const IrStruct({
+    required super.name,
+    required super.line,
+    this.fields = const [],
+    this.staticFields = const [],
+    this.constructor,
+    this.methods = const [],
+  });
+
+  /// Static fields, in declaration order: `static constexpr int32_t limit = 3;` (Dart `static const`),
+  /// `static const …` (`static final`), `static …` (mutable), each also defined after the struct.
+  final List<IrStructField> staticFields;
+
+  /// Instance fields and member objects, in declaration order (C++ constructs members in this order).
+  final List<IrMember> fields;
+
+  /// The constructor, or null for Dart's default constructor (the C++ implicit one).
+  final IrConstructor? constructor;
+
+  /// Its methods and getters, declared in the struct; each is also in [IrProgram.functions], where it is defined.
+  final List<IrFunction> methods;
+}
+
+/// A member of a struct: a value field or a member object.
+sealed class IrMember {
+  const IrMember({required this.name, required this.line});
+
+  final String name;
+  final int line;
+}
+
+/// An instance field: `const int32_t id;`, `int32_t count = start;`.
+final class IrStructField extends IrMember {
+  const IrStructField({
+    required super.name,
+    required this.type,
+    required this.storage,
+    this.initializer,
+    required super.line,
+  });
+
+  final IrType type;
+
+  /// [IrStorage.final_] or [IrStorage.mutable]; a static field may also be [IrStorage.constant].
+  final IrStorage storage;
+
+  /// The Dart field initializer, a constant (a C++ default member initializer), or null.
+  final IrExpression? initializer;
+}
+
+/// A member object (composition): `Counter small = Counter(1);`, `Servo arm;`, or one the constructor creates.
+final class IrMemberObject extends IrMember {
+  const IrMemberObject({required super.name, required this.cppClass, this.arguments, required super.line});
+
+  /// The C++ class (a user struct or a binding class).
+  final String cppClass;
+
+  /// The constructor arguments of a member created by its field initializer, in C++ parameter order; null for one
+  /// the constructor creates (its arguments are in [IrConstructor.initializers]).
+  final List<IrExpression>? arguments;
+}
+
+/// A struct's constructor: parameters in Dart declaration order (named ones included), and the members it
+/// initializes, in field declaration order. It never has a body (E027).
+final class IrConstructor {
+  const IrConstructor(
+      {required this.parameters, this.initializers = const [], this.isConstexpr = true, required this.line});
+
+  final List<IrParameter> parameters;
+
+  /// (member name, constructor arguments) pairs: one argument for a value field (an initializing formal's
+  /// parameter, or an initializer-list value), a member object's constructor arguments otherwise.
+  final List<(String, List<IrExpression>)> initializers;
+
+  /// Whether every member allows a `constexpr` constructor (scalars do; binding objects do not).
+  final bool isConstexpr;
+  final int line;
+}
+
 final class IrParameter {
   const IrParameter(this.name, this.type);
 
@@ -129,7 +248,8 @@ final class IrParameter {
   final IrType type;
 }
 
-/// A top-level function. [isEntryPoint] marks `setup`/`loop`, which Arduino declares itself (no prototype).
+/// A top-level function, or with an [owner] a method of a struct. [isEntryPoint] marks `setup`/`loop`, which Arduino
+/// declares itself (no prototype).
 final class IrFunction {
   const IrFunction({
     required this.name,
@@ -138,9 +258,17 @@ final class IrFunction {
     this.returnType = IrType.void_,
     this.parameters = const [],
     this.isEntryPoint = false,
+    this.owner,
+    this.isStatic = false,
   });
 
+  /// A static method of [owner] (`static` in its declaration only).
+  final bool isStatic;
+
   final String name;
+
+  /// The struct a method belongs to (declared there, defined as `R Owner::name(…)`), or null for a function.
+  final String? owner;
   final int line;
   final IrType returnType;
   final List<IrParameter> parameters;
@@ -195,7 +323,7 @@ enum IrAssignOp {
 final class IrAssign extends IrStatement {
   const IrAssign(this.target, this.op, this.value, {required super.line});
 
-  /// The variable assigned (a local, parameter, or global).
+  /// The C++ lvalue assigned: a local, parameter, or global, or a field (`left.count`).
   final String target;
   final IrAssignOp op;
   final IrExpression value;
@@ -260,6 +388,24 @@ final class IrRawCpp extends IrStatement {
   const IrRawCpp(this.code, {required super.line});
 
   final String code;
+}
+
+/// `switch (subject) { case …: { … } break; … }`: Dart 3 cases never fall through, so every case ends with a
+/// `break`. Empty Dart cases share the body of the next one, so one [IrSwitchCase] may have several [labels].
+final class IrSwitch extends IrStatement {
+  const IrSwitch(this.subject, this.cases, {required super.line});
+
+  final IrExpression subject;
+  final List<IrSwitchCase> cases;
+}
+
+/// The constant [labels] of one body (`case 1: case 2:`), and `default:` when [isDefault]; [body] may be empty.
+final class IrSwitchCase {
+  const IrSwitchCase(this.labels, this.body, {this.isDefault = false});
+
+  final List<IrExpression> labels;
+  final List<IrStatement> body;
+  final bool isDefault;
 }
 
 /// A nested `{ … }` block.
@@ -327,6 +473,17 @@ final class IrVariable extends IrExpression {
   final IrType type;
 }
 
+/// A field of an object: `left.count` (its [object]'s C++ name), or `this->count` when [object] is null.
+final class IrFieldRead extends IrExpression {
+  const IrFieldRead(this.object, this.field, this.type);
+
+  final String? object;
+  final String field;
+
+  @override
+  final IrType type;
+}
+
 /// A string literal, [value] being the string Dart denotes (escapes resolved). C++ `F("…")`.
 final class IrStringLiteral extends IrExpression {
   const IrStringLiteral(this.value);
@@ -358,7 +515,8 @@ final class IrCall extends IrExpression {
   @override
   final IrType type;
 
-  /// The C++ object a method is called on, or null for a function call.
+  /// The C++ object a method is called on (`this` inside a method: `this->m()`), or null for a function call or a
+  /// call of a method of the current object without `this`.
   final String? receiver;
 
   /// The C++ result type, for API and binding calls whose C++ result may differ from the target's type for [type]

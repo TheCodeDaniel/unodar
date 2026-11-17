@@ -1,0 +1,8 @@
+input.dart:5:6: error[E028]: an enum with fields, constructors or methods ('Speed') is not supported in this version.
+  = help: Use a simple enum, e.g. `enum Speed { slow, fast }`, and compute the values in a function.
+input.dart:13:6: error[E028]: an enum with fields, constructors or methods ('Shape') is not supported in this version.
+  = help: Use a simple enum, e.g. `enum Shape { dot, box }`, and compute the values in a function.
+input.dart:26:15: error[E028]: the list of an enum's values ('Mode.values') is not available in this version.
+  = help: Lists are not supported; compare with each value, or use `.index`.
+input.dart:27:18: error[E028]: the name of an enum value ('mode.name') is not available in this version.
+  = help: Print `mode.index` instead.

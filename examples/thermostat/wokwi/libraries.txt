@@ -1,0 +1,4 @@
+# Arduino libraries for the wokwi.com project (Library Manager tab), the versions in tool/arduino_libraries.txt.
+LiquidCrystal@1.0.7
+DHT sensor library@1.4.7
+Adafruit Unified Sensor@1.1.15

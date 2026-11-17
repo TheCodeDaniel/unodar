@@ -1,0 +1,6 @@
+input.dart:7:20: error[E018]: `this` can only be used to name a member of the object (`this.count`, `this.update()`).
+  = help: Use a field or a method of `this`; the object itself cannot be stored, compared, passed, or printed.
+input.dart:10:18: error[E018]: `this` can only be used to name a member of the object (`this.count`, `this.update()`).
+  = help: Use a field or a method of `this`; the object itself cannot be stored, compared, passed, or printed.
+input.dart:10:26: error[E018]: `this` can only be used to name a member of the object (`this.count`, `this.update()`).
+  = help: Use a field or a method of `this`; the object itself cannot be stored, compared, passed, or printed.

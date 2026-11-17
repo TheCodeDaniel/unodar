@@ -1,4 +1,9 @@
 import 'package:test/test.dart';
+import 'package:unodar/dht.dart';
+import 'package:unodar/eeprom.dart';
+import 'package:unodar/liquid_crystal.dart';
+import 'package:unodar/software_serial.dart';
+import 'package:unodar/spi.dart';
 import 'package:unodar/unodar.dart';
 
 /// The constants are real Dart values so user code type-checks under `dart analyze`. The compiler emits them by
@@ -21,6 +26,9 @@ void main() {
     const type = CppType('uint8_t');
     const include = CppInclude('avr/wdt.h');
     const range = CppRange(33, 1059);
+    expect(const CppPin(), isA<CppPin>());
+    expect(const CppPrint(), isA<CppPrint>());
+    expect(const CppUsesPins({13: 'SCK'}).pins, {13: 'SCK'});
     expect([header.header, cppClass.name, name.name, type.type, include.header, range.min, range.max],
         ['Servo.h', 'Servo', 'write', 'uint8_t', 'avr/wdt.h', 33, 1059]);
   });
@@ -34,6 +42,35 @@ void main() {
     expect(_isSubtype<Every, Widget>(), isTrue);
     expect(_isSubtype<Uno, Board>(), isTrue);
     expect(_isSubtype<Device, Widget>(), isFalse, reason: 'a Device is the root, never a child');
+  });
+
+  // Phase 6 (docs/SUBSET.md "Widgets"): OnStart runs its callback once, in setup().
+  test('EEPROM is the one object of EepromClass, and its methods type-check', () {
+    expect(_eeprom, isA<int Function()>());
+  });
+
+  test('LiquidCrystal is a class with a 4-bit constructor and print, but no println', () {
+    expect(_liquidCrystal, isA<int Function()>());
+  });
+
+  test('Dht is a class with a constructor taking the pin and a sensor type; the types mirror DHT.h', () {
+    expect(_dht, isA<double Function()>());
+    expect([DHT11, DHT12, DHT21, DHT22, AM2301], [11, 12, 21, 22, 21]);
+  });
+
+  test('SoftwareSerial is a class with a constructor and Serial\'s print methods', () {
+    expect(_softwareSerial, isA<int Function()>());
+  });
+
+  test('SPI is the one object of SpiClass; MSBFIRST/LSBFIRST mirror Arduino.h, the modes are the mode numbers', () {
+    expect(_spi, isA<int Function()>());
+    expect([LSBFIRST, MSBFIRST], [0, 1]);
+    expect([SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3], [0, 1, 2, 3], reason: 'the shim shifts them into SPCR');
+  });
+
+  test('OnStart is a widget whose callback takes no parameters', () {
+    expect(_isSubtype<OnStart, Widget>(), isTrue);
+    expect(_onStart, isA<Widget Function()>());
   });
 
   test('the Phase 4 goal program and widget handles type-check', () {
@@ -151,4 +188,65 @@ void _staticTypes() {
     <ReadonlySignal<bool>>[_isOdd, _lit],
   ];
   checked.clear();
+}
+
+// Never called: it only has to type-check (an OnStart callback takes no parameters).
+Widget _onStart() => OnStart(() {
+      pinMode(12, OUTPUT);
+    });
+
+// Phase 6: the EEPROM wrapper, imported on its own. Never called: it only has to type-check.
+final _lcd = LiquidCrystal(12, 11, 5, 4, 3, 2);
+
+int _liquidCrystal() {
+  _lcd.begin(16, 2);
+  _lcd.clear();
+  _lcd.home();
+  _lcd.setCursor(0, 1);
+  _lcd.print('Temp ');
+  _lcd.print(21.5, digits: 1);
+  _lcd.display();
+  _lcd.noDisplay();
+  _lcd.cursor();
+  _lcd.noCursor();
+  _lcd.blink();
+  _lcd.noBlink();
+  _lcd.scrollDisplayLeft();
+  _lcd.scrollDisplayRight();
+  return _lcd.write(223);
+}
+
+final _sensor = Dht(2, DHT22);
+
+double _dht() {
+  _sensor.begin();
+  if (!_sensor.read(force: true)) return _sensor.readHumidity();
+  final celsius = _sensor.readTemperature(fahrenheit: false);
+  return _sensor.computeHeatIndex(_sensor.convertCtoF(celsius), _sensor.readHumidity(), fahrenheit: true) +
+      _sensor.convertFtoC(50.0);
+}
+
+final _gps = SoftwareSerial(10, 11);
+
+int _softwareSerial() {
+  _gps.begin(9600);
+  _gps.println('hello');
+  _gps.print(1.5, digits: 1);
+  if (!_gps.isListening() && _gps.listen()) _gps.end();
+  return _gps.available() + _gps.read() + _gps.peek() + _gps.write(65) + (_gps.overflow() ? 1 : 0);
+}
+
+int _spi() {
+  SPI.begin();
+  SPI.beginTransaction(1000000, MSBFIRST, SPI_MODE0);
+  final value = SPI.transfer(0x9F) + SPI.transfer16(0);
+  SPI.endTransaction();
+  SPI.end();
+  return value;
+}
+
+int _eeprom() {
+  EEPROM.update(0, EEPROM.read(1));
+  EEPROM.write(2, 3);
+  return EEPROM.length();
 }

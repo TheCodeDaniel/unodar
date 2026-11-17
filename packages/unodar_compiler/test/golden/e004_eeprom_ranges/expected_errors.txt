@@ -1,0 +1,6 @@
+input.dart:5:16: error[E004]: argument 1024 is out of range for parameter 'address' of EEPROM.write, which accepts 0 to 1023 (`@CppRange`).
+  = help: Pass a value from 0 to 1023; the library does not handle values outside it.
+input.dart:6:17: error[E004]: argument -1 is out of range for parameter 'address' of EEPROM.update, which accepts 0 to 1023 (`@CppRange`).
+  = help: Pass a value from 0 to 1023; the library does not handle values outside it.
+input.dart:6:21: error[E004]: argument 300 is out of range for parameter 'value' of EEPROM.update, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.

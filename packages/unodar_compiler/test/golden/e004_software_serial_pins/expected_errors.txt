@@ -1,0 +1,6 @@
+input.dart:6:35: error[E004]: pin 0 is out of range for SoftwareSerial, which accepts pins 2 to 19 (`@CppRange`): pins 0 and 1 are Serial's (RX and TX, also the USB connection).
+  = help: Pass a pin from 2 to 19.
+input.dart:7:38: error[E004]: pin 1 is out of range for SoftwareSerial, which accepts pins 2 to 19 (`@CppRange`): pins 0 and 1 are Serial's (RX and TX, also the USB connection).
+  = help: Pass a pin from 2 to 19.
+input.dart:8:31: error[E004]: pin 20 is out of range for SoftwareSerial, which accepts pins 2 to 19 (`@CppRange`).
+  = help: Pass a pin from 2 to 19.

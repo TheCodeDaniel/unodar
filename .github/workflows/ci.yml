@@ -23,7 +23,6 @@ env:
   DART_SDK_VERSION: 3.13.2
   ARDUINO_CLI_VERSION: 1.5.1
   ARDUINO_AVR_CORE: arduino:avr@1.8.8
-  SERVO_LIBRARY: Servo@1.3.0
   NODE_VERSION: 22.12.0
   UNODAR_REQUIRE_ARDUINO: '1'
 
@@ -65,10 +64,14 @@ jobs:
           arduino-cli core install "$ARDUINO_AVR_CORE"
 
       # Libraries live outside ~/.arduino15 (in ~/Arduino/libraries), so this runs every time; it is small.
-      - name: Install the Servo library
+      # tool/arduino_libraries.txt pins every library and every dependency, so each is installed exactly and without
+      # its dependencies (arduino_libraries_test.dart checks that nothing is missing from the file).
+      - name: Install the Arduino libraries
         run: |
           arduino-cli lib update-index
-          arduino-cli lib install "$SERVO_LIBRARY"
+          grep -vE '^[[:space:]]*(#|$)' tool/arduino_libraries.txt | while IFS= read -r spec; do
+            arduino-cli lib install --no-deps "$spec"
+          done
 
       - name: Check the toolchain
         run: |
@@ -77,8 +80,10 @@ jobs:
           arduino-cli core list | grep -E "^arduino:avr +${ARDUINO_AVR_CORE#arduino:avr@} " \
             || { echo "::error::$ARDUINO_AVR_CORE is not installed"; exit 1; }
           arduino-cli lib list
-          arduino-cli lib list | grep -E "^Servo +${SERVO_LIBRARY#Servo@} " \
-            || { echo "::error::$SERVO_LIBRARY is not installed"; exit 1; }
+          grep -vE '^[[:space:]]*(#|$)' tool/arduino_libraries.txt | while IFS= read -r spec; do
+            arduino-cli lib list | grep -E "^${spec%@*} +${spec##*@} " \
+              || { echo "::error::$spec is not installed"; exit 1; }
+          done
 
       # The runtime fidelity harness runs programs in avr8js (tool/avr_runner, pinned by package-lock.json).
       - uses: actions/setup-node@v4

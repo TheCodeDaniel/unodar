@@ -1,13 +1,17 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
+import '../semantics/callables.dart';
+import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/enums.dart';
 import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
@@ -58,11 +62,63 @@ final class StatementRule implements ValidationRule {
         }
       case ExpressionStatement(:final expression):
         _statementLevel(expression, context);
+      case SwitchStatement():
+        _switch(statement, context);
       case FunctionDeclarationStatement(:final functionDeclaration):
         context.report(Diagnostics.localFunction(functionDeclaration.name.lexeme, context.at(statement)));
       default:
         final (what, help) = describeUnsupportedStatement(statement);
         unsupported(what, help);
+    }
+  }
+
+  /// A `switch` statement on an `int` or an enum, with constant cases (combined with `||`) and an optional `default`
+  /// (docs/SUBSET.md "Statements"). Each problem is reported at the case that has it.
+  void _switch(SwitchStatement statement, ValidationContext context) {
+    void unsupported(AstNode at, String what, String help) =>
+        context.report(Diagnostics.unsupportedStatement(what, help, context.at(at)));
+    final type = irTypeOf(statement.expression.staticType);
+    if (type == IrType.float32 || type == IrType.bool_) {
+      unsupported(statement, "a switch on a '${type == IrType.float32 ? 'double' : 'bool'}' value",
+          'Switch on an int or an enum value, or use `if` / `else if`.');
+      return;
+    }
+    if (type == null) return; // An unsupported type, reported by the type rule (E009).
+    final seen = <Object, int>{};
+    for (final member in statement.members) {
+      if (member.labels.isNotEmpty) {
+        unsupported(member.labels.first, 'a labeled case', removeLabel);
+        continue;
+      }
+      switch (member) {
+        case SwitchDefault(): // Last: a `default` before other cases is a Dart error (E007).
+          break;
+        case SwitchPatternCase(:final guardedPattern) when guardedPattern.whenClause != null:
+          unsupported(guardedPattern.whenClause!, 'a `when` guard in a switch case',
+              'Test the condition with `if` inside the case.');
+        case SwitchPatternCase(:final guardedPattern) when !isConstantCasePattern(guardedPattern.pattern):
+          unsupported(
+              guardedPattern.pattern,
+              guardedPattern.pattern is WildcardPattern ? 'a `_` case' : 'this case pattern',
+              guardedPattern.pattern is WildcardPattern
+                  ? 'Write `default:` instead.'
+                  : 'Use constant patterns: literals, `const` values and enum values, combined with `||`, e.g. '
+                      '`case 1 || 2:`.');
+        case SwitchPatternCase():
+          for (final constant in caseConstants(member)) {
+            final value = context.constants.valueOf(constant);
+            if (value == null) continue; // Not a constant: the analyzer (E007) or E010 says why.
+            final line = context.at(constant).line;
+            if (seen[value] case final first?) {
+              unsupported(constant, 'a case that repeats a value of line $first',
+                  'Remove one of them: in Dart the second can never match, and C++ rejects duplicate case labels.');
+            } else {
+              seen[value] = line;
+            }
+          }
+        default:
+          unsupported(member, 'this switch case', genericHelp);
+      }
     }
   }
 
@@ -76,13 +132,21 @@ final class StatementRule implements ValidationRule {
       case AssignmentExpression(:final operator) when !supportedAssignmentOperators.contains(operator.type):
         unsupported('the `${operator.lexeme}` operator', compoundAssignmentHelp);
       case AssignmentExpression(:final leftHandSide)
-          when leftHandSide is! SimpleIdentifier && !_isSignalWrite(leftHandSide):
+          when leftHandSide is! SimpleIdentifier &&
+              !_isSignalWrite(leftHandSide) &&
+              fieldAccessOf(leftHandSide) == null &&
+              thisFieldOf(leftHandSide) == null &&
+              staticFieldOf(leftHandSide) == null:
         unsupported('an assignment to `${leftHandSide.toSource()}`', 'Assign to a variable name.');
       case AssignmentExpression():
         break;
       case PrefixExpression(:final operand) || PostfixExpression(:final operand)
           when isIncrementOrDecrement(expression):
-        if (operand is! SimpleIdentifier && !_isSignalWrite(operand)) {
+        if (operand is! SimpleIdentifier &&
+            !_isSignalWrite(operand) &&
+            fieldAccessOf(operand) == null &&
+            thisFieldOf(operand) == null &&
+            staticFieldOf(operand) == null) {
           unsupported('`++`/`--` on `${operand.toSource()}`', 'Apply `++` and `--` to a variable name.');
         }
       case ThrowExpression():
@@ -171,6 +235,9 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     // A signal is created where E024 says (a top-level `final` initializer) and only in a widget program (E021).
     case InstanceCreationExpression() when signalObjectCreation(expression) != null:
       return null;
+    // An object of the user's class is created where E018 says (a top-level `final` initializer).
+    case InstanceCreationExpression() when objectCreation(expression) != null:
+      return null;
     case InstanceCreationExpression(:final staticType)
         when isUnodarClass(staticType, 'Device') || isUnodarClass(staticType, 'Uno'):
       final name = isUnodarClass(staticType, 'Device') ? 'Device(…)' : 'Uno()';
@@ -179,8 +246,10 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
       // A binding constructor is allowed where E018 says (a top-level `final` initializer).
       return staticType != null && (sizedTypeOf(staticType) != null || bindingClassOf(staticType) != null)
           ? null
-          : e002('a constructor call',
-              'Only Uint8(…), Uint16(…), Int16(…), and binding classes can be constructed in this version.');
+          : e002(
+              'a constructor call',
+              'Only Uint8(…), Uint16(…), Int16(…), binding classes and your own classes can be constructed '
+                  'in this version.');
     case FunctionExpression() when widgetOfCallback(expression) != null:
       return null; // A widget callback: its body is compiled like a function body (CallbackRule checks its shape).
     case FunctionExpression() when isComputedClosure(expression):
@@ -194,6 +263,44 @@ Diagnostic Function(SourceLocation)? expressionIssue(Expression expression) {
     // `count.value`: a signal read (where the signal may be used is for E024).
     case PrefixedIdentifier() || PropertyAccess() when signalOfValue(expression) != null:
       return null;
+    // `Mode.idle`, `mode.index`; `Mode.values` and `mode.name` are E028.
+    case PrefixedIdentifier() when enumValueOf(expression) != null:
+      return null;
+    case PrefixedIdentifier() || PropertyAccess() when enumIndexTarget(expression) != null:
+      return null;
+    case PrefixedIdentifier() || PropertyAccess() when unsupportedEnumMember(expression) != null:
+      final target = switch (expression) {
+        PrefixedIdentifier(:final prefix) => prefix,
+        PropertyAccess(:final target) => target!,
+        _ => throw StateError('unreachable'),
+      };
+      return unsupportedEnumMember(expression) == 'values'
+          ? (at) => Diagnostics.enumValues(expression.toSource(), at)
+          : (at) => Diagnostics.enumName(expression.toSource(), target.toSource(), at);
+    // `left.count`: a field of an object (whether `left` may be used is for E018).
+    case PrefixedIdentifier() || PropertyAccess() when fieldAccessOf(expression) != null:
+      return null;
+    // `this.count`, `meter.big`, `this.big`: a field through `this`, or a getter call.
+    case PropertyAccess() when thisFieldOf(expression) != null:
+      return null;
+    // `Tally.limit`: a static field.
+    case PrefixedIdentifier() when staticFieldOf(expression) != null:
+      return null;
+    case PrefixedIdentifier() || PropertyAccess() when calleeOf(expression) != null:
+      return null;
+    // A method used without calling it (`onPressed: toggle.flip`).
+    case PrefixedIdentifier(identifier: SimpleIdentifier(element: final MethodElement method)) ||
+            PropertyAccess(propertyName: SimpleIdentifier(element: final MethodElement method))
+        when isUserClass(method.enclosingElement):
+      return _isWidgetArgument(expression)
+          ? (at) => Diagnostics.callbackReference(expression.toSource(), at)
+          : (at) => Diagnostics.functionReference(expression.toSource(), at);
+    // A field of a parameter or local of a class type: E018 reports the parameter or local.
+    case PrefixedIdentifier(:final prefix) when userClassOf(prefix.staticType) != null:
+      return null;
+    // `this` on its own is the object as a value (E018); `this.x` and `this.m()` are handled above.
+    case ThisExpression():
+      return Diagnostics.thisUse;
     case PrefixedIdentifier() || PropertyAccess():
       return e002("a property access ('${expression.toSource()}')",
           'Properties and methods of values are not supported in this version.');
@@ -255,15 +362,16 @@ final class ExpressionTypeRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     final genericFunctions = {
-      for (final f in compiledFunctions(unit))
-        if (f.functionExpression.typeParameters != null) f,
+      for (final f in compiledCallables(unit))
+        if (f.typeParameters != null) f.declaration,
     };
     final roots = [
       for (final variable in topLevelVariables(unit))
         if (variable.initializer case final initializer?) initializer,
+      ...allClassRoots(unit),
       ...deviceRoots(unit),
-      for (final function in compiledFunctions(unit))
-        if (!genericFunctions.contains(function)) ...rootsOfFunction(function),
+      for (final function in compiledCallables(unit))
+        if (!genericFunctions.contains(function.declaration)) ...rootsOfBody(function.body),
       for (final callback in widgetCallbacks(unit)) ...rootsOfBody(callback.body),
     ];
     for (final root in roots) {
@@ -274,14 +382,17 @@ final class ExpressionTypeRule implements ValidationRule {
         // Method calls on numbers (`x.abs()`) are E003; methods of API objects are checked like functions.
         if (expression is MethodInvocation &&
             expression.target != null &&
-            context.api.resolveMethodCall(expression) == null) {
+            context.api.resolveMethodCall(expression) == null &&
+            calleeOf(expression) == null) {
           return false;
         }
         final type = expression.staticType;
         // An unresolved name has no real type; the analyzer (E007) or ApiCallRule (E003) reports it.
         if (type is InvalidType) return false;
-        // Bound objects and binding constructors: E018 decides where they may appear.
+        // Bound objects and binding constructors: E018 decides where they may appear. The same for objects of the
+        // user's classes, but their constructor arguments are ordinary expressions.
         if (bindingClassOf(type) != null) return false;
+        if (userClassOf(type) != null) return objectCreation(expression) != null;
         // A widget handle used as a value: E022.
         if (expression is SimpleIdentifier && widgetClassOf(type) != null) return false;
         // A signal used as a value: E024. A signal's constructor: E024 checks its type argument, and its initial
@@ -323,7 +434,7 @@ final class ApiCallRule implements ValidationRule {
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final call in allCalls(unit)) {
-      if (context.api.resolveApiCall(call) != null || userFunctionOf(call) != null || isCppCall(call)) continue;
+      if (context.api.resolveApiCall(call) != null || calleeOf(call) != null || isCppCall(call)) continue;
       if (isRunDeviceCall(call)) continue; // E021, from ExpressionRule.
       // A method of a misplaced widget (a local): reported at its declaration (E022). A method of an accepted
       // top-level widget that the registry does not support (declared in package:unodar ahead of its compiler
@@ -336,7 +447,7 @@ final class ApiCallRule implements ValidationRule {
         continue;
       }
       // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
-      if (call.target != null && bindingClassOf(call.target!.staticType) != null) continue;
+      if (call.target != null && isObjectType(call.target!.staticType)) continue;
       final target = call.target;
       final name = target == null ? call.methodName.name : '${target.toSource()}.${call.methodName.name}';
       final source = call.toSource();
@@ -411,7 +522,9 @@ final class ArgumentRule implements ValidationRule {
       final (min, max) = (parameter.min, parameter.max);
       if (min == null || max == null) continue;
       final value = context.constants.valueOf(argument.argumentExpression);
-      if (value is int && (value < min || value > max) && parameter.isPin) {
+      if (value is int && (value < min || value > max) && parameter.isPin && parameter.hasCppRange) {
+        context.report(Diagnostics.pinOutsideCppRange(value, name, min, max, context.at(argument)));
+      } else if (value is int && (value < min || value > max) && parameter.isPin) {
         context.report(Diagnostics.pinOutOfRange('$value', name, context.at(argument)));
       } else if (value is int && (value < min || value > max)) {
         context.report(parameter.hasCppRange

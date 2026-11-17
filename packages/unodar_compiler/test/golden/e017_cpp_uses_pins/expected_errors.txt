@@ -1,0 +1,8 @@
+input.dart:12:1: error[E017]: invalid @CppUsesPins: its argument must be a map literal from pins (integer literals 0 to 19) to their roles (string literals).
+  = help: Write it directly, e.g. `@CppUsesPins({11: 'MOSI', 13: 'SCK'})`.
+input.dart:15:1: error[E017]: invalid @CppUsesPins: its argument must be a map literal from pins (integer literals 0 to 19) to their roles (string literals).
+  = help: Write it directly, e.g. `@CppUsesPins({11: 'MOSI', 13: 'SCK'})`.
+input.dart:18:1: error[E017]: invalid @CppUsesPins: its argument must be a map literal from pins (integer literals 0 to 19) to their roles (string literals).
+  = help: Write it directly, e.g. `@CppUsesPins({11: 'MOSI', 13: 'SCK'})`.
+input.dart:21:1: error[E017]: @CppUsesPins is not allowed here: it applies only to external objects.
+  = help: Remove it, or move it to external objects.

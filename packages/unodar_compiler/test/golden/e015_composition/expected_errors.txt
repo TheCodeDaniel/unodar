@@ -1,0 +1,8 @@
+input.dart:6:9: error[E015]: the class 'Panel' refers to 'Gauge', which is declared later.
+  = help: Move the declaration of 'Gauge' above the class 'Panel'.
+input.dart:7:9: error[E015]: the class 'Panel' refers to 'Knob', which is declared later.
+  = help: Move the declaration of 'Knob' above the class 'Panel'.
+input.dart:8:9: error[E015]: the class 'Panel' refers to 'Knob', which is declared later.
+  = help: Move the declaration of 'Knob' above the class 'Panel'.
+input.dart:10:36: error[E015]: an argument of the member object 'scaled' is not a compile-time constant.
+  = help: Use only literals, unodar constants, `const` variables declared above the class, and the constructor's parameters; set other values from setup() or a callback.

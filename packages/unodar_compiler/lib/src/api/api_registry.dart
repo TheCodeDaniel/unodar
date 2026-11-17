@@ -121,17 +121,30 @@ final class ApiFunction {
   }
 }
 
-/// A top-level unodar constant that compiles to a named C++ constant or macro.
+/// A top-level unodar constant that compiles to a named C++ constant or macro, or (a library wrapper's constant
+/// without `@CppName`, e.g. `SPI_MODE1`) to its value.
 final class ApiConstant {
-  const ApiConstant(this.dartName, {required this.cppName});
+  const ApiConstant(this.dartName, {required this.cppName, this.value});
 
   final String dartName;
+
+  /// The C++ text it is emitted as: a name (`HIGH`, `MSBFIRST`) or a decimal literal.
   final String cppName;
+
+  /// The Dart value of a library wrapper's constant, which the conformance probe compares with a named C++ macro.
+  final int? value;
+
+  /// Whether [cppName] is a C++ name rather than the value itself.
+  bool get isNamed => int.tryParse(cppName) == null;
 }
 
 /// A C++ class that Dart code reaches through objects: `HardwareSerial`, or a binding class (`@CppClass`).
 final class ApiClass {
-  const ApiClass(this.dartName, {required this.cppName, this.header, this.constructor, required this.methods});
+  const ApiClass(this.dartName,
+      {required this.cppName, this.header, this.constructor, required this.methods, this.isPrint = false});
+
+  /// Whether the class has `@CppPrint`: its C++ class derives from Arduino's `Print` (the conformance probe checks).
+  final bool isPrint;
 
   final String dartName;
 
@@ -166,6 +179,7 @@ final class ApiWidget {
     this.signals = const [],
     this.sink,
     this.hasObject = true,
+    this.runsAtSetup = false,
   });
 
   /// The [ApiClass.dartName] of its class.
@@ -192,25 +206,35 @@ final class ApiWidget {
   /// Whether the widget is a C++ object (declared, started in `setup()`). A `Watch` is not: it is only its callback,
   /// called from the generated `unodar_deliver()`.
   final bool hasObject;
+
+  /// Whether its callback runs once in the generated `setup()`, at its place in `children` (`OnStart`), instead of
+  /// when polled or delivered. Such a callback may call `delay()` (E023 does not apply).
+  final bool runsAtSetup;
 }
 
 /// An existing C++ object of an [ApiClass]: `Serial`, or an `external final` object of a binding class (`Wire`).
 final class ApiObject {
-  const ApiObject(this.dartName, {required this.cppName, required this.className});
+  const ApiObject(this.dartName, {required this.cppName, required this.className, this.usesPins = const {}});
 
   final String dartName;
   final String cppName;
 
   /// The [ApiClass.dartName] of its class.
   final String className;
+
+  /// The pins the object takes whenever the program uses it, with their roles (`@CppUsesPins`, SPI's `13: 'SCK'`).
+  final Map<int, String> usesPins;
 }
 
 /// Binding classes and objects read from annotations (`binding_reader.dart`).
 final class ApiBindings {
-  const ApiBindings({this.classes = const [], this.objects = const []});
+  const ApiBindings({this.classes = const [], this.objects = const [], this.constants = const []});
 
   final List<ApiClass> classes;
   final List<ApiObject> objects;
+
+  /// The integer constants of library wrappers (`MSBFIRST`, `SPI_MODE1`).
+  final List<ApiConstant> constants;
 }
 
 final class ApiRegistry {
@@ -286,8 +310,8 @@ final class ApiRegistry {
         classes: const [
           ApiClass('HardwareSerial', cppName: 'HardwareSerial', methods: [
             ApiFunction('begin', cppName: 'begin', parameters: [ApiParameter.unsignedLong('baud')]),
-            ApiFunction('print', cppName: 'print', parameters: _printParameters),
-            ApiFunction('println', cppName: 'println', parameters: _printParameters),
+            ApiFunction('print', cppName: 'print', parameters: printParameters),
+            ApiFunction('println', cppName: 'println', parameters: printParameters),
           ]),
         ],
         objects: const [ApiObject('Serial', cppName: 'Serial', className: 'HardwareSerial')],
@@ -316,11 +340,13 @@ final class ApiRegistry {
           ApiWidget('Every', poll: 'due', callback: 'callback'),
           // No C++ class: a Watch is its callback, run by the generated unodar_deliver() (docs/SUBSET.md "Signals").
           ApiWidget('Watch', callback: 'callback', signals: ['signal'], hasObject: false),
+          // No C++ class: its callback runs once in setup(), in children order (docs/SUBSET.md "Widgets").
+          ApiWidget('OnStart', callback: 'callback', hasObject: false, runsAtSetup: true),
         ],
         // Not callable or constructible as API rows, but taken by the widget API and its C++ namespace (E014).
         otherNames: const {
           'runDevice', 'Device', 'Uno', 'Board', 'Widget', 'unodar', //
-          'Watch', 'Signal', 'ReadonlySignal',
+          'Watch', 'Signal', 'ReadonlySignal', 'OnStart',
         },
       );
 
@@ -343,7 +369,7 @@ final class ApiRegistry {
 
   /// `print(Object value, {int digits = 2})`. The value is [ApiParameter.printable]; `digits` is passed only with
   /// a `double` value (`Print::print(double, int)`; `printFloat` takes it as a `uint8_t`, hence its range).
-  static const _printParameters = [
+  static const printParameters = [
     ApiParameter.printable('value'),
     ApiParameter.uint8('digits', isNamed: true, defaultValue: 2),
   ];
@@ -357,14 +383,21 @@ final class ApiRegistry {
 
   /// This registry plus [bindings]. A binding may not reuse a registered Dart name.
   ApiRegistry withBindings(ApiBindings bindings) {
-    for (final name in [...bindings.classes.map((c) => c.dartName), ...bindings.objects.map((o) => o.dartName)]) {
-      if (_classes.containsKey(name) || _objects.containsKey(name) || _functions.containsKey(name)) {
+    for (final name in [
+      ...bindings.classes.map((c) => c.dartName),
+      ...bindings.objects.map((o) => o.dartName),
+      ...bindings.constants.map((c) => c.dartName),
+    ]) {
+      if (_classes.containsKey(name) ||
+          _objects.containsKey(name) ||
+          _functions.containsKey(name) ||
+          _constants.containsKey(name)) {
         throw ArgumentError('binding $name is already registered');
       }
     }
     return ApiRegistry(
       functions: [..._functions.values],
-      constants: [..._constants.values],
+      constants: [..._constants.values, ...bindings.constants],
       classes: [..._classes.values, ...bindings.classes],
       objects: [..._objects.values, ...bindings.objects],
       widgets: [..._widgets.values],
@@ -396,7 +429,7 @@ final class ApiRegistry {
   /// Method names are not included: they only appear after `object.`.
   Set<String> get reservedNames => {
         for (final f in _functions.values) ...[f.dartName, f.cppName],
-        for (final c in _constants.values) ...[c.dartName, c.cppName],
+        for (final c in _constants.values) ...[c.dartName, if (c.isNamed) c.cppName],
         for (final c in _classes.values) ...[c.dartName, c.cppName],
         for (final o in _objects.values) ...[o.dartName, o.cppName],
         ..._otherNames,

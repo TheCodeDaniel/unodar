@@ -1,8 +1,8 @@
 import 'package:unodar/unodar.dart';
 
-class Blinker {}
-
-late int ledPin;
+class Chain {
+  final Chain next = Chain();
+}
 
 void setup() {}
 

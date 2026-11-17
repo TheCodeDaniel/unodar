@@ -1,0 +1,12 @@
+input.dart:5:3: error[E027]: a constructor cannot have a body in this version: objects are created before setup() runs, not when Dart would first use them.
+  = help: Move this code into a method, e.g. `void begin()`, and call it from setup() or from an OnStart widget.
+input.dart:17:3: error[E027]: a named constructor ('Named.on') is not supported in this version.
+  = help: Use one unnamed constructor, `Named(…)`, and give it named parameters for the options.
+input.dart:22:3: error[E027]: a const constructor ('Fixed') is not supported in this version.
+  = help: Remove `const`; objects are top-level `final` variables.
+input.dart:28:3: error[E027]: a factory constructor ('Made.zero') is not supported in this version.
+  = help: Use the unnamed constructor; objects are created once, as top-level `final` variables.
+input.dart:33:3: error[E027]: a constructor with optional positional parameters ('Optional') is not supported in this version.
+  = help: Make each parameter required, or named with a constant default value, e.g. `{this.pin = 13}`.
+input.dart:38:23: error[E027]: an assert in an initializer list is not supported in this version.
+  = help: Remove it; there are no exceptions on the device.

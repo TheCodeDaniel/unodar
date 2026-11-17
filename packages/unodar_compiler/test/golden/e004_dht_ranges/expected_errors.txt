@@ -1,0 +1,8 @@
+input.dart:5:21: error[E004]: pin 20 is out of range for Dht: the Uno has pins 0 to 19 (D0–D13, and A0–A5 as 14–19).
+  = help: Pass a pin from 0 to 19, e.g. `13` or `A0`.
+input.dart:6:23: error[E004]: argument 10 is out of range for parameter 'type' of Dht, which accepts 11 to 22 (`@CppRange`).
+  = help: Pass a value from 11 to 22; the library does not handle values outside it.
+input.dart:7:27: error[E004]: argument 23 is out of range for parameter 'type' of Dht, which accepts 11 to 22 (`@CppRange`).
+  = help: Pass a value from 11 to 22; the library does not handle values outside it.
+input.dart:8:23: error[E022]: pin 3 is already used by 'indoor' (line 6).
+  = help: Give each widget its own pin.

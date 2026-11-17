@@ -1,0 +1,10 @@
+input.dart:6:13: error[E015]: the initializer of field 'now' is not a compile-time constant.
+  = help: Use only literals, unodar constants, `const` variables declared above the class, and the constructor's parameters; set other values from setup() or a callback.
+input.dart:12:18: error[E015]: the value of 'offset' in the initializer list is not a compile-time constant.
+  = help: Use only literals, unodar constants, `const` variables declared above the class, and the constructor's parameters; set other values from setup() or a callback.
+input.dart:13:15: error[E015]: the class 'Gauge' refers to 'later', which is declared later.
+  = help: Move the declaration of 'later' above the class 'Gauge'.
+input.dart:18:15: error[E015]: the initializer of top-level variable 'early' refers to 'Probe', which is declared later.
+  = help: Move the declaration of 'Probe' above 'early'.
+input.dart:25:21: error[E015]: the initializer of top-level variable 'gauge' is not a compile-time constant.
+  = help: Use only literals, unodar constants, and `const` variables declared above it; assign other values in setup().

@@ -1,9 +1,14 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
+
+import '../api/api_registry.dart';
 
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
+import '../semantics/callables.dart';
+import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
 import '../semantics/signals.dart';
@@ -118,7 +123,7 @@ final class WidgetRule implements ValidationRule {
           continue;
         }
       } else if (!inline.contains(creation)) {
-        context.report(Diagnostics.widgetPlacement(name, context.at(creation)));
+        if (!isFieldInitializer(creation)) context.report(Diagnostics.widgetPlacement(name, context.at(creation)));
         continue;
       }
       _constantArguments(creation, name, context);
@@ -203,7 +208,10 @@ final class WidgetPinRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    final owners = <int, String>{};
+    // Every constant pin, in source order: widget pins, and the `@CppPin` constructor arguments of top-level bound
+    // objects (`final lcd = LiquidCrystal(12, 11, 5, 4, 3, 2);`). Member objects are not checked (one class may have
+    // several objects, so a constant pin in its body is not one owner).
+    final pins = <(int offset, AstNode node, int pin, String owner)>[];
     for (final (name, creation) in acceptedWidgets(unit)) {
       final pin = namedArgument(creation, 'pin');
       final value = pin == null ? null : context.constants.valueOf(pin);
@@ -212,14 +220,60 @@ final class WidgetPinRule implements ValidationRule {
       final owner = name.startsWith('unodar_')
           ? 'the ${widgetClassOf(creation.staticType)!.name} on line $line'
           : "'$name' (line $line)";
-      final previous = owners[value];
-      if (previous != null) {
-        context.report(
-            Diagnostics.duplicatePin(value, previous, context.at(pin!.parent is NamedArgument ? pin.parent! : pin)));
-      } else {
-        owners[value] = owner;
+      pins.add((pin!.offset, pin.parent is NamedArgument ? pin.parent! : pin, value, owner));
+    }
+    for (final variable in topLevelVariables(unit)) {
+      final creation = variable.initializer;
+      if (creation is! InstanceCreationExpression || bindingClassOf(creation.staticType) == null) continue;
+      final parameters = context.api.classOfType(creation.staticType)?.constructor;
+      if (parameters == null) continue;
+      final positional = parameters.where((p) => !p.isNamed).toList();
+      var index = 0;
+      for (final argument in creation.argumentList.arguments) {
+        final parameter = argument is NamedArgument
+            ? parameters.where((p) => p.isNamed && p.name == argument.name.lexeme).firstOrNull
+            : (index < positional.length ? positional[index++] : null);
+        if (parameter == null || !parameter.isPin) continue;
+        final value = context.constants.valueOf(argument.argumentExpression);
+        if (value is! int) continue;
+        pins.add(
+            (argument.offset, argument, value, "'${variable.name.lexeme}' (line ${context.at(variable.name).line})"));
       }
     }
+    pins.sort((a, b) => a.$1.compareTo(b.$1));
+    // Pins taken by an external object the program uses (`@CppUsesPins`, SPI's 10 to 13) belong to it first.
+    final objectPins = <int, (String object, String role, String all)>{};
+    for (final object in _usedObjects(unit, context)) {
+      final all = englishList([for (final MapEntry(:key, :value) in object.usesPins.entries) '$key ($value)']);
+      for (final MapEntry(:key, :value) in object.usesPins.entries) {
+        objectPins.putIfAbsent(key, () => (object.dartName, value, all));
+      }
+    }
+    final owners = <int, String>{};
+    for (final (_, node, pin, owner) in pins) {
+      final previous = owners[pin];
+      if (objectPins[pin] case (final object, final role, final all)) {
+        context.report(Diagnostics.pinUsedByObject(pin, object, role, all, context.at(node)));
+      } else if (previous != null) {
+        context.report(Diagnostics.duplicatePin(pin, previous, context.at(node)));
+      } else {
+        owners[pin] = owner;
+      }
+    }
+  }
+
+  /// The external objects with `@CppUsesPins` that [unit] names anywhere, in the order of their first use.
+  static List<ApiObject> _usedObjects(CompilationUnit unit, ValidationContext context) {
+    final used = <ApiObject>{};
+    unit.accept(_IdentifierVisitor((identifier) {
+      final element = identifier.element;
+      if (element is! GetterElement || element.variable is! TopLevelVariableElement) return;
+      final variable = element.variable as TopLevelVariableElement;
+      if (!variable.isExternal) return;
+      final object = context.api.object(variable.name!);
+      if (object != null && object.usesPins.isNotEmpty) used.add(object);
+    }));
+    return used.toList();
   }
 }
 
@@ -247,9 +301,12 @@ final class WidgetChildrenRule implements ValidationRule {
       final signal = widgetClassOf(creation.staticType)?.name == 'Watch'
           ? creation.argumentList.arguments.where(isSignalArgument).firstOrNull?.argumentExpression
           : null;
+      final runsAtSetup = context.api.widgetOfType(creation.staticType)?.runsAtSetup ?? false;
       context.report(signal is SimpleIdentifier
           ? Diagnostics.watchNotInChildren(name, signal.name, context.at(variable.name))
-          : Diagnostics.widgetNotInChildren(name, context.at(variable.name)));
+          : runsAtSetup
+              ? Diagnostics.onStartNotInChildren(name, context.at(variable.name))
+              : Diagnostics.widgetNotInChildren(name, context.at(variable.name)));
     }
   }
 }
@@ -311,11 +368,11 @@ final class WidgetHandleRule implements ValidationRule {
         return expressionIssue(expression) == null;
       });
     }
-    for (final function in compiledFunctions(unit)) {
+    for (final function in compiledCallables(unit)) {
       if (function.returnType case final type? when widgetClassOf(type.type) != null) {
         context.report(Diagnostics.widgetTypePosition('a return value', type.toSource(), context.at(type)));
       }
-      for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
+      for (final parameter in function.parameters?.parameters ?? const <FormalParameter>[]) {
         final type = parameter.declaredFragment?.element.type;
         if (widgetClassOf(type) == null) continue;
         context.report(Diagnostics.widgetTypePosition('a parameter', displayType(type!), context.at(parameter)));
@@ -348,23 +405,25 @@ final class DelayInCallbackRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    final functions = {for (final f in compiledFunctions(unit)) f.declaredFragment?.element: f};
+    final functions = {for (final f in compiledCallables(unit)) f.element: f};
     final reported = <MethodInvocation>{};
     for (final callback in widgetCallbacks(unit)) {
+      // OnStart runs once in setup(), before anything is polled: `delay()` stops nothing there.
+      if (context.api.widgetOfType(widgetOfCallback(callback)!.staticType)?.runsAtSetup ?? false) continue;
       final widget = widgetClassOf(widgetOfCallback(callback)!.staticType)!.name;
       final start = "$widget's ${callbackParameterName(callback)}";
       // Breadth first, so each function is reached by its shortest path.
       final queue = <(FunctionBody, String)>[(callback.body, start)];
-      final seen = <FunctionDeclaration>{};
+      final seen = <Callable>{};
       while (queue.isNotEmpty) {
         final (body, path) = queue.removeAt(0);
-        final calls = <MethodInvocation>[];
+        final calls = <AstNode>[];
         body.accept(_CallVisitor(calls.add));
         for (final call in calls) {
-          if (_isDelay(call)) {
+          if (call is MethodInvocation && _isDelay(call)) {
             if (reported.add(call)) context.report(Diagnostics.delayInCallback(path, context.at(call)));
-          } else if (functions[userFunctionOf(call)] case final function? when seen.add(function)) {
-            queue.add((function.functionExpression.body, '$path → ${function.name.lexeme}()'));
+          } else if (functions[calleeOf(call)] case final function? when seen.add(function)) {
+            queue.add((function.body, '$path → ${function.displayName}()'));
           }
         }
       }
@@ -378,14 +437,33 @@ final class DelayInCallbackRule implements ValidationRule {
   }
 }
 
+/// Every call in a body: method invocations, and reads that may call a getter (checked with [calleeOf]).
 final class _CallVisitor extends RecursiveAstVisitor<void> {
   _CallVisitor(this.onCall);
 
-  final void Function(MethodInvocation call) onCall;
+  final void Function(AstNode call) onCall;
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
     onCall(node);
     super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    onCall(node);
+    super.visitPrefixedIdentifier(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    onCall(node);
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    onCall(node);
+    super.visitSimpleIdentifier(node);
   }
 }

@@ -1,0 +1,8 @@
+input.dart:3:6: error[E014]: 'byte' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
+  = help: Rename it, e.g. `byteValue`.
+input.dart:5:14: error[E014]: 'min' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
+  = help: Rename it, e.g. `minValue`.
+input.dart:5:19: error[E014]: 'max' cannot be used as a name: it is already defined by the Arduino core or avr-libc.
+  = help: Rename it, e.g. `maxValue`.
+input.dart:5:24: error[E014]: 'unodar_mid' cannot be used as a name: names starting with `unodar_` are reserved for generated code.
+  = help: Rename it.

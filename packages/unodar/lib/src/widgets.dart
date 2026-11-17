@@ -84,3 +84,11 @@ final class Every extends Widget {
 final class Watch<T> extends Widget {
   external Watch(ReadonlySignal<T> signal, void Function(T value) callback);
 }
+
+/// Runs [callback] once, in `setup()`, at its place in `children`: after the `begin()` of the widgets listed before
+/// it, before those listed after it, and before the first delivery of signals. For library setup
+/// (`lcd.begin(16, 2)`, `servo.attach(9)`) and for loading saved state. `delay()` is allowed here, because nothing is
+/// polled yet; a signal written here is delivered at the end of `setup()` with its new value.
+final class OnStart extends Widget {
+  external OnStart(void Function() callback);
+}

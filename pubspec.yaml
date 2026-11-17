@@ -14,6 +14,7 @@ workspace:
   - examples/dial
   - examples/button_led
   - examples/counter
+  - examples/thermostat
 
 dev_dependencies:
   lints: ^6.0.0

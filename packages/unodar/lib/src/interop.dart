@@ -48,6 +48,31 @@ final class CppRange {
   final int max;
 }
 
+/// Marks an integer parameter of a binding constructor as an Arduino pin, e.g.
+/// `external LiquidCrystal(@CppPin() @CppType('uint8_t') int rs, …);`. A constant pin is checked like a widget's: 0 to
+/// 19 (E004), and used by no widget and no other bound object (E022). A `@CppRange` narrows it further, e.g.
+/// `@CppPin() @CppRange(2, 19)` where pins 0 and 1 (Serial's) cannot work.
+final class CppPin {
+  const CppPin();
+}
+
+/// The pins an `external final` object takes whenever the program uses it, each with its role, e.g.
+/// `@CppUsesPins({10: 'SS', 11: 'MOSI', 12: 'MISO', 13: 'SCK'})` on `SPI`. In a program that uses the object, no
+/// widget and no `@CppPin` of a bound object may use one of them (E022).
+final class CppUsesPins {
+  const CppUsesPins(this.pins);
+
+  final Map<int, String> pins;
+}
+
+/// Gives the `print` and `println` of a binding class the dispatch `Serial` has, for a C++ class derived from
+/// Arduino's `Print` (LiquidCrystal, SoftwareSerial): a string literal is a flash string, a `bool` prints
+/// `true`/`false`, and a `double` takes `digits`. Declare them as
+/// `external void print(Object value, {int digits = 2});` and the same for `println`.
+final class CppPrint {
+  const CppPrint();
+}
+
 /// An extra header for raw C++, e.g. `@CppInclude('avr/wdt.h') library;`. Allowed only on the `library;` directive.
 final class CppInclude {
   const CppInclude(this.header);

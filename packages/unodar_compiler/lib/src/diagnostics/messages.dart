@@ -88,8 +88,8 @@ abstract final class Diagnostics {
   static Diagnostic unsupportedDeclaration(String what, SourceLocation at, {String? suggestion}) => Diagnostic(
         code: DiagnosticCode.unsupportedDeclaration,
         location: at,
-        message: '$what is not supported in this version. Only top-level functions, variables, and binding classes '
-            'may be declared.',
+        message: '$what is not supported in this version. Only top-level functions, variables, classes, enums, and '
+            'binding classes may be declared.',
         suggestion:
             suggestion ?? 'Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.',
       );
@@ -171,10 +171,12 @@ abstract final class Diagnostics {
         suggestion: 'Use a divisor that is not zero.',
       );
 
-  static Diagnostic unsupportedSignature(String name, String problems, SourceLocation at) => Diagnostic(
+  /// [kind] is `function` or `method`.
+  static Diagnostic unsupportedSignature(String name, String problems, SourceLocation at, {String kind = 'function'}) =>
+      Diagnostic(
         code: DiagnosticCode.unsupportedSignature,
         location: at,
-        message: "unsupported signature for function '$name': $problems.",
+        message: "unsupported signature for $kind '$name': $problems.",
         suggestion: 'Use only required positional parameters with a supported type, e.g. '
             '`int add(int a, int b) { ... }`.',
       );
@@ -355,6 +357,158 @@ abstract final class Diagnostics {
         suggestion: 'Declare it at the top level, e.g. `final ${lowerFirst(cls)} = $cls(…);`, and use that.',
       );
 
+  static Diagnostic objectNotFinal(String name, String example, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the object '$name' must be declared `final`.",
+        suggestion: 'Write `$example`. Objects are created once, as global variables.',
+      );
+
+  static Diagnostic objectInitializer(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the object '$name' must be initialized by calling the $cls constructor.",
+        suggestion: 'Write `final $name = $cls(…);` with constant arguments; an object cannot be copied or shared.',
+      );
+
+  /// [position] is `a local variable`, `a parameter`, or `a return value`.
+  static Diagnostic objectTypePosition(String position, String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "$position of the class type '$type' is not supported. Objects can only be top-level `final` "
+            'variables.',
+        suggestion: 'Use the top-level object directly instead of passing it around.',
+      );
+
+  static Diagnostic objectUse(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the object '$name' can only be used through its fields and methods.",
+        suggestion: 'Use a field or a method, e.g. `$name.count`; an object cannot be stored, compared, passed, or '
+            'printed.',
+      );
+
+  static Diagnostic objectFieldNotFinal(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the field '$name' holds an object, so it must be declared `final`.",
+        suggestion: 'Write `final $cls $name = $cls(…);`. A member object is created once, with the object that holds '
+            'it.',
+      );
+
+  static Diagnostic objectFieldInitializer(String name, String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: "the field '$name' must hold an object created in place, by calling the $cls constructor.",
+        suggestion: 'Create it in the field\'s initializer, `final $cls $name = $cls(…);`, or in the initializer list; '
+            'an object cannot be passed in or shared.',
+      );
+
+  // E028: enums, and E009 for printing one.
+
+  static Diagnostic enhancedEnum(String name, List<String> values, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.enumRule,
+        location: at,
+        message: "an enum with fields, constructors or methods ('$name') is not supported in this version.",
+        suggestion: 'Use a simple enum, e.g. `enum $name { ${values.join(', ')} }`, and compute the values in a '
+            'function.',
+      );
+
+  static Diagnostic tooManyEnumValues(String name, int count, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.enumRule,
+        location: at,
+        message: "the enum '$name' has $count values; at most 256 are supported (it is stored in one byte).",
+        suggestion: 'Split it into smaller enums.',
+      );
+
+  static Diagnostic enumName(String expression, String receiver, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.enumRule,
+        location: at,
+        message: "the name of an enum value ('$expression') is not available in this version.",
+        suggestion: 'Print `$receiver.index` instead.',
+      );
+
+  static Diagnostic enumValues(String expression, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.enumRule,
+        location: at,
+        message: "the list of an enum's values ('$expression') is not available in this version.",
+        suggestion: 'Lists are not supported; compare with each value, or use `.index`.',
+      );
+
+  static Diagnostic enumPrint(String expression, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedType,
+        location: at,
+        message: "an enum value ('$expression') cannot be printed in this version (Dart would print its name).",
+        suggestion: 'Print its index instead, e.g. `Serial.println($expression.index);`.',
+      );
+
+  static Diagnostic thisUse(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: '`this` can only be used to name a member of the object (`this.count`, `this.update()`).',
+        suggestion: 'Use a field or a method of `this`; the object itself cannot be stored, compared, passed, or '
+            'printed.',
+      );
+
+  static Diagnostic objectCreationPosition(String cls, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.boundObjectMisuse,
+        location: at,
+        message: 'a $cls object can only be created as the initializer of a top-level `final` variable.',
+        suggestion: 'Declare it at the top level, e.g. `final ${lowerFirst(cls)} = $cls(…);`, and use that.',
+      );
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // E015 for classes.
+
+  static Diagnostic nonConstantClassInitializer(String what, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.nonConstantInitializer,
+        location: at,
+        message: '$what is not a compile-time constant.',
+        suggestion: 'Use only literals, unodar constants, `const` variables declared above the class, and the '
+            "constructor's parameters; set other values from setup() or a callback.",
+      );
+
+  static Diagnostic staticForwardReference(String field, String later, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.nonConstantInitializer,
+        location: at,
+        message: "the initializer of static field '$field' refers to '$later', which is declared later in the class.",
+        suggestion: "Move the declaration of '$later' above '$field'.",
+      );
+
+  static Diagnostic classForwardReference(String cls, String later, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.nonConstantInitializer,
+        location: at,
+        message: "the class '$cls' refers to '$later', which is declared later.",
+        suggestion: "Move the declaration of '$later' above the class '$cls'.",
+      );
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // E027: class rules.
+
+  /// [what] names the class feature ("an abstract class ('Shape')"); [help] is specific to it.
+  static Diagnostic classFeature(String what, String help, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.classRule,
+        location: at,
+        message: '$what is not supported in this version.',
+        suggestion: help,
+      );
+
+  static Diagnostic classExtends(String cls, String base, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.classRule,
+        location: at,
+        message: "a class cannot extend another class in this version ('$cls' extends '$base').",
+        suggestion: "Give '$cls' a field of type '$base' instead (composition), or merge the two classes.",
+      );
+
+  static Diagnostic constructorBody(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.classRule,
+        location: at,
+        message: 'a constructor cannot have a body in this version: objects are created before setup() runs, not '
+            'when Dart would first use them.',
+        suggestion: 'Move this code into a method, e.g. `void begin()`, and call it from setup() or from an OnStart '
+            'widget.',
+      );
+
   // ---------------------------------------------------------------------------------------------------------------
   // E019, E020: the escape hatch.
 
@@ -386,6 +540,16 @@ abstract final class Diagnostics {
         location: at,
         message: 'pin $value is out of range for $widget: the Uno has pins 0 to 19 (D0–D13, and A0–A5 as 14–19).',
         suggestion: 'Pass a pin from 0 to 19, e.g. `13` or `A0`.',
+      );
+
+  /// A `@CppPin` narrowed by `@CppRange` (SoftwareSerial's 2 to 19). Pins 0 and 1 get the reason: they are the Uno's
+  /// hardware serial port.
+  static Diagnostic pinOutsideCppRange(int value, String function, int min, int max, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedArgument,
+        location: at,
+        message: 'pin $value is out of range for $function, which accepts pins $min to $max (`@CppRange`)'
+            '${(value == 0 || value == 1) && min > value ? ": pins 0 and 1 are Serial's (RX and TX, also the USB connection)" : ''}.',
+        suggestion: 'Pass a pin from $min to $max.',
       );
 
   // E021: widget program shape.
@@ -487,6 +651,15 @@ abstract final class Diagnostics {
         suggestion: 'Give each widget its own pin.',
       );
 
+  /// [object] (`SPI`) takes [pin] as [role] (`SCK`) in a program that uses it; [pins] lists all its pins.
+  static Diagnostic pinUsedByObject(int pin, String object, String role, String pins, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: 'pin $pin is already used by $object ($role), which this program uses.',
+        suggestion: 'Use another pin: $object takes ${pins.contains(',') || pins.contains(' and ') ? 'pins' : 'pin'} '
+            '$pins.',
+      );
+
   static Diagnostic widgetNotInChildren(String name, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,
@@ -495,6 +668,13 @@ abstract final class Diagnostics {
       );
 
   /// A Watch is not set up or polled: it only runs when its signal changes, from the generated delivery.
+  static Diagnostic onStartNotInChildren(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: "the OnStart '$name' is not listed in Device.children, so its callback would never run.",
+        suggestion: 'Add `$name` to `children: [...]` in main(), where it should run in setup().',
+      );
+
   static Diagnostic watchNotInChildren(String name, String signal, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,

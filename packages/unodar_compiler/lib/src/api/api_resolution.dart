@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
+import '../semantics/classes.dart';
 import 'api_registry.dart';
 
 /// Connects resolved AST nodes to [ApiRegistry] entries.
@@ -22,9 +23,24 @@ extension ApiResolution on ApiRegistry {
   /// object of a registered class.
   ResolvedMethod? resolveMethodCall(MethodInvocation call) {
     final target = call.target;
+    if (target != null && target is! SimpleIdentifier && call.methodName.element is MethodElement) {
+      // A binding member of one of the user's objects: `pair.arm.attach(9)`, `arm.write(90)` in a method.
+      final type = target.staticType;
+      final path = objectPathOf(target);
+      if (path == null || type is! InterfaceType || bindingClassOf(type) == null) return null;
+      final cls = classNamed(type.element.name!);
+      final method = cls?.method(call.methodName.name);
+      return cls == null || method == null ? null : ResolvedMethod(path, cls, method);
+    }
     if (target is! SimpleIdentifier || call.methodName.element is! MethodElement) return null;
     final element = target.element;
     final variable = element is GetterElement ? element.variable : element;
+    if (variable is FieldElement && bindingClassOf(variable.type) != null && objectPathOf(target) != null) {
+      // A binding member named inside a method: `arm.write(90)`.
+      final cls = classNamed((variable.type as InterfaceType).element.name!);
+      final method = cls?.method(call.methodName.name);
+      return cls == null || method == null ? null : ResolvedMethod(target.name, cls, method);
+    }
     if (variable is! TopLevelVariableElement) return null;
     final type = variable.type;
     if (type is! InterfaceType) return null;
@@ -99,25 +115,44 @@ bool isCppArgument(StringLiteral literal) {
   return list is ArgumentList && call is MethodInvocation && isCppCall(call);
 }
 
-/// Whether [literal] is the value argument of `Serial.print`/`println` (its first positional argument), where a
-/// string literal is allowed (docs/SUBSET.md "Serial"); the other place is `cpp('…')`.
+/// Whether [literal] is the value argument of `Serial.print`/`println` or of a `@CppPrint` binding's (its first
+/// positional argument), where a string literal is allowed (docs/SUBSET.md "Serial"); the other place is `cpp('…')`.
 bool isPrintArgument(StringLiteral literal) {
   final list = literal.parent;
   if (list is! ArgumentList || list.arguments.first != literal) return false;
   final call = list.parent;
   if (call is! MethodInvocation) return false;
   final method = call.methodName.element;
-  if (method is! MethodElement || !isUnodarElement(method)) return false;
-  return method.enclosingElement?.name == 'HardwareSerial' && (method.name == 'print' || method.name == 'println');
+  return method is MethodElement && isPrintMethod(method);
+}
+
+/// Whether [method] is `print`/`println` of `HardwareSerial` or of a binding class annotated `@CppPrint`, whose
+/// value argument is any printable value (docs/SUBSET.md "Serial" and "Binding C++ classes").
+bool isPrintMethod(MethodElement method) {
+  if (method.name != 'print' && method.name != 'println') return false;
+  final cls = method.enclosingElement;
+  return cls is ClassElement &&
+      ((isUnodarElement(cls) && cls.name == 'HardwareSerial') ||
+          (hasInteropAnnotation(cls, 'CppClass') && hasInteropAnnotation(cls, 'CppPrint')));
 }
 
 /// The name of the unodar interop annotation [annotation] (`CppClass`, `CppHeader`, `CppName`, `CppType`,
-/// `CppRange`, `CppInclude`), or null if it is not one.
+/// `CppRange`, `CppPin`, `CppUsesPins`, `CppPrint`, `CppInclude`), or null if it is not one.
 String? interopAnnotationName(ElementAnnotation annotation) {
   final element = annotation.element;
   final cls = element is ConstructorElement ? element.enclosingElement : null;
   if (cls is! ClassElement || !isUnodarElement(cls)) return null;
-  return const {'CppClass', 'CppHeader', 'CppName', 'CppType', 'CppRange', 'CppInclude'}.contains(cls.name)
+  return const {
+    'CppClass',
+    'CppHeader',
+    'CppName',
+    'CppType',
+    'CppRange',
+    'CppPin',
+    'CppUsesPins',
+    'CppPrint',
+    'CppInclude',
+  }.contains(cls.name)
       ? cls.name
       : null;
 }

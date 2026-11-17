@@ -1,7 +1,7 @@
 /// Shared access to the real Arduino toolchain for tests tagged `arduino`.
 ///
-/// When `arduino-cli`, the `arduino:avr` core, or the Servo library is missing, tests using it are SKIPPED WITH A
-/// REASON that names the exact install commands; with UNODAR_REQUIRE_ARDUINO=1 (e.g. in CI) a missing toolchain is a
+/// When `arduino-cli`, the `arduino:avr` core, or a library of `tool/arduino_libraries.txt` (at its exact version) is
+/// missing, tests using it are SKIPPED WITH A REASON that names the exact install commands; with UNODAR_REQUIRE_ARDUINO=1 (e.g. in CI) a missing toolchain is a
 /// failure instead.
 library;
 
@@ -14,12 +14,34 @@ import 'package:unodar_compiler/src/emitter/emitter.dart';
 
 import 'test_paths.dart';
 
-const installHelp = '''
-arduino-cli and the arduino:avr core are required for this check. Install with:
+/// The libraries of `tool/arduino_libraries.txt`, in order.
+final List<({String name, String version})> arduinoLibraries =
+    parseArduinoLibraries(File(fromPackage('..', '..', 'tool', 'arduino_libraries.txt')).readAsStringSync());
+
+/// `name@version` lines; `#` comments and blank lines are ignored. The name may contain spaces.
+List<({String name, String version})> parseArduinoLibraries(String text) => [
+      for (final line in LineSplitter.split(text))
+        if (line.trim().isNotEmpty && !line.trimLeft().startsWith('#'))
+          (
+            name: line.substring(0, line.lastIndexOf('@')).trim(),
+            version: line.substring(line.lastIndexOf('@') + 1).trim()
+          ),
+    ];
+
+/// The command that installs [library] exactly as CI does.
+String installCommand(({String name, String version}) library) {
+  final spec = '${library.name}@${library.version}';
+  return 'arduino-cli lib install --no-deps ${spec.contains(' ') ? '"$spec"' : spec}';
+}
+
+final installHelp = '''
+arduino-cli, the arduino:avr core and the libraries of tool/arduino_libraries.txt are required for this check.
+Install with:
   brew install arduino-cli            # macOS; other platforms: https://arduino.github.io/arduino-cli/latest/installation/
   arduino-cli core update-index
   arduino-cli core install arduino:avr
-  arduino-cli lib install Servo@1.3.0  # Servo is not part of the core (docs/SUBSET.md "Servo")''';
+  arduino-cli lib update-index
+${arduinoLibraries.map((l) => '  ${installCommand(l)}').join('\n')}''';
 
 /// Null when the toolchain is ready; otherwise what is missing.
 String? missingToolchain() {
@@ -34,12 +56,39 @@ String? missingToolchain() {
   }
 }
 
-/// What is missing given the output of `arduino-cli core list` and `arduino-cli lib list`, or null.
+/// What is missing given the output of `arduino-cli core list` and `arduino-cli lib list`, or null. Library names
+/// may contain spaces, so a line matches when it starts with the name followed by whitespace and a version.
 String? missingFrom({required String coreList, required String libraryList}) {
   if (!coreList.contains('arduino:avr')) return 'the arduino:avr core is not installed';
-  if (!RegExp(r'^Servo\s', multiLine: true).hasMatch(libraryList)) return 'the Servo library is not installed';
+  for (final library in arduinoLibraries) {
+    final installed = RegExp('^${RegExp.escape(library.name)}\\s+(\\S+)', multiLine: true).firstMatch(libraryList);
+    if (installed == null) return 'the ${library.name} library is not installed';
+    if (installed.group(1) != library.version) {
+      return 'the ${library.name} library is ${installed.group(1)}, but unodar is tested with ${library.version}';
+    }
+  }
   return null;
 }
+
+/// The `depends=` names of a `library.properties` file (version constraints such as `A (>=1.0)` dropped).
+List<String> dependsOf(String properties) {
+  final line = LineSplitter.split(properties).where((l) => l.startsWith('depends=')).firstOrNull;
+  if (line == null) return const [];
+  return [
+    for (final part in line.substring('depends='.length).split(','))
+      if (part.replaceAll(RegExp(r'\(.*\)'), '').trim() case final name when name.isNotEmpty) name,
+  ];
+}
+
+/// One message per dependency of a manifest library that the manifest does not list ([depends]: name → depends).
+List<String> undeclaredDependencies(
+        List<({String name, String version})> manifest, Map<String, List<String>> depends) =>
+    [
+      for (final library in manifest)
+        for (final dependency in depends[library.name] ?? const <String>[])
+          if (!manifest.any((l) => l.name == dependency))
+            '${library.name} depends on $dependency, which is not in tool/arduino_libraries.txt',
+    ];
 
 /// The outcome of `arduino-cli compile --format json` for one golden case.
 final class ArduinoBuild {
@@ -156,8 +205,14 @@ Future<String> runInSimulator(String hexPath, {Map<int, double> adc = const {}, 
 /// [pins] are the runner's `--pin` values, e.g. `D2=low@100` (drive D2 LOW from 100 ms of simulated time on) and
 /// `D2=open@180` (release it). [cycles] overrides the runner's limit (default two simulated seconds); with
 /// [until] null the program runs to that limit. The result's `pinLog` holds the runner's `<ms> <pin> <state>` lines.
+/// Runs [hexPath] in avr8js. [extra] are further runner options (`--eeprom FILE`, `--spi-reply HEX`, …, see
+/// tool/avr_runner/run.mjs).
 Future<({String serial, List<String> pinLog})> simulate(String hexPath,
-    {Map<int, double> adc = const {}, List<String> pins = const [], String? until = 'DONE', int? cycles}) async {
+    {Map<int, double> adc = const {},
+    List<String> pins = const [],
+    String? until = 'DONE',
+    int? cycles,
+    List<String> extra = const []}) async {
   final dir = Directory.systemTemp.createTempSync('unodar_avr_');
   addTearDown(() => dir.deleteSync(recursive: true));
   final logPath = p.join(dir.path, 'pins.log');
@@ -170,6 +225,7 @@ Future<({String serial, List<String> pinLog})> simulate(String hexPath,
     for (final pin in pins) ...['--pin', pin],
     '--pin-log',
     logPath,
+    ...extra,
   ]);
   if (run.exitCode != 0) fail('avr_runner exited with ${run.exitCode}:\n${run.stdout}\n${run.stderr}');
   final log = File(logPath).readAsLinesSync();
@@ -200,4 +256,52 @@ Future<({String serial, List<String> pinLog})> simulate(String hexPath,
       if (missing != null) fail('$missing (UNODAR_REQUIRE_ARDUINO=1).\n$installHelp');
     },
   );
+}
+
+/// The bytes a UART transmitter sent on [pin] (`D11`), decoded from a cycle-stamped pin log (`--pin-log-cycles`): 8N1
+/// at [baud], idle high, sampled in the middle of each bit as a receiver does. Also the largest distance, in bits, of
+/// any edge inside a frame from its ideal position (0 for perfect timing; a receiver tolerates roughly ±0.4 at the
+/// last bit), and the number of frames without a stop bit (a receiver's framing errors; such a frame is still read).
+({List<int> bytes, double maxEdgeError, int framingErrors}) decodeUart(List<String> pinLog, String pin, int baud,
+    {int clockHz = 16000000}) {
+  final edges = <(int, bool)>[];
+  for (final line in pinLog) {
+    final [cycle, name, state] = line.split(' ');
+    if (name == pin) edges.add((int.parse(cycle), state != 'low'));
+  }
+  final bit = clockHz / baud;
+  bool levelAt(double cycle) {
+    var level = true; // idle
+    for (final (at, high) in edges) {
+      if (at > cycle) break;
+      level = high;
+    }
+    return level;
+  }
+
+  final bytes = <int>[];
+  var maxError = 0.0;
+  var framingErrors = 0;
+  var i = 0;
+  while (true) {
+    // The next falling edge is a start bit.
+    while (i < edges.length && edges[i].$2) {
+      i++;
+    }
+    if (i >= edges.length) break;
+    final start = edges[i].$1;
+    var value = 0;
+    for (var b = 0; b < 8; b++) {
+      if (levelAt(start + (1.5 + b) * bit)) value |= 1 << b;
+    }
+    if (!levelAt(start + 9.5 * bit)) framingErrors++;
+    bytes.add(value);
+    final end = start + 9.5 * bit;
+    for (i++; i < edges.length && edges[i].$1 < end; i++) {
+      final position = (edges[i].$1 - start) / bit;
+      final error = (position - position.round()).abs();
+      if (error > maxError) maxError = error;
+    }
+  }
+  return (bytes: bytes, maxEdgeError: maxError, framingErrors: framingErrors);
 }

@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/element.dart';
 
 import '../api/api_resolution.dart';
+import 'classes.dart';
 
 /// What a name in the user's code refers to, for the constructs Phase 2 supports.
 sealed class Reference {
@@ -32,6 +33,26 @@ final class UnodarConstantReference extends Reference {
   final TopLevelVariableElement element;
 }
 
+/// A field of a user class named without `this.` (or the class name, for a static field) inside the class:
+/// `count`, `limit`.
+final class FieldReference extends Reference {
+  const FieldReference(this.element);
+
+  final FieldElement element;
+
+  /// Assignable, so a call could change it between two reads (E013).
+  bool get isMutable => !element.isFinal && !element.isConst;
+
+  bool get isStatic => element.isStatic;
+}
+
+/// An explicit getter of a user class named without `this.` inside one of its methods (`big`): a call.
+final class GetterReference extends Reference {
+  const GetterReference(this.element);
+
+  final GetterElement element;
+}
+
 /// A top-level function, used as a value instead of being called (E012).
 final class FunctionValueReference extends Reference {
   const FunctionValueReference(this.element);
@@ -41,9 +62,14 @@ final class FunctionValueReference extends Reference {
 
 /// What [identifier] refers to, or null for anything else (type names, members, unresolved names).
 Reference? referenceOf(SimpleIdentifier identifier) {
-  final element = identifier.element;
-  final variable = element is GetterElement ? element.variable : element;
+  final element = identifier.element ?? _writeElement(identifier);
+  if (element is GetterElement && !element.isOriginVariable && isUserClass(element.enclosingElement)) {
+    return GetterReference(element);
+  }
+  final variable = element is PropertyAccessorElement ? element.variable : element;
   return switch (variable) {
+    FieldElement() when isUserClass(variable.enclosingElement) => FieldReference(variable),
+    MethodElement() when isUserClass(variable.enclosingElement) => FunctionValueReference(variable),
     LocalVariableElement() || FormalParameterElement() => LocalReference(variable as VariableElement),
     TopLevelVariableElement() when isUnodarElement(variable) => UnodarConstantReference(variable),
     TopLevelVariableElement() => GlobalReference(variable),
@@ -51,6 +77,14 @@ Reference? referenceOf(SimpleIdentifier identifier) {
     _ => null,
   };
 }
+
+/// The element an assignment or `++`/`--` writes when [target] is its target (the target itself has none).
+Element? _writeElement(SimpleIdentifier target) => switch (target.parent) {
+      final AssignmentExpression a when a.leftHandSide == target => a.writeElement,
+      final PrefixExpression p when p.operand == target => p.writeElement,
+      final PostfixExpression p when p.operand == target => p.writeElement,
+      _ => null,
+    };
 
 /// The top-level function [call] invokes if it is declared in the user's file (not the unodar API), else null.
 TopLevelFunctionElement? userFunctionOf(MethodInvocation call) {

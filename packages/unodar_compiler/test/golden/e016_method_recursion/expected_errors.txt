@@ -1,0 +1,6 @@
+input.dart:6:8: error[E016]: recursion is not supported: 'Walker.walk' calls itself through Walker.walk → Walker.walk.
+  = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.
+input.dart:10:8: error[E016]: recursion is not supported: 'Walker.left' calls itself through Walker.left → Walker.right → Walker.left.
+  = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.
+input.dart:18:11: error[E016]: recursion is not supported: 'Walker.depth' calls itself through Walker.depth → deeper → Walker.depth.
+  = help: Rewrite it with a loop. The Uno's 2 KB stack has no overflow check, so recursion is rejected.

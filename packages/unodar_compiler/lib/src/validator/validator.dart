@@ -18,9 +18,12 @@ final class Validator {
     FunctionSignatureRule(),
     DeclaredTypeRule(),
     InitializerRule(),
+    ClassInitializerRule(),
     ReservedNameRule(),
     BindingClassRule(),
     BoundObjectRule(),
+    ClassRule(),
+    EnumRule(),
     // Bodies.
     StatementRule(),
     ExpressionRule(),

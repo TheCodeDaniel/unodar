@@ -26,36 +26,69 @@ final class BindingReader {
   ApiBindings readLibrary(LibraryElement library, {bool Function(ClassElement cls)? include}) =>
       _read(library.classes.where(include ?? (_) => true), library.topLevelVariables);
 
-  /// The bindings `package:unodar` exports to [library] through its imports (`Wire`, `Servo`, …).
+  /// The bindings `package:unodar` exports to [library] through its imports (`Wire`, `Servo`, …), and the integer
+  /// constants of the library wrappers it imports (`MSBFIRST`). The constants of `unodar.dart` itself (`HIGH`) are
+  /// hand-written registry rows.
   ApiBindings readImportedUnodar(LibraryElement library) {
     final classes = <ClassElement>[];
     final variables = <TopLevelVariableElement>[];
+    final constants = <TopLevelVariableElement>[];
     for (final import in library.firstFragment.libraryImports) {
       final imported = import.importedLibrary;
       if (imported == null || !isUnodarElement(imported)) continue;
+      final isWrapper = imported.uri.toString() != 'package:unodar/unodar.dart';
       for (final element in imported.exportNamespace.definedNames2.values) {
         switch (element) {
           case ClassElement():
             classes.add(element);
+          case GetterElement(:final TopLevelVariableElement variable) when variable.isConst:
+            if (isWrapper) constants.add(variable);
           case GetterElement(:final TopLevelVariableElement variable):
             variables.add(variable);
         }
       }
     }
-    return _read(classes, variables);
+    return _read(classes, variables, constants);
   }
 
-  ApiBindings _read(Iterable<ClassElement> classes, Iterable<TopLevelVariableElement> variables) {
+  ApiBindings _read(Iterable<ClassElement> classes, Iterable<TopLevelVariableElement> variables,
+      [Iterable<TopLevelVariableElement> constants = const []]) {
     final bound = {for (final c in classes) c: _class(c)}..removeWhere((_, c) => c == null);
     return ApiBindings(
+      constants: [for (final constant in constants) _constant(constant)],
       classes: [for (final c in bound.values) c!],
       objects: [
         for (final variable in variables)
           if (_classOfObject(variable) case final cls? when bound.containsKey(cls))
             ApiObject(variable.name!,
-                cppName: _string(variable, 'CppName') ?? variable.name!, className: bound[cls]!.dartName),
+                cppName: _string(variable, 'CppName') ?? variable.name!,
+                className: bound[cls]!.dartName,
+                usesPins: _usesPins(variable)),
       ],
     );
+  }
+
+  /// The pins of a `@CppUsesPins` on an external object (empty without one).
+  Map<int, String> _usesPins(TopLevelVariableElement variable) {
+    for (final metadata in variable.metadata.annotations) {
+      if (interopAnnotationName(metadata) != 'CppUsesPins') continue;
+      final map = metadata.computeConstantValue()?.getField('pins')?.toMapValue();
+      final pins = {
+        for (final MapEntry(:key, :value) in map?.entries ?? const <MapEntry<DartObject?, DartObject?>>[])
+          if ((key?.toIntValue(), value?.toStringValue()) case (final int pin, final String role)) pin: role,
+      };
+      if (map == null || pins.length != map.length) throw BindingError(variable, 'unreadable @CppUsesPins');
+      return pins;
+    }
+    return const {};
+  }
+
+  /// A library wrapper's `const int`: emitted as its `@CppName` (a C++ macro of the same value, which the conformance
+  /// probe checks) or as its value.
+  ApiConstant _constant(TopLevelVariableElement variable) {
+    final value = variable.computeConstantValue()?.toIntValue();
+    if (value == null) throw BindingError(variable, 'a wrapper constant that is not an int');
+    return ApiConstant(variable.name!, cppName: _string(variable, 'CppName') ?? '$value', value: value);
   }
 
   /// The binding class an `external final` top-level variable is an object of, or null.
@@ -78,16 +111,21 @@ final class BindingReader {
       cppName: cppName,
       header: _string(element, 'CppHeader'),
       constructor: constructors.isEmpty ? null : _parameters(constructors.single),
+      isPrint: hasInteropAnnotation(element, 'CppPrint'),
       methods: [
         for (final method in element.methods)
-          ApiFunction(
-            method.name!,
-            cppName: _string(method, 'CppName') ?? method.name!,
-            parameters: _parameters(method),
-            returnType: _irType(method.returnType, method),
-            cppReturnType: _cppResultType(method),
-            convertsArguments: true,
-          ),
+          if (hasInteropAnnotation(element, 'CppPrint') && isPrintMethod(method))
+            // Serial's dispatch (docs/SUBSET.md "Serial"): the value's static type picks the C++ overload.
+            ApiFunction(method.name!, cppName: method.name!, parameters: ApiRegistry.printParameters)
+          else
+            ApiFunction(
+              method.name!,
+              cppName: _string(method, 'CppName') ?? method.name!,
+              parameters: _parameters(method),
+              returnType: _irType(method.returnType, method),
+              cppReturnType: _cppResultType(method),
+              convertsArguments: true,
+            ),
       ],
     );
   }
@@ -103,15 +141,21 @@ final class BindingReader {
     final cppType = _string(parameter, 'CppType') ?? target.cppType(type);
     final scalar = _scalar(cppType, parameter);
     final range = cppRangeOf(parameter);
+    // `@CppPin()`: a pin, checked like a widget's (0 to 19 within the C++ type; one owner per pin).
+    final isPin = hasInteropAnnotation(parameter, 'CppPin');
+    int? bound(int? value, int pinBound, bool lower) => !isPin || value == null
+        ? value
+        : (lower ? (value > pinBound ? value : pinBound) : (value < pinBound ? value : pinBound));
     return ApiParameter(
       parameter.name!,
       type: type,
       cppType: cppType,
-      min: range?.$1 ?? scalar.min,
-      max: range?.$2 ?? scalar.max,
+      min: bound(range?.$1 ?? scalar.min, 0, true),
+      max: bound(range?.$2 ?? scalar.max, 19, false),
       isNamed: parameter.isNamed,
       defaultValue: parameter.isOptionalNamed ? _defaultValue(parameter) : null,
       hasCppRange: range != null,
+      isPin: isPin,
     );
   }
 

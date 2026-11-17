@@ -2,9 +2,12 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
 
 import '../ir/ir.dart';
+import 'classes.dart';
 import 'elements.dart';
+import 'enums.dart';
 import 'types.dart';
 
 /// The outcome of evaluating an expression at compile time.
@@ -105,6 +108,16 @@ final class ConstantEvaluator {
         return value;
       case SimpleIdentifier():
         return _reference(e);
+      // `Mode.idle`: a value of one of the user's enums.
+      case PrefixedIdentifier() when enumValueOf(e) != null:
+        final field = enumValueOf(e)!;
+        return EnumValue(
+            field.enclosingElement.name!, (field.enclosingElement as EnumElement).constants.indexOf(field));
+      // `Tally.limit`: a `static const` of a user class.
+      case PrefixedIdentifier() when staticFieldOf(e) != null:
+        final field = staticFieldOf(e)!;
+        if (!field.isConst) throw const _NotConstant();
+        return _fromDartObject(field.computeConstantValue()) ?? (throw const _NotConstant());
       case ParenthesizedExpression(:final expression):
         return _eval(expression);
       case PrefixExpression(:final operator, :final operand):
@@ -138,16 +151,30 @@ final class ConstantEvaluator {
     final VariableElement? element = switch (referenceOf(identifier)) {
       UnodarConstantReference(:final element) || GlobalReference(:final element) => element,
       LocalReference(:final element) => element,
+      FieldReference(:final element) when element.isStatic => element,
       _ => null,
     };
     if (element == null || !element.isConst) throw const _NotConstant();
     return _fromDartObject(element.computeConstantValue()) ?? (throw const _NotConstant());
   }
 
-  static Object? _fromDartObject(DartObject? object) =>
-      object?.toIntValue() ?? object?.toDoubleValue() ?? object?.toBoolValue();
+  static Object? _fromDartObject(DartObject? object) {
+    final type = object?.type;
+    if (type is InterfaceType && type.element is EnumElement) {
+      final index = object!.getField('index')?.toIntValue();
+      return index == null ? null : EnumValue(type.element.name!, index);
+    }
+    return object?.toIntValue() ?? object?.toDoubleValue() ?? object?.toBoolValue();
+  }
 
   Object _binary(TokenType operator, Object left, Object right) {
+    if (left is EnumValue && right is EnumValue) {
+      return switch (operator) {
+        TokenType.EQ_EQ => left == right,
+        TokenType.BANG_EQ => left != right,
+        _ => throw const _NotConstant(),
+      };
+    }
     if (left is bool && right is bool) {
       return switch (operator) {
         TokenType.AMPERSAND_AMPERSAND => left && right,
@@ -208,6 +235,20 @@ final class ConstantEvaluator {
         IrType.int16 => ((value + 0x8000) & 0xFFFF) - 0x8000,
         _ => throw ArgumentError(type),
       };
+}
+
+/// The constant value of one of the user's enums: its enum and its index.
+final class EnumValue {
+  const EnumValue(this.enumName, this.index);
+
+  final String enumName;
+  final int index;
+
+  @override
+  bool operator ==(Object other) => other is EnumValue && other.enumName == enumName && other.index == index;
+
+  @override
+  int get hashCode => Object.hash(enumName, index);
 }
 
 final class _NotConstant implements Exception {

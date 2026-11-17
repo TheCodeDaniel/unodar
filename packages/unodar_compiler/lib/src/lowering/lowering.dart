@@ -1,14 +1,19 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/syntactic_entity.dart';
 import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../frontend/frontend.dart';
 import '../ir/ir.dart';
+import '../runtime/runtime_files.dart';
+import '../semantics/callables.dart';
+import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/enums.dart';
 import '../semantics/signals.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
@@ -47,15 +52,24 @@ final class _Lowerer {
   /// Headers of the binding classes the program uses, in order of first use.
   final _headers = <String>{};
 
+  /// Shim headers of the bindings the program uses (`unodar_spi.h`), written next to the `.ino`.
+  final _shims = <String>{};
+
   /// Whether any lowered code calls a `Serial` method (a widget program then opens the port in `setup()`).
   var _usesSerial = false;
 
   IrProgram program() {
     final device = deviceOf(source.unit);
     final children = device == null ? const <WidgetChild>[] : widgetChildren(device, source.unit);
-    final globals = [
+    // Top-level variables and the user's classes, in source order (a class may only use what is declared above it).
+    final declarations = <(int, IrGlobalDeclaration Function())>[
       for (final variable in topLevelVariables(source.unit))
-        if (!_isExternal(variable) && !_isObjectlessWidget(variable.initializer)) _global(variable),
+        if (!_isExternal(variable) && !_isObjectlessWidget(variable.initializer))
+          (variable.offset, () => _global(variable)),
+      for (final declaration in userClassDeclarations(source.unit)) (declaration.offset, () => _struct(declaration)),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    final globals = [
+      for (final (_, lower) in declarations) lower(),
       // Widgets written in Device.children, after the top-level variables, in list order.
       for (final child in children)
         if (identical(child.element, child.creation) && !_isObjectlessWidget(child.creation))
@@ -64,6 +78,8 @@ final class _Lowerer {
     final names = {for (final (name, creation) in acceptedWidgets(source.unit)) creation: name};
     final bodies = <(int, IrFunction Function())>[
       for (final function in compiledFunctions(source.unit)) (function.offset, () => _function(function)),
+      // Methods are defined among the functions, in source order (declared in their struct).
+      for (final (method, owner) in compiledMethods(source.unit)) (method.offset, () => _method(method, owner)),
       // A Computed's function, at its declaration.
       for (final variable in topLevelVariables(source.unit))
         if (computedCreation(variable.initializer) case final creation? when topLevelSignal(variable) != null)
@@ -80,12 +96,21 @@ final class _Lowerer {
     ];
     final functionNames = <String>{};
     for (final function in functions) {
-      if (!functionNames.add(function.name)) throw LoweringError('two functions named ${function.name}');
+      final name = function.owner == null ? function.name : '${function.owner}::${function.name}';
+      if (!functionNames.add(name)) throw LoweringError('two functions named $name');
     }
     return IrProgram(
       sourceName: source.displayName,
       includes: [..._headers, ..._cppIncludes()],
-      localIncludes: [if (device != null) 'unodar_widgets.h'],
+      localIncludes: [if (device != null) 'unodar_widgets.h', ..._shims],
+      enums: [
+        for (final declaration in userEnumDeclarations(source.unit))
+          IrEnum(
+            name: declaration.namePart.typeName.lexeme,
+            values: [for (final c in declaration.body.constants) c.name.lexeme],
+            line: _line(declaration.namePart.typeName),
+          ),
+      ],
       globals: globals,
       functions: functions,
     );
@@ -147,6 +172,14 @@ final class _Lowerer {
         for (final child in children)
           if (widget(child).hasObject)
             IrExpressionStatement(IrCall(widget(child).setup, const [], receiver: child.name),
+                line: _line(child.element))
+          // `OnStart`: its callback, at its place in children (docs/SUBSET.md "Widgets").
+          else if (widget(child).runsAtSetup)
+            IrExpressionStatement(
+                IrCall(
+                    callbackFunctionName(child.name,
+                        callbackOf(child.creation) ?? (throw LoweringError('no callback for ${child.name}'))),
+                    const []),
                 line: _line(child.element)),
         // Delivers every signal's initial value (docs/SUBSET.md "When changes are delivered").
         if (deliver != null) IrExpressionStatement(IrCall(deliver.name, const []), line: line),
@@ -285,7 +318,8 @@ final class _Lowerer {
       ];
 
   void _usesClass(ApiClass cls) {
-    if (cls.header case final header?) _headers.add(header);
+    // A shim header (docs/SUBSET.md "First-party libraries") is a runtime file, included from the sketch folder.
+    if (cls.header case final header?) (runtimeFiles.containsKey(header) ? _shims : _headers).add(header);
   }
 
   int _line(SyntacticEntity node) => source.lineInfo.getLocation(node.offset).lineNumber;
@@ -314,6 +348,15 @@ final class _Lowerer {
         line: _line(variable.name),
       );
     }
+    if (topLevelObject(variable) case final creation?) {
+      // An object of a user class: `final left = Counter(1, scale: 2);` → `Counter left(1, 1, 2);`.
+      return IrBoundObject(
+        name: variable.name.lexeme,
+        cppClass: userClassOf(creation.staticType)!.name!,
+        arguments: _objectArguments(creation),
+        line: _line(variable.name),
+      );
+    }
     final cls = api.classOfType(variable.declaredFragment?.element.type);
     if (cls != null) {
       // A bound object: `final link = SoftSerial(10, 11);` → `SoftwareSerial link(10, 11);`.
@@ -336,6 +379,160 @@ final class _Lowerer {
       line: _line(variable.name),
     );
   }
+
+  /// The struct of a user class: its instance fields in declaration order, each with its field initializer (a C++
+  /// default member initializer, evaluated in class scope as in Dart), and its constructor's parameters and member
+  /// initializers (initializing formals, then the initializer list, in field order).
+  IrStruct _struct(ClassDeclaration declaration) {
+    final constructor = constructorOf(declaration);
+    final formals = <String, String>{}; // field → parameter (`this.step`)
+    final listed = <String, Expression>{}; // field → initializer-list value
+    final parameters = <IrParameter>[];
+    if (constructor != null) {
+      for (final parameter in constructor.parameters.parameters) {
+        final element = parameter.declaredFragment?.element ?? (throw LoweringError('unresolved $parameter'));
+        final name = parameter.name!.lexeme;
+        parameters.add(IrParameter(name, _type(element.type, parameter)));
+        if (parameter is FieldFormalParameter) formals[name] = name;
+      }
+      for (final initializer in constructor.initializers) {
+        if (initializer is! ConstructorFieldInitializer) throw LoweringError('initializer $initializer');
+        listed[initializer.fieldName.name] = initializer.expression;
+      }
+    }
+    final fields = [for (final variable in instanceFields(declaration)) _member(variable)];
+    // constexpr only if every member object is a constexpr struct (a binding class's constructor is not constexpr).
+    final isConstexpr = fields.every((f) => f is! IrMemberObject || (_constexprStructs[f.cppClass] ?? false));
+    _constexprStructs[declaration.namePart.typeName.lexeme] = isConstexpr;
+    return IrStruct(
+      name: declaration.namePart.typeName.lexeme,
+      line: _line(declaration.namePart.typeName),
+      fields: fields,
+      staticFields: [
+        for (final variable in staticFields(declaration))
+          IrStructField(
+            name: variable.name.lexeme,
+            type: _type(variable.declaredFragment?.element.type, variable.name),
+            storage: _storage(variable),
+            initializer: _expression(variable.initializer ?? (throw LoweringError('no initializer: ${variable.name}'))),
+            line: _line(variable.name),
+          ),
+      ],
+      methods: [
+        for (final (method, owner) in compiledMethods(source.unit))
+          if (owner == declaration) _method(method, owner),
+      ],
+      constructor: constructor == null
+          ? null
+          : IrConstructor(
+              parameters: parameters,
+              isConstexpr: isConstexpr,
+              initializers: [
+                for (final field in fields)
+                  if (formals[field.name] case final parameter? when field is IrStructField)
+                    (field.name, [IrVariable(parameter, field.type)])
+                  else if (listed[field.name] case final value?)
+                    (field.name, _memberArguments(value)),
+              ],
+              line: _line(constructor.firstTokenAfterCommentAndMetadata),
+            ),
+    );
+  }
+
+  /// Which structs have a `constexpr` constructor, by name (filled in source order; members are declared above).
+  final _constexprStructs = <String, bool>{};
+
+  /// A field or a member object of a struct.
+  IrMember _member(VariableDeclaration variable) {
+    final type = variable.declaredFragment?.element.type;
+    final cls = api.classOfType(type);
+    if (userClassOf(type) == null && cls == null) {
+      return IrStructField(
+        name: variable.name.lexeme,
+        type: _type(type, variable.name),
+        storage: variable.isFinal ? IrStorage.final_ : IrStorage.mutable,
+        initializer: variable.initializer == null ? null : _expression(variable.initializer!),
+        line: _line(variable.name),
+      );
+    }
+    if (cls != null) _usesClass(cls);
+    final initializer = variable.initializer;
+    return IrMemberObject(
+      name: variable.name.lexeme,
+      cppClass: cls?.cppName ?? userClassOf(type)!.name!,
+      arguments: initializer == null ? null : _memberArguments(initializer),
+      line: _line(variable.name),
+    );
+  }
+
+  /// The C++ arguments that create a member object (`Counter(scale * 10)`), or the single value of a field.
+  List<IrExpression> _memberArguments(Expression value) {
+    if (objectCreation(value) case final creation?) return _objectArguments(creation);
+    if (value is InstanceCreationExpression) {
+      if (api.classOfType(value.staticType) case final cls?) {
+        final constructor = cls.constructor ?? (throw LoweringError('${cls.dartName} has no constructor'));
+        return _apiArguments(
+            ApiFunction(cls.dartName, cppName: cls.cppName, parameters: constructor), value.argumentList.arguments);
+      }
+    }
+    return [_expression(value)];
+  }
+
+  /// A user constructor's arguments in parameter order: positional ones, then each named parameter's argument or,
+  /// if omitted, its declared default (a constant).
+  List<IrExpression> _objectArguments(InstanceCreationExpression creation) {
+    final element = userClassOf(creation.staticType)!;
+    final declaration = userClassDeclarations(source.unit).firstWhere((c) => c.declaredFragment?.element == element);
+    final constructor = constructorOf(declaration);
+    if (constructor == null) return const [];
+    final arguments = creation.argumentList.arguments;
+    final positional = [
+      for (final a in arguments)
+        if (a is! NamedArgument) a.argumentExpression
+    ];
+    final named = {
+      for (final a in arguments)
+        if (a is NamedArgument) a.name.lexeme: a.argumentExpression
+    };
+    var index = 0;
+    return [
+      for (final parameter in constructor.parameters.parameters)
+        if (parameter.isPositional)
+          _expression(positional[index++])
+        else if (named[parameter.name!.lexeme] case final argument?)
+          _expression(argument)
+        else if (parameter.defaultClause case final clause?)
+          _expression(clause.value)
+        else
+          throw LoweringError('missing argument ${parameter.name} in ${creation.toSource()}'),
+    ];
+  }
+
+  /// A method or getter, lowered once (its struct declares it, the functions define it).
+  IrFunction _method(MethodDeclaration method, ClassDeclaration owner) => _methods[method] ??= () {
+        final element = method.declaredFragment?.element ?? (throw LoweringError('unresolved ${method.name}'));
+        final returnType = _type(element.returnType, method.name);
+        final body = method.body;
+        return IrFunction(
+          name: method.name.lexeme,
+          owner: owner.namePart.typeName.lexeme,
+          isStatic: method.isStatic,
+          line: _line(method.firstTokenAfterCommentAndMetadata),
+          returnType: returnType,
+          parameters: [
+            for (final parameter in method.parameters?.parameters ?? const <FormalParameter>[])
+              IrParameter(parameter.name!.lexeme, _type(parameter.declaredFragment?.element.type, parameter)),
+          ],
+          body: switch (body) {
+            BlockFunctionBody(:final block) => _statements(block.statements),
+            ExpressionFunctionBody(expression: final e) when returnType == IrType.void_ => [_statementLevel(e)],
+            ExpressionFunctionBody(expression: final e) => [IrReturn(_expression(e), line: _line(e))],
+            _ => throw LoweringError('unsupported body of ${method.name.lexeme}'),
+          },
+        );
+      }();
+
+  final _methods = <MethodDeclaration, IrFunction>{};
 
   IrFunction _function(FunctionDeclaration function) {
     final expression = function.functionExpression;
@@ -401,9 +598,27 @@ final class _Lowerer {
         return IrBreak(line: line);
       case ContinueStatement(label: null):
         return IrContinue(line: line);
+      case SwitchStatement(:final expression, :final members):
+        return IrSwitch(_expression(expression), _cases(members), line: line);
       default:
         throw LoweringError('unsupported statement ${statement.toSource()}');
     }
+  }
+
+  /// Dart 3 cases: an empty case shares the body of the next one, so labels collect until a case has statements.
+  List<IrSwitchCase> _cases(List<SwitchMember> members) {
+    final cases = <IrSwitchCase>[];
+    var labels = <IrExpression>[];
+    var isDefault = false;
+    for (final (index, member) in members.indexed) {
+      labels.addAll(caseConstants(member).map(_expression));
+      isDefault = isDefault || member is SwitchDefault;
+      if (member.statements.isEmpty && index != members.length - 1) continue;
+      cases.add(IrSwitchCase(labels, _statements(member.statements), isDefault: isDefault));
+      labels = [];
+      isDefault = false;
+    }
+    return cases;
   }
 
   IrLocal _local(VariableDeclaration variable) {
@@ -457,6 +672,22 @@ final class _Lowerer {
               PostfixExpression(operand: SimpleIdentifier(:final name), :final operator)
           when isIncrementOrDecrement(expression):
         return IrIncrement(name, decrement: operator.type == TokenType.MINUS_MINUS, line: line);
+      // Field writes: `left.count = e`, `this.count = e`, `+=`, `-=`, `++`, `--` on the C++ member.
+      case AssignmentExpression(:final leftHandSide, :final operator, :final rightHandSide)
+          when fieldAccessOf(leftHandSide) != null ||
+              thisFieldOf(leftHandSide) != null ||
+              staticFieldOf(leftHandSide) != null:
+        final op = switch (operator.type) {
+          TokenType.EQ => IrAssignOp.assign,
+          TokenType.PLUS_EQ => IrAssignOp.add,
+          TokenType.MINUS_EQ => IrAssignOp.subtract,
+          _ => throw LoweringError('unsupported assignment ${expression.toSource()}'),
+        };
+        return IrAssign(_fieldTarget(leftHandSide), op, _expression(rightHandSide), line: line);
+      case PrefixExpression(:final operand, :final operator) || PostfixExpression(:final operand, :final operator)
+          when isIncrementOrDecrement(expression) &&
+              (fieldAccessOf(operand) != null || thisFieldOf(operand) != null || staticFieldOf(operand) != null):
+        return IrIncrement(_fieldTarget(operand), decrement: operator.type == TokenType.MINUS_MINUS, line: line);
       // Signal writes: `count.value = e` → `count.set(e)`; `+=`, `-=`, `++`, `--` → `count.set(count.value() ± e)`.
       case AssignmentExpression(:final leftHandSide, :final operator, :final rightHandSide)
           when signalOfValue(leftHandSide) != null:
@@ -483,6 +714,17 @@ final class _Lowerer {
     }
   }
 
+  /// The C++ object a method or getter is called on: `left`, `pair.large`, `this` (printed `this->m()`).
+  String _receiver(Expression target) =>
+      objectPathOf(target) ?? (throw LoweringError('method call on ${target.toSource()}'));
+
+  /// The C++ lvalue of a field: `left.count`, or `this->count`.
+  String _fieldTarget(Expression target) {
+    if (thisFieldOf(target) case final field?) return 'this->${field.name}';
+    if (staticFieldOf(target) case final field?) return '${field.enclosingElement.name}::${field.name}';
+    return fieldAccessOf(target)!.cpp;
+  }
+
   /// `count.value()`; for a Computed its expression, `unodar_isOdd_compute()`, so a read is never out of date.
   IrCall _signalRead(SimpleIdentifier signal) {
     final type = _type(signalValueTypeOfName(signal), signal);
@@ -503,11 +745,21 @@ final class _Lowerer {
     );
   }
 
-  static IrExpression _zero(IrType type) => switch (type) {
+  /// T's zero: `0`, `0.0`, `false`, or an enum's first value (index 0, as Dart's `values.first`).
+  IrExpression _zero(IrType type) => switch (type) {
         IrType.bool_ => const IrBoolLiteral(false),
         IrType.float32 => const IrDoubleLiteral(0),
+        _ when type.isEnum => IrConstant('${type.name}::${_firstEnumValue(type.name)}', type: type),
         _ => const IrIntLiteral(0),
       };
+
+  String _firstEnumValue(String name) => userEnumDeclarations(source.unit)
+      .firstWhere((d) => d.namePart.typeName.lexeme == name)
+      .body
+      .constants
+      .first
+      .name
+      .lexeme;
 
   /// `count.set(value);`.
   IrStatement _signalSet(SimpleIdentifier signal, IrExpression value, int line) =>
@@ -553,6 +805,26 @@ final class _Lowerer {
         return _call(expression);
       case PrefixedIdentifier() || PropertyAccess() when signalOfValue(expression) != null:
         return _signalRead(signalOfValue(expression)!);
+      // `Mode.idle` → `Mode::idle`; `mode.index` → `uint8_t(mode)` (an int of 0 to 255, widened where needed).
+      case PrefixedIdentifier() when enumValueOf(expression) != null:
+        final value = enumValueOf(expression)!;
+        return IrConstant('${value.enclosingElement.name}::${value.name}', type: _typeOf(expression));
+      case PrefixedIdentifier() || PropertyAccess() when enumIndexTarget(expression) != null:
+        return IrConvert(IrType.uint8, _expression(enumIndexTarget(expression)!));
+      case PrefixedIdentifier() || PropertyAccess() when fieldAccessOf(expression) != null:
+        final access = fieldAccessOf(expression)!;
+        return IrFieldRead(access.object == 'this' ? null : access.object, access.field.name!, _typeOf(expression));
+      case PropertyAccess() when thisFieldOf(expression) != null:
+        return IrFieldRead(null, thisFieldOf(expression)!.name!, _typeOf(expression));
+      // `Tally.limit` → `Tally::limit`.
+      case PrefixedIdentifier() when staticFieldOf(expression) != null:
+        final field = staticFieldOf(expression)!;
+        return IrVariable('${field.enclosingElement.name}::${field.name}', _typeOf(expression));
+      // A getter call: `meter.big` → `meter.big()`, `this.big` → `this->big()`.
+      case PrefixedIdentifier(:final prefix, :final identifier) when calleeOf(expression) != null:
+        return IrCall(identifier.name, const [], receiver: _receiver(prefix), type: _typeOf(expression));
+      case PropertyAccess(:final target?, :final propertyName) when calleeOf(expression) != null:
+        return IrCall(propertyName.name, const [], receiver: _receiver(target), type: _typeOf(expression));
       // `Every`'s interval, validated (E022): its length in milliseconds.
       case InstanceCreationExpression() when isWidgetInterval(expression):
         return switch (intervalOf(expression, const ConstantEvaluator())) {
@@ -590,8 +862,10 @@ final class _Lowerer {
       case UnodarConstantReference():
         final constant = api.resolveConstant(identifier) ?? (throw LoweringError('unknown constant $identifier'));
         return IrConstant(constant.cppName);
-      case LocalReference() || GlobalReference():
+      case LocalReference() || GlobalReference() || FieldReference():
         return IrVariable(identifier.name, _typeOf(identifier));
+      case GetterReference():
+        return IrCall(identifier.name, const [], type: _typeOf(identifier));
       default:
         throw LoweringError('unsupported reference $identifier');
     }
@@ -623,6 +897,22 @@ final class _Lowerer {
         type: function.returnType,
         cppResult: _cppResult(function),
         parameterCppTypes: function.convertsArguments ? [for (final p in function.parameters) p.cppType!] : null,
+      );
+    }
+    if (calleeOf(call) case final MethodElement method when method.isStatic && call.target != null) {
+      // `Tally.report()` → `Tally::report()`.
+      return IrCall('${method.enclosingElement!.name}::${method.name}',
+          [for (final a in call.argumentList.arguments) _expression(a.argumentExpression)],
+          type: _typeOf(call));
+    }
+    if (calleeOf(call) is MethodElement) {
+      // A method of the user's class: on an object, on `this`, or (no target) on the current object.
+      final target = call.target;
+      return IrCall(
+        call.methodName.name,
+        [for (final a in call.argumentList.arguments) _expression(a.argumentExpression)],
+        receiver: target == null ? null : _receiver(target),
+        type: _typeOf(call),
       );
     }
     if (userFunctionOf(call) == null) throw LoweringError('unresolved call ${call.toSource()}');
@@ -692,7 +982,7 @@ final class _Lowerer {
       case IrType.int32 || IrType.uint8 || IrType.uint16 || IrType.int16:
         if (digits != null) throw LoweringError('digits with a non-double value ${list.toSource()}');
         return print([ir]);
-      case IrType.void_ || IrType.string:
+      default:
         throw LoweringError('unprintable value ${value.toSource()}');
     }
   }

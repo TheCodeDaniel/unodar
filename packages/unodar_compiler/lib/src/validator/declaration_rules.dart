@@ -4,6 +4,8 @@ import 'package:analyzer/dart/element/type.dart';
 import '../api/api_resolution.dart';
 import '../diagnostics/diagnostics.dart';
 import '../ir/ir.dart';
+import '../semantics/callables.dart';
+import '../semantics/classes.dart';
 import '../semantics/elements.dart';
 import '../semantics/signals.dart';
 import '../semantics/types.dart';
@@ -11,19 +13,24 @@ import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
 import 'rules.dart';
 
-/// Only `import 'package:unodar/unodar.dart';` (unprefixed) is allowed. `library;` is harmless and allowed.
-/// Unresolvable imports never reach this rule: they are analyzer errors (E007).
+/// Only unprefixed imports of `package:unodar/unodar.dart` and of unodar's library wrappers
+/// (`package:unodar/eeprom.dart`, docs/SUBSET.md "First-party libraries") are allowed; `package:unodar/src/…` is
+/// not, nor anything else. `library;` is harmless and allowed. Unresolvable imports never reach this rule: they are
+/// analyzer errors (E007).
 final class DirectiveRule implements ValidationRule {
   const DirectiveRule();
 
   static const allowedImport = 'package:unodar/unodar.dart';
+
+  /// `package:unodar/<name>.dart`: unodar itself or one of its library wrappers.
+  static bool isAllowedImport(String? uri) => uri != null && RegExp(r'^package:unodar/[a-z_]+\.dart$').hasMatch(uri);
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final directive in unit.directives) {
       final problem = switch (directive) {
         LibraryDirective() => null,
-        ImportDirective(:final uri) when uri.stringValue != allowedImport => "an import of '${uri.stringValue}'",
+        ImportDirective(:final uri) when !isAllowedImport(uri.stringValue) => "an import of '${uri.stringValue}'",
         ImportDirective(prefix: _?) => 'a prefixed import (`as …`)',
         ImportDirective(deferredKeyword: _?) => 'a deferred import',
         ImportDirective() => null,
@@ -69,13 +76,11 @@ final class TopLevelDeclarationRule implements ValidationRule {
             when declaredFragment != null && hasInteropAnnotation(declaredFragment.element, 'CppClass'):
           break; // A binding class: BindingClassRule checks it (E017).
         case ClassDeclaration():
-          unsupported('a class without @CppClass',
-              suggestion: "Remove this declaration, or annotate it with `@CppClass('CppName')` if it describes a C++ "
-                  'class; see docs/SUBSET.md.');
-        case EnumDeclaration():
-          unsupported('an enum');
+          break; // One of the user's classes: ClassRule checks it (E027).
         case MixinDeclaration():
-          unsupported('a mixin');
+          break; // ClassRule (E027).
+        case EnumDeclaration():
+          break; // One of the user's enums: EnumRule checks it (E028).
         case ExtensionDeclaration() || ExtensionTypeDeclaration():
           unsupported('an extension');
         case TypeAlias():
@@ -130,12 +135,12 @@ final class FunctionSignatureRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    for (final function in compiledFunctions(unit).where((f) => !isEntryPoint(f))) {
-      final expression = function.functionExpression;
-      final parameters = expression.parameters?.parameters ?? const <FormalParameter>[];
-      final body = expression.body;
+    for (final function in compiledCallables(unit)) {
+      if (function.function case final f? when isEntryPoint(f)) continue;
+      final parameters = function.parameters?.parameters ?? const <FormalParameter>[];
+      final body = function.body;
       final problems = [
-        if (expression.typeParameters != null) 'type parameters',
+        if (function.typeParameters != null) 'type parameters',
         if (parameters.any((p) => p.isOptionalPositional)) 'optional positional parameters',
         if (parameters.any((p) => p.isNamed)) 'named parameters',
         if (parameters.any((p) => p.defaultClause != null)) 'a default value',
@@ -151,7 +156,8 @@ final class FunctionSignatureRule implements ValidationRule {
       ];
       if (problems.isNotEmpty) {
         context.report(Diagnostics.unsupportedSignature(
-            function.name.lexeme, 'it has ${englishList(problems)}', context.at(function.name)));
+            function.displayName, 'it has ${englishList(problems)}', context.at(function.name),
+            kind: function.owner == null ? 'function' : 'method'));
       }
     }
   }
@@ -169,15 +175,29 @@ final class DeclaredTypeRule implements ValidationRule {
       if (widgetClassOf(declaration.variables.type?.type) != null) continue;
       _variables(declaration.variables, context);
     }
-    for (final function in compiledFunctions(unit)) {
-      final expression = function.functionExpression;
-      if (expression.typeParameters != null) continue;
+    for (final function in compiledCallables(unit)) {
+      if (function.typeParameters != null) continue;
       final returnType = function.returnType;
       if (returnType != null) _annotation(returnType, context, allowVoid: true);
-      for (final parameter in expression.parameters?.parameters ?? const <FormalParameter>[]) {
+      for (final parameter in function.parameters?.parameters ?? const <FormalParameter>[]) {
         if (parameter.type case final type? when parameter.functionTypedSuffix == null) _annotation(type, context);
       }
-      _locals(expression.body, context);
+      _locals(function.body, context);
+    }
+    for (final declaration in userClassDeclarations(unit).where((c) => c.extendsClause == null)) {
+      for (final member in declaration.body.members) {
+        switch (member) {
+          case FieldDeclaration(:final fields) when !fields.isLate:
+            _variables(fields, context);
+          case ConstructorDeclaration(name: null, factoryKeyword: null):
+            for (final parameter in member.parameters.parameters) {
+              if (parameter.type case final type? when parameter.functionTypedSuffix == null) {
+                _annotation(type, context);
+              }
+            }
+          default:
+        }
+      }
     }
     for (final callback in widgetCallbacks(unit)) {
       // `Watch(ratio, (num r) { … })`: an annotated callback parameter must have a supported type.
@@ -202,7 +222,7 @@ final class DeclaredTypeRule implements ValidationRule {
 
   void _variables(VariableDeclarationList list, ValidationContext context) {
     final annotation = list.type;
-    if (isBindingType(annotation?.type)) return; // E018 decides where a binding type may appear.
+    if (isObjectType(annotation?.type)) return; // E018 decides where a binding or class type may appear.
     if (widgetClassOf(annotation?.type) != null) return; // E022 decides where a widget type may appear.
     if (isSignalType(annotation?.type)) return; // E024 decides where a signal type may appear (E009: its `T`).
     if (annotation != null) {
@@ -220,7 +240,7 @@ final class DeclaredTypeRule implements ValidationRule {
 
   void _annotation(TypeAnnotation annotation, ValidationContext context, {bool allowVoid = false}) {
     final type = annotation.type;
-    if (type == null || isBindingType(type) || widgetClassOf(type) != null || isSignalType(type)) return;
+    if (type == null || isObjectType(type) || widgetClassOf(type) != null || isSignalType(type)) return;
     final irType = irTypeOf(type);
     if (irType != null && (allowVoid || irType != IrType.void_)) return;
     context.report(typeDiagnostic(type, context.at(annotation)));

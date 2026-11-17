@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/syntactic_entity.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_resolution.dart';
@@ -10,6 +11,8 @@ import '../diagnostics/diagnostics.dart';
 import '../emitter/target.dart';
 import '../frontend/frontend.dart';
 import '../ir/ir.dart';
+import '../semantics/callables.dart';
+import '../semantics/classes.dart';
 import '../semantics/elements.dart';
 import '../semantics/types.dart';
 import '../semantics/walk.dart';
@@ -49,11 +52,35 @@ List<Diagnostic> bindingClassDiagnostics(ClassDeclaration declaration, ResolvedS
     if (declaration.abstractKeyword == null && !declaration.body.members.any((m) => m is ConstructorDeclaration))
       'it is not abstract but declares no external constructor',
   ];
+  final printing = hasInteropAnnotation(element, 'CppPrint');
+  bool isPrint(ClassMember m) => m is MethodDeclaration && (m.name.lexeme == 'print' || m.name.lexeme == 'println');
+  if (printing && !declaration.body.members.any(isPrint)) {
+    final annotation = declaration.metadata
+        .firstWhere((a) => a.elementAnnotation != null && interopAnnotationName(a.elementAnnotation!) == 'CppPrint');
+    diagnostics.add(Diagnostics.annotationArgument(
+        'CppPrint',
+        "'$className' declares no print or println",
+        'Declare `external void print(Object value, {int digits = 2});` (or println), or remove @CppPrint.',
+        at(annotation)));
+  }
   if (classProblems.isNotEmpty) {
     diagnostics.add(Diagnostics.bindingClass(className, englishList(classProblems), at(declaration.namePart)));
   }
 
   for (final member in declaration.body.members) {
+    if (printing && member is MethodDeclaration && isPrint(member)) {
+      // `external void print(Object value, {int digits = 2});`, nothing else: the dispatch is Serial's.
+      if (!_isPrintSignature(member)) {
+        diagnostics.add(Diagnostics.bindingSignature(
+            'method',
+            member.name.lexeme,
+            'a signature other than `void ${member.name.lexeme}(Object value, {int digits = 2})` (@CppPrint)',
+            'Declare it exactly as `external void ${member.name.lexeme}(Object value, {int digits = 2});`, '
+                'without @CppName or @CppType.',
+            source.locationOf(member.name.offset)));
+      }
+      continue;
+    }
     final start = member.firstTokenAfterCommentAndMetadata;
     void kind(String kind, String name, String help) =>
         diagnostics.add(Diagnostics.bindingMember(kind, name, help, at(start)));
@@ -95,6 +122,23 @@ List<Diagnostic> bindingClassDiagnostics(ClassDeclaration declaration, ResolvedS
   return diagnostics;
 }
 
+/// Whether [method] is `external void print(Object value, {int digits = 2})` (or `println`), without annotations.
+bool _isPrintSignature(MethodDeclaration method) {
+  final element = method.declaredFragment?.element;
+  if (element == null || method.externalKeyword == null || method.isGetter || method.isStatic) return false;
+  if (method.metadata.isNotEmpty || method.typeParameters != null || element.returnType is! VoidType) return false;
+  final parameters = element.formalParameters;
+  if (parameters.length != 2 || parameters.any((p) => p.metadata.annotations.isNotEmpty)) return false;
+  final (value, digits) = (parameters[0], parameters[1]);
+  return value.isRequiredPositional &&
+      value.type.isDartCoreObject &&
+      value.type.nullabilitySuffix == NullabilitySuffix.none &&
+      digits.isOptionalNamed &&
+      digits.name == 'digits' &&
+      digits.type.isDartCoreInt &&
+      digits.computeConstantValue()?.toIntValue() == 2;
+}
+
 /// The signature problems of a binding method or constructor, and the help to show; empty if there are none.
 (List<String>, String) _signatureProblems(
     ExecutableElement executable, List<FormalParameter> parameters, Target target, bool hasTypeParameters) {
@@ -112,10 +156,21 @@ List<Diagnostic> bindingClassDiagnostics(ClassDeclaration declaration, ResolvedS
     final type = irTypeOf(parameter.type);
     if (type == null || type == IrType.void_) {
       problems.add("an unsupported parameter type '${displayType(parameter.type)}' ('${parameter.name}')");
+      if (parameter.type.isDartCoreObject && (executable.name == 'print' || executable.name == 'println')) {
+        help = 'If the C++ class derives from Print, add `@CppPrint()` to the class: its print and println then '
+            'take any printable value, as Serial\'s do.';
+      }
       continue;
     }
     final cppType = _cppTypeOf(parameter);
     if (cppType != null) problems.addAll(_cppTypeProblems(cppType, type, "'${parameter.name}'", target));
+    if (hasInteropAnnotation(parameter, 'CppPin')) {
+      if (!type.isInteger) {
+        problems.add("a @CppPin on a parameter that is not an int ('${parameter.name}')");
+      } else if (cppRangeOf(parameter) case (final min, final max) when min < 0 || max > 19) {
+        problems.add("a @CppRange on the pin '${parameter.name}' outside 0 to 19 ($min to $max)");
+      }
+    }
     if (cppRangeOf(parameter) case (final min, final max)) {
       final rangeProblems = _cppRangeProblems(parameter, type, cppType ?? target.cppType(type), min, max, target);
       if (rangeProblems.isNotEmpty && optional.isEmpty) {
@@ -152,7 +207,7 @@ List<String> _cppTypeProblems(String cppType, IrType dartType, String what, Targ
     IrType.int32 || IrType.uint8 || IrType.uint16 || IrType.int16 => scalar.kind == CppScalarKind.integer,
     IrType.float32 => scalar.kind == CppScalarKind.floatingPoint,
     IrType.bool_ => scalar.kind == CppScalarKind.boolean,
-    IrType.void_ || IrType.string => false,
+    _ => false, // void, a string literal
   };
   return fits ? const [] : ["a @CppType that does not fit the Dart type ('$cppType' on $what)"];
 }
@@ -196,12 +251,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
 
   @override
   void visitClassDeclaration(ClassDeclaration node) {
-    // Annotations inside a class without @CppClass are not checked: the class is E005 as a whole.
-    final element = node.declaredFragment?.element;
-    if (element != null && !hasInteropAnnotation(element, 'CppClass')) {
-      node.metadata.forEach(visitAnnotation);
-      return;
-    }
+    // Inside one of the user's own classes no interop annotation applies: each is reported as misplaced.
     super.visitClassDeclaration(node);
   }
 
@@ -213,14 +263,43 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     final target = node.parent;
     final allowed = switch (name) {
       'CppClass' || 'CppHeader' => target is ClassDeclaration,
+      'CppPrint' => _isBindingClass(target),
       'CppName' => _isBindingMethod(target) || _isExternalObject(target),
       'CppType' => _isBindingMethod(target) || _isBindingParameter(target),
       'CppRange' => _isBindingParameter(target),
+      'CppPin' => _isBindingParameter(target) && target.parent?.parent is ConstructorDeclaration,
+      'CppUsesPins' => _isExternalObject(target),
       'CppInclude' => target is LibraryDirective,
       _ => false,
     };
     if (!allowed) {
       context.report(Diagnostics.misplacedAnnotation(name, _allowedFor[name]!, context.at(node)));
+      return;
+    }
+    // No argument: a pin's type is checked with its signature, a @CppPrint class's print methods with the class.
+    if (name == 'CppPin' || name == 'CppPrint') return;
+    if (name == 'CppUsesPins') {
+      final argument = node.arguments?.arguments.singleOrNull;
+      final entries = argument is SetOrMapLiteral && argument.isMap ? argument.elements : null;
+      final pins = <int>{};
+      final valid = entries != null &&
+          entries.isNotEmpty &&
+          entries.every((e) =>
+              e is MapLiteralEntry &&
+              e.key is IntegerLiteral &&
+              ((e.key as IntegerLiteral).value ?? -1) >= 0 &&
+              ((e.key as IntegerLiteral).value ?? 20) <= 19 &&
+              pins.add((e.key as IntegerLiteral).value!) &&
+              e.value is SimpleStringLiteral &&
+              (e.value as SimpleStringLiteral).value.isNotEmpty);
+      if (!valid) {
+        context.report(Diagnostics.annotationArgument(
+            name,
+            'its argument must be a map literal from pins (integer literals 0 to 19) to their roles (string '
+                'literals)',
+            "Write it directly, e.g. `@CppUsesPins({11: 'MOSI', 13: 'SCK'})`.",
+            context.at(node)));
+      }
       return;
     }
     if (name == 'CppRange') {
@@ -259,14 +338,19 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
   }
 
   static bool _isBindingMethod(AstNode? node) =>
-      node is MethodDeclaration && node.parent?.parent is ClassDeclaration && node.externalKeyword != null;
+      node is MethodDeclaration && _isBindingClass(node.parent?.parent) && node.externalKeyword != null;
 
   static bool _isBindingParameter(AstNode? node) {
     if (node is! FormalParameter) return false;
     final executable = node.parent?.parent;
     return (executable is MethodDeclaration || executable is ConstructorDeclaration) &&
-        executable?.parent?.parent is ClassDeclaration;
+        _isBindingClass(executable?.parent?.parent);
   }
+
+  static bool _isBindingClass(AstNode? node) =>
+      node is ClassDeclaration &&
+      node.declaredFragment != null &&
+      hasInteropAnnotation(node.declaredFragment!.element, 'CppClass');
 
   static bool _isExternalObject(AstNode? node) =>
       node is TopLevelVariableDeclaration &&
@@ -279,6 +363,9 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     'CppName': 'methods of a binding class and external objects',
     'CppType': 'parameters and methods of a binding class',
     'CppRange': 'integer parameters of a binding class',
+    'CppPin': 'integer parameters of a binding constructor',
+    'CppUsesPins': 'external objects',
+    'CppPrint': 'binding classes',
     'CppInclude': 'the `library;` directive',
   };
 
@@ -304,10 +391,28 @@ final class BoundObjectRule implements ValidationRule {
     for (final declaration in unit.declarations.whereType<TopLevelVariableDeclaration>()) {
       for (final variable in declaration.variables.variables) {
         final element = variable.declaredFragment?.element;
-        final cls = bindingClassOf(element?.type);
-        if (element == null || cls == null) continue;
         final name = variable.name.lexeme;
         final initializer = variable.initializer;
+        if (userClassOf(element?.type) case final userClass? when declaration.externalKeyword == null) {
+          // An object of the user's own class: `final left = Counter(1);`.
+          if (initializer is InstanceCreationExpression &&
+              initializer.constructorName.name == null &&
+              initializer.staticType?.element == userClass) {
+            constructorInitializers.add(initializer);
+          } else if (initializer != null) {
+            reportedInitializers.add(initializer);
+            context.report(Diagnostics.objectInitializer(name, userClass.name!, context.at(initializer)));
+          }
+          if (!element!.isFinal || element.isConst || variable.isLate) {
+            final example = initializer is InstanceCreationExpression
+                ? 'final $name = ${initializer.toSource()};'
+                : 'final $name = ${userClass.name}();';
+            context.report(Diagnostics.objectNotFinal(name, example, context.at(variable.name)));
+          }
+          continue;
+        }
+        final cls = bindingClassOf(element?.type);
+        if (element == null || cls == null) continue;
         if (declaration.externalKeyword != null) {
           if (!element.isFinal) {
             context.report(
@@ -334,16 +439,15 @@ final class BoundObjectRule implements ValidationRule {
       }
     }
 
-    for (final function in compiledFunctions(unit)) {
-      final expression = function.functionExpression;
-      if (function.returnType case final type? when bindingClassOf(type.type) != null) {
-        context.report(Diagnostics.bindingTypePosition('a return value', type.toSource(), context.at(type)));
+    for (final function in compiledCallables(unit)) {
+      if (function.returnType case final type? when isObjectType(type.type)) {
+        context.report(_typePosition('a return value', type.type!, type.toSource(), context.at(type)));
       }
-      for (final parameter in expression.parameters?.parameters ?? const <FormalParameter>[]) {
+      for (final parameter in function.parameters?.parameters ?? const <FormalParameter>[]) {
         final type = parameter.declaredFragment?.element.type;
-        if (bindingClassOf(type) == null) continue;
+        if (!isObjectType(type)) continue;
         final node = _typeAnnotationOf(parameter) ?? parameter;
-        context.report(Diagnostics.bindingTypePosition('a parameter', displayType(type!), context.at(node)));
+        context.report(_typePosition('a parameter', type!, displayType(type), context.at(node)));
       }
     }
     for (final body in compiledBodies(unit)) {
@@ -355,9 +459,9 @@ final class BoundObjectRule implements ValidationRule {
         };
         for (final variable in list?.variables ?? const <VariableDeclaration>[]) {
           final type = variable.declaredFragment?.element.type;
-          if (bindingClassOf(type) == null) continue;
+          if (!isObjectType(type)) continue;
           final at = list!.type ?? variable.name;
-          context.report(Diagnostics.bindingTypePosition('a local variable', displayType(type!), context.at(at)));
+          context.report(_typePosition('a local variable', type!, displayType(type), context.at(at)));
         }
       }
     }
@@ -368,9 +472,30 @@ final class BoundObjectRule implements ValidationRule {
         switch (expression) {
           case InstanceCreationExpression(:final staticType)
               when bindingClassOf(staticType) != null && !constructorInitializers.contains(expression):
-            if (!_isRejectedInitializer(expression)) {
+            if (!_isRejectedInitializer(expression) && !_isMemberCreation(expression)) {
               context
                   .report(Diagnostics.bindingConstructorPosition(staticType!.element!.name!, context.at(expression)));
+            }
+            return false;
+          case InstanceCreationExpression(:final staticType)
+              when userClassOf(staticType) != null && !constructorInitializers.contains(expression):
+            // A member object is composition (ClassRule); a rejected top-level initializer is reported already.
+            if (!_isRejectedInitializer(expression) && !_isMemberCreation(expression)) {
+              context.report(Diagnostics.objectCreationPosition(staticType!.element!.name!, context.at(expression)));
+            }
+            return false;
+          case SimpleIdentifier() when userClassOf(expression.staticType) != null:
+            // A global object, or a member object named inside a method. A field initializer that is not a creation
+            // is reported at the field (ClassRule).
+            if (referenceOf(expression) case GlobalReference() || FieldReference()
+                when !isFieldInitializer(expression)) {
+              context.report(Diagnostics.objectUse(expression.name, context.at(expression)));
+            }
+            return false;
+          case SimpleIdentifier()
+              when bindingClassOf(expression.staticType) != null && referenceOf(expression) is FieldReference:
+            if (!isFieldInitializer(expression)) {
+              context.report(Diagnostics.boundObjectUse(expression.name, context.at(expression)));
             }
             return false;
           case SimpleIdentifier() when bindingClassOf(expression.staticType) != null:
@@ -397,7 +522,20 @@ final class BoundObjectRule implements ValidationRule {
   }
 
   static TypeAnnotation? _typeAnnotationOf(FormalParameter parameter) => parameter.type;
+
+  /// A member object created in place: a field initializer or an initializer-list value of a user class.
+  static bool _isMemberCreation(InstanceCreationExpression expression) =>
+      isFieldInitializer(expression) ||
+      (expression.parent is ConstructorFieldInitializer && enclosingUserClass(expression) != null);
+
+  static Diagnostic _typePosition(String position, DartType type, String display, SourceLocation at) =>
+      userClassOf(type) != null
+          ? Diagnostics.objectTypePosition(position, display, at)
+          : Diagnostics.bindingTypePosition(position, display, at);
 }
 
 /// Whether [type] is a binding class type: E018 reports it in any other position, so E009 skips it.
 bool isBindingType(DartType? type) => bindingClassOf(type) != null;
+
+/// Whether [type] is a binding class or one of the user's classes: E018 decides where it may appear.
+bool isObjectType(DartType? type) => bindingClassOf(type) != null || userClassOf(type) != null;

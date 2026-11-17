@@ -1,0 +1,10 @@
+input.dart:6:33: error[E004]: argument 2 is out of range for parameter 'bitOrder' of SPI.beginTransaction, which accepts 0 to 1 (`@CppRange`).
+  = help: Pass a value from 0 to 1; the library does not handle values outside it.
+input.dart:7:43: error[E004]: argument 4 is out of range for parameter 'mode' of SPI.beginTransaction, which accepts 0 to 3 (`@CppRange`).
+  = help: Pass a value from 0 to 3; the library does not handle values outside it.
+input.dart:8:24: error[E004]: argument -1 is out of range for parameter 'clock' of SPI.beginTransaction, which is a uint32_t (0 to 4294967295).
+  = help: Pass a value from 0 to 4294967295.
+input.dart:9:16: error[E004]: argument 256 is out of range for parameter 'value' of SPI.transfer, which is a uint8_t (0 to 255).
+  = help: Pass a value from 0 to 255.
+input.dart:10:18: error[E004]: argument 65536 is out of range for parameter 'value' of SPI.transfer16, which is a uint16_t (0 to 65535).
+  = help: Pass a value from 0 to 65535.

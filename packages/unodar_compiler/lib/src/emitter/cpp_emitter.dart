@@ -59,9 +59,16 @@ final class CppEmitter {
       out.writeln();
       modHelper.forEach(out.writeln);
     }
+    // Enums have no `#line`: like the prototypes, they come before the first one (docs/SUBSET.md "Enums").
+    if (program.enums.isNotEmpty) {
+      out.writeln();
+      for (final e in program.enums) {
+        out.writeln('enum class ${e.name} : uint8_t { ${e.values.join(', ')} };');
+      }
+    }
     final prototypes = [
       for (final function in program.functions)
-        if (!function.isEntryPoint) '${_signature(function)};',
+        if (!function.isEntryPoint && function.owner == null) '${_signature(function)};',
     ];
     if (prototypes.isNotEmpty) {
       out.writeln();
@@ -70,7 +77,11 @@ final class CppEmitter {
 
     final file = _cppString(program.sourceName);
     if (program.globals.isNotEmpty) out.writeln();
+    IrGlobalDeclaration? previous;
     for (final global in program.globals) {
+      // A struct stands apart from the variables around it.
+      if (previous != null && (global is IrStruct || previous is IrStruct)) out.writeln();
+      previous = global;
       out.writeln('#line ${global.line} $file');
       switch (global) {
         case IrGlobal(:final storage, :final type, :final name, :final initializer):
@@ -83,6 +94,8 @@ final class CppEmitter {
           final list = arguments.isEmpty ? '' : '(${arguments.map(argument).join(', ')})';
           final cls = templateArgument == null ? cppClass : '$cppClass<${target.cppType(templateArgument)}>';
           out.writeln('$cls $name$list;');
+        case IrStruct():
+          _struct(out, global, file);
       }
     }
     for (final function in program.functions) {
@@ -96,9 +109,73 @@ final class CppEmitter {
     return out.toString();
   }
 
-  String _signature(IrFunction function) {
+  /// `struct Counter { … };`: every member after its own `#line`, then the constructor (no body, E027) with one
+  /// member initializer per line. Members are public; Dart privacy is the analyzer's.
+  void _struct(StringBuffer out, IrStruct struct, String file) {
+    out.writeln('struct ${struct.name} {');
+    for (final field in struct.staticFields) {
+      final declaration = '${target.cppType(field.type)} ${field.name}';
+      out
+        ..writeln('#line ${field.line} $file')
+        ..writeln(switch (field.storage) {
+          IrStorage.constant => '  static constexpr $declaration = ${_expr(field.initializer!)};',
+          IrStorage.final_ => '  static const $declaration;',
+          IrStorage.mutable => '  static $declaration;',
+        });
+    }
+    for (final member in struct.fields) {
+      out.writeln('#line ${member.line} $file');
+      switch (member) {
+        case IrStructField(:final initializer, :final storage, :final type, :final name):
+          final value = initializer == null ? '' : ' = ${_expr(initializer)}';
+          out.writeln('  ${_declaration(storage, type, name)}$value;');
+        // `Counter small = Counter(1);` (copy-initialization: a default member initializer cannot use `(…)`), or
+        // `Servo arm;` for no arguments or a member the constructor creates.
+        case IrMemberObject(:final cppClass, :final name, :final arguments):
+          final value =
+              arguments == null || arguments.isEmpty ? '' : ' = $cppClass(${arguments.map(_expr).join(', ')})';
+          out.writeln('  $cppClass $name$value;');
+      }
+    }
+    for (final method in struct.methods) {
+      out
+        ..writeln('#line ${method.line} $file')
+        ..writeln('  ${method.isStatic ? 'static ' : ''}${_signature(method, qualified: false)};');
+    }
+    if (struct.constructor case final constructor?) {
+      final parameters = constructor.parameters.map((p) => '${target.cppType(p.type)} ${p.name}').join(', ');
+      final head = '  ${constructor.isConstexpr ? 'constexpr ' : ''}explicit ${struct.name}($parameters)';
+      out.writeln('#line ${constructor.line} $file');
+      if (constructor.initializers.isEmpty) {
+        out.writeln('$head {}');
+      } else {
+        out.writeln(head);
+        for (final (index, (field, values)) in constructor.initializers.indexed) {
+          final last = index == constructor.initializers.length - 1;
+          final arguments = values.map(_expr).join(', ');
+          out.writeln('${index == 0 ? '      : ' : '        '}$field($arguments)${last ? ' {}' : ','}');
+        }
+      }
+    }
+    out.writeln('};');
+    // The definitions of the static fields (C++11 also needs one for a `constexpr` member that is odr-used).
+    for (final field in struct.staticFields) {
+      final declaration = '${target.cppType(field.type)} ${struct.name}::${field.name}';
+      out
+        ..writeln('#line ${field.line} $file')
+        ..writeln(switch (field.storage) {
+          IrStorage.constant => 'constexpr $declaration;',
+          IrStorage.final_ => 'const $declaration = ${_expr(field.initializer!)};',
+          IrStorage.mutable => '$declaration = ${_expr(field.initializer!)};',
+        });
+    }
+  }
+
+  /// `int32_t f(int32_t a)`; a method defined outside its struct is qualified, `bool Meter::big()`.
+  String _signature(IrFunction function, {bool qualified = true}) {
     final parameters = function.parameters.map((p) => '${target.cppType(p.type)} ${p.name}').join(', ');
-    return '${target.cppType(function.returnType)} ${function.name}($parameters)';
+    final name = qualified && function.owner != null ? '${function.owner}::${function.name}' : function.name;
+    return '${target.cppType(function.returnType)} $name($parameters)';
   }
 
   String _declaration(IrStorage storage, IrType type, String name) {
@@ -135,6 +212,18 @@ final class CppEmitter {
         final step = updates.isEmpty ? '' : ' ${updates.map(_simple).join(', ')}';
         out.writeln('${indent}for ($init;$test;$step) {');
         _block(out, body, depth + 1, file);
+        out.writeln('$indent}');
+      case IrSwitch(:final subject, :final cases):
+        out.writeln('${indent}switch (${_expr(subject)}) {');
+        for (final IrSwitchCase(:labels, :body, :isDefault) in cases) {
+          final heads = [for (final label in labels) 'case ${_expr(label)}:', if (isDefault) 'default:'];
+          for (final head in heads.take(heads.length - 1)) {
+            out.writeln('$indent  $head');
+          }
+          out.writeln('$indent  ${heads.last} {');
+          _block(out, body, depth + 2, file);
+          out.writeln('$indent  } break;');
+        }
         out.writeln('$indent}');
       case IrBlock(:final body):
         out.writeln('$indent{');
@@ -193,6 +282,7 @@ final class CppEmitter {
         IrWhile() ||
         IrFor() ||
         IrBlock() ||
+        IrSwitch() ||
         IrRawCpp() =>
           throw InvalidIrError('compound statement in a simple position'),
       };
@@ -225,6 +315,8 @@ final class CppEmitter {
         IrDoubleLiteral(:final value) => _Rendered(_doubleLiteral(value), _atomic),
         IrBoolLiteral(:final value) => _Rendered('$value', _atomic),
         IrConstant(:final name) || IrVariable(:final name) => _Rendered(name, _atomic),
+        IrFieldRead(:final object, :final field) =>
+          _Rendered(object == null ? 'this->$field' : '$object.$field', _atomic),
         IrStringLiteral(:final value) => _Rendered('F(${cppStringLiteral(value)})', _atomic),
         IrCall() => _Rendered(_call(expression), _atomic),
         IrConvert(:final type, :final operand) => _Rendered('${target.cppType(type)}(${_expr(operand)})', _atomic),
@@ -245,7 +337,8 @@ final class CppEmitter {
     final texts = [
       for (var index = 0; index < arguments.length; index++) _argument(arguments[index], parameterCppTypes?[index]),
     ];
-    final text = '${receiver == null ? '' : '$receiver.'}$function(${texts.join(', ')})';
+    final prefix = switch (receiver) { null => '', 'this' => 'this->', _ => '$receiver.' };
+    final text = '$prefix$function(${texts.join(', ')})';
     return switch (_resultConversion(call)) {
       null => text,
       final type => _conversion(type, text),
@@ -430,7 +523,11 @@ final class CppEmitter {
       // Every other integer operation is emitted in 32 bits (or as int32_t-returning unodar_mod).
       IrUnary() || IrBinary() => _Promotion.wide,
       IrCall() => _callPromotion(expression),
-      IrVariable(:final type) || IrConvert(:final type) || IrConstant(:final type) => _typePromotion(type),
+      IrVariable(:final type) ||
+      IrFieldRead(:final type) ||
+      IrConvert(:final type) ||
+      IrConstant(:final type) =>
+        _typePromotion(type),
       IrDoubleLiteral() || IrBoolLiteral() || IrStringLiteral() => _Promotion.wide,
     };
   }
@@ -461,6 +558,13 @@ final class CppEmitter {
       program.globals.any((g) => switch (g) {
             IrGlobal(:final initializer) => _modInExpression(initializer),
             IrBoundObject(:final arguments) => arguments.any(_modInExpression),
+            IrStruct(:final fields, :final staticFields, :final constructor) =>
+              staticFields.any((f) => _modInExpression(f.initializer)) ||
+                  fields.any((f) => switch (f) {
+                        IrStructField(:final initializer) => _modInExpression(initializer),
+                        IrMemberObject(:final arguments) => arguments?.any(_modInExpression) ?? false,
+                      }) ||
+                  (constructor?.initializers.any((i) => i.$2.any(_modInExpression)) ?? false),
           }) ||
       program.functions.any((f) => _modInStatements(f.body));
 
@@ -477,7 +581,8 @@ final class CppEmitter {
         IrBoolLiteral() ||
         IrStringLiteral() ||
         IrConstant() ||
-        IrVariable() =>
+        IrVariable() ||
+        IrFieldRead() =>
           false,
       };
 
@@ -497,6 +602,8 @@ final class CppEmitter {
             _modInStatements(body),
         IrReturn(:final value) => _modInExpression(value),
         IrBlock(:final body) => _modInStatements(body),
+        IrSwitch(:final subject, :final cases) =>
+          _modInExpression(subject) || cases.any((c) => c.labels.any(_modInExpression) || _modInStatements(c.body)),
         IrIncrement() || IrBreak() || IrContinue() || IrRawCpp() => false,
       };
 }

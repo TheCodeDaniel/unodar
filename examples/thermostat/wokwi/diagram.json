@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "author": "unodar",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-arduino-uno", "id": "uno", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-lcd1602", "id": "lcd", "top": -200, "left": 20, "attrs": {} },
+    { "type": "wokwi-dht22", "id": "dht", "top": -10, "left": 330, "attrs": { "temperature": "18", "humidity": "40" } },
+    { "type": "wokwi-pushbutton", "id": "up", "top": 250, "left": 40, "attrs": { "color": "green", "label": "up" } },
+    { "type": "wokwi-pushbutton", "id": "down", "top": 250, "left": 140, "attrs": { "color": "blue", "label": "down" } },
+    { "type": "wokwi-led", "id": "heater", "top": 240, "left": 260, "attrs": { "color": "red", "label": "heater" } },
+    { "type": "wokwi-resistor", "id": "r1", "top": 310, "left": 230, "attrs": { "value": "220" } }
+  ],
+  "connections": [
+    [ "lcd:VSS", "uno:GND.1", "black", [] ],
+    [ "lcd:VDD", "uno:5V", "red", [] ],
+    [ "lcd:V0", "uno:GND.1", "black", [] ],
+    [ "lcd:RS", "uno:12", "orange", [] ],
+    [ "lcd:RW", "uno:GND.1", "black", [] ],
+    [ "lcd:E", "uno:11", "orange", [] ],
+    [ "lcd:D4", "uno:5", "yellow", [] ],
+    [ "lcd:D5", "uno:4", "yellow", [] ],
+    [ "lcd:D6", "uno:3", "yellow", [] ],
+    [ "lcd:D7", "uno:2", "yellow", [] ],
+    [ "lcd:A", "uno:5V", "red", [] ],
+    [ "lcd:K", "uno:GND.1", "black", [] ],
+    [ "dht:VCC", "uno:5V", "red", [] ],
+    [ "dht:SDA", "uno:8", "purple", [] ],
+    [ "dht:GND", "uno:GND.2", "black", [] ],
+    [ "up:1.l", "uno:6", "green", [] ],
+    [ "up:2.l", "uno:GND.2", "black", [] ],
+    [ "down:1.l", "uno:7", "blue", [] ],
+    [ "down:2.l", "uno:GND.2", "black", [] ],
+    [ "uno:13", "r1:1", "red", [] ],
+    [ "r1:2", "heater:A", "red", [] ],
+    [ "heater:C", "uno:GND.2", "black", [] ]
+  ],
+  "dependencies": {}
+}

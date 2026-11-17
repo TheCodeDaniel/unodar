@@ -7,8 +7,11 @@ import '../api/api_resolution.dart';
 
 import '../diagnostics/diagnostics.dart';
 import '../emitter/cpp_names.dart';
+import '../semantics/callables.dart';
+import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
 import '../semantics/elements.dart';
+import '../semantics/enums.dart';
 import '../semantics/signals.dart';
 import '../semantics/walk.dart';
 import '../semantics/widgets.dart';
@@ -52,8 +55,24 @@ final class InitializerRule implements ValidationRule {
       } else if (bindingClassOf(variable.declaredFragment?.element.type) != null) {
         if (initializer is! InstanceCreationExpression) continue;
         values = [for (final a in initializer.argumentList.arguments) a.argumentExpression];
+      } else if (userClassOf(variable.declaredFragment?.element.type) case final cls?) {
+        // An object (`final left = Counter(1);`): its class must be declared above it, its arguments constant. Any
+        // other initializer is E018.
+        if (objectCreation(initializer) == null) continue;
+        final creation = initializer as InstanceCreationExpression;
+        final declaration = cls.firstFragment.nameOffset;
+        if (declaration != null && declaration > variable.offset) {
+          context.report(Diagnostics.forwardReference(name, cls.name!, context.at(creation.constructorName)));
+          continue;
+        }
+        values = [for (final a in creation.argumentList.arguments) a.argumentExpression];
       } else {
         values = [initializer];
+      }
+      // `const early = Later.size + 1;` with `Later` declared below: C++ needs the class first.
+      if (values.map((v) => _laterStatic(v, variable.offset)).nonNulls.firstOrNull case (final node, final cls)) {
+        context.report(Diagnostics.forwardReference(name, cls, context.at(node)));
+        continue;
       }
       for (final value in values) {
         final later = subexpressions(value).whereType<SimpleIdentifier>().where((identifier) {
@@ -64,6 +83,135 @@ final class InitializerRule implements ValidationRule {
           context.report(Diagnostics.forwardReference(name, later.name, context.at(later)));
         } else if (!isWidget && context.constants.evaluate(value) is NotConstant) {
           context.report(Diagnostics.nonConstantInitializer(name, context.at(value)));
+        }
+      }
+    }
+  }
+}
+
+/// A static member (`Later.size`) in [root] of a user class declared after [offset]: the node and the class name.
+/// Fields of [exclude] (the class whose own body is checked) are not "a class declared below": see
+/// [_staticDeclaredBelow].
+(Expression, String)? _laterStatic(Expression root, int offset, {Element? exclude}) {
+  for (final e in subexpressions(root)) {
+    final field = staticFieldOf(e);
+    final declared = field?.enclosingElement.firstFragment.nameOffset;
+    if (field != null && field.enclosingElement != exclude && declared != null && declared > offset) {
+      return (e, field.enclosingElement.name!);
+    }
+  }
+  return null;
+}
+
+/// A static field of [cls] that [root] reads (`step` or `Timing.step`) and that is declared below [offset] in the
+/// class: C++ needs a static member's initializer to see what it uses, so it is E015.
+Expression? _staticDeclaredBelow(Expression root, Element? cls, int offset) {
+  for (final e in subexpressions(root)) {
+    final field = switch (e) {
+      SimpleIdentifier() => switch (referenceOf(e)) {
+          FieldReference(:final element) when element.isStatic => element,
+          _ => null,
+        },
+      _ => staticFieldOf(e),
+    };
+    final declared = field?.firstFragment.nameOffset;
+    if (field != null && field.enclosingElement == cls && declared != null && declared > offset) return e;
+  }
+  return null;
+}
+
+/// What the user's classes compile must be constant (E015): field initializers over constants, initializer-list
+/// values over constants and the constructor's parameters, and nothing declared below the class.
+final class ClassInitializerRule implements ValidationRule {
+  const ClassInitializerRule();
+
+  @override
+  void check(CompilationUnit unit, ValidationContext context) {
+    final globals = {
+      for (final variable in topLevelVariables(unit)) variable.declaredFragment?.element: variable.offset
+    };
+    for (final declaration in userClassDeclarations(unit).where((c) => c.extendsClause == null)) {
+      final cls = declaration.namePart.typeName.lexeme;
+      bool skip(Expression root) => subexpressions(root).any((e) =>
+          expressionIssue(e) != null ||
+          isSignalType(e.staticType) ||
+          widgetClassOf(e.staticType) != null ||
+          (e is! InstanceCreationExpression && isObjectType(e.staticType)));
+      void check(Expression root, String what, {bool parameters = false}) {
+        // A member object created in place: each constructor argument follows the same rule.
+        if (root is InstanceCreationExpression && isObjectType(root.staticType)) {
+          final member = switch (root.parent) {
+            VariableDeclaration(:final name) => name.lexeme,
+            ConstructorFieldInitializer(:final fieldName) => fieldName.name,
+            _ => '?',
+          };
+          for (final argument in root.argumentList.arguments) {
+            check(argument.argumentExpression, "an argument of the member object '$member'", parameters: parameters);
+          }
+          return;
+        }
+        if (skip(root)) return;
+        final later = subexpressions(root).whereType<SimpleIdentifier>().where((identifier) {
+          final reference = referenceOf(identifier);
+          return reference is GlobalReference && (globals[reference.element] ?? 0) > declaration.offset;
+        }).firstOrNull;
+        if (later != null) {
+          context.report(Diagnostics.classForwardReference(cls, later.name, context.at(later)));
+          return;
+        }
+        // `Later.size`: a static member of a class declared below this one.
+        if (_laterStatic(root, declaration.offset, exclude: declaration.declaredFragment?.element)
+            case (final node, final name)) {
+          context.report(Diagnostics.classForwardReference(cls, name, context.at(node)));
+          return;
+        }
+        final constant = subexpressions(root).every((e) => switch (e) {
+              MethodInvocation() => false,
+              SimpleIdentifier() when parameters && constructorParameterOf(e) != null => true,
+              SimpleIdentifier() ||
+              PrefixedIdentifier() ||
+              PropertyAccess() =>
+                context.constants.evaluate(e) is! NotConstant,
+              _ => true,
+            });
+        if (!constant) context.report(Diagnostics.nonConstantClassInitializer(what, context.at(root)));
+      }
+
+      for (final member in declaration.body.members) {
+        switch (member) {
+          case FieldDeclaration(:final fields):
+            // A member object's class must be declared above (C++ needs its complete type).
+            final memberClass = userClassOf(fields.variables.first.declaredFragment?.element.type);
+            final memberOffset = memberClass?.firstFragment.nameOffset;
+            // (A class holding itself is E027.)
+            if (memberOffset != null &&
+                memberOffset > declaration.offset &&
+                memberClass != declaration.declaredFragment?.element) {
+              context.report(Diagnostics.classForwardReference(
+                  cls, memberClass!.name!, context.at(fields.type ?? fields.variables.first.name)));
+              continue;
+            }
+            for (final variable in fields.variables) {
+              final initializer = variable.initializer;
+              if (initializer != null && member.isStatic) {
+                final below = _staticDeclaredBelow(initializer, declaration.declaredFragment?.element, variable.offset);
+                if (below != null) {
+                  final name = below is PrefixedIdentifier ? below.identifier.name : below.toSource();
+                  context.report(Diagnostics.staticForwardReference(variable.name.lexeme, name, context.at(below)));
+                  continue;
+                }
+              }
+              if (initializer != null) {
+                check(initializer,
+                    "the initializer of ${member.isStatic ? 'static ' : ''}field '${variable.name.lexeme}'");
+              }
+            }
+          case ConstructorDeclaration(name: null, factoryKeyword: null, :final initializers):
+            for (final initializer in initializers.whereType<ConstructorFieldInitializer>()) {
+              check(initializer.expression, "the value of '${initializer.fieldName.name}' in the initializer list",
+                  parameters: true);
+            }
+          default:
         }
       }
     }
@@ -96,9 +244,33 @@ final class ReservedNameRule implements ValidationRule {
             name.lexeme, 'it is a unodar API name', '${name.lexeme}Binding', context.at(name)));
       }
     }
-    for (final function in compiledFunctions(unit)) {
-      if (!isEntryPoint(function)) checkName(function.name);
-      for (final parameter in function.functionExpression.parameters?.parameters ?? const <FormalParameter>[]) {
+    // An enum and its values become C++ names; Arduino's macros ignore C++ scopes, even `Mode::min`.
+    for (final declaration in userEnumDeclarations(unit)) {
+      checkName(declaration.namePart.typeName);
+      for (final constant in declaration.body.constants) {
+        checkName(constant.name);
+      }
+    }
+    // A class, its fields and its constructor's parameters become C++ names; Arduino's macros ignore C++ scopes.
+    for (final declaration in userClassDeclarations(unit)) {
+      checkName(declaration.namePart.typeName);
+      for (final member in declaration.body.members) {
+        switch (member) {
+          case FieldDeclaration(:final fields):
+            for (final variable in fields.variables) {
+              checkName(variable.name);
+            }
+          case ConstructorDeclaration(:final parameters):
+            for (final parameter in parameters.parameters) {
+              if (parameter is! FieldFormalParameter && parameter.name != null) checkName(parameter.name!);
+            }
+          default:
+        }
+      }
+    }
+    for (final function in compiledCallables(unit)) {
+      if (function.function == null || !isEntryPoint(function.function!)) checkName(function.name);
+      for (final parameter in function.parameters?.parameters ?? const <FormalParameter>[]) {
         if (parameter.name case final name?) checkName(name);
       }
     }
@@ -198,7 +370,7 @@ final class EvaluationOrderRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    final reported = <MethodInvocation>{};
+    final reported = <AstNode>{};
     void group(List<_Member> members) {
       for (final member in members) {
         final call = member.firstCall;
@@ -212,11 +384,11 @@ final class EvaluationOrderRule implements ValidationRule {
               ..add(call)
               ..add(otherCall);
             final (first, second) = otherCall.offset < call.offset ? (otherCall, call) : (call, otherCall);
-            context.report(Diagnostics.twoCalls(_callText(first), _callText(second), context.at(first.methodName)));
+            context.report(Diagnostics.twoCalls(_callText(first), _callText(second), context.at(_callNode(first))));
           } else if (global != null) {
             final userCall = member.firstUserCall!;
             reported.add(userCall);
-            context.report(Diagnostics.callNextToGlobal(_callText(userCall), global, context.at(userCall.methodName)));
+            context.report(Diagnostics.callNextToGlobal(_callText(userCall), global, context.at(_callNode(userCall))));
           } else {
             continue;
           }
@@ -258,7 +430,11 @@ final class EvaluationOrderRule implements ValidationRule {
             !variable.isFinal &&
             !isUnodarElement(variable)) {
           group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
-        } else if (signalOfValue(leftHandSide) != null) {
+        } else if (signalOfValue(leftHandSide) != null ||
+            fieldAccessOf(leftHandSide) != null ||
+            thisFieldOf(leftHandSide) != null ||
+            staticFieldOf(leftHandSide) != null ||
+            (leftHandSide is SimpleIdentifier && referenceOf(leftHandSide) is FieldReference)) {
           // `count.value += next()` is `count.set(count.value() + next())`: the read and the call are unsequenced.
           group([_Member.global(leftHandSide.toSource()), _Member.of(rightHandSide)]);
         }
@@ -266,9 +442,13 @@ final class EvaluationOrderRule implements ValidationRule {
     }
   }
 
-  /// `next()`, `Wire.read()`.
-  static String _callText(MethodInvocation call) =>
-      '${call.target == null ? '' : '${call.target!.toSource()}.'}${call.methodName.name}()';
+  /// `next()`, `Wire.read()`, or a getter as written (`meter.big`).
+  static String _callText(AstNode call) => call is MethodInvocation
+      ? '${call.target == null ? '' : '${call.target!.toSource()}.'}${call.methodName.name}()'
+      : call.toSource();
+
+  /// Where a call is reported: a method's name, or the getter read.
+  static AstNode _callNode(AstNode call) => call is MethodInvocation ? call.methodName : call;
 }
 
 /// `count` in `Watch(count, …)`: a widget's signal argument, checked for declaration order like other arguments.
@@ -278,7 +458,7 @@ bool _isSignalArgumentName(SimpleIdentifier identifier) {
 }
 
 bool _mutableGlobal(SimpleIdentifier identifier) => switch (referenceOf(identifier)) {
-      GlobalReference(:final isMutable) => isMutable,
+      GlobalReference(:final isMutable) || FieldReference(:final isMutable) => isMutable,
       _ => false,
     };
 
@@ -289,22 +469,29 @@ final class _Member {
 
   factory _Member.of(Expression expression) {
     final all = subexpressions(expression).toList();
-    final calls = all.whereType<MethodInvocation>();
+    // Method invocations, and getter reads of the user's classes (a getter is a call).
+    final calls = all.where((e) => e is MethodInvocation || calleeOf(e) != null);
     return _Member(
       calls.firstOrNull,
-      calls.where((c) => userFunctionOf(c) != null).firstOrNull,
+      calls.where((c) => calleeOf(c) != null).firstOrNull,
       // A signal's `.value` is mutable top-level state too.
       [
         for (final e in all)
-          if (e is SimpleIdentifier && _mutableGlobal(e)) e.name else if (signalOfValue(e) != null) e.toSource(),
+          if (e is SimpleIdentifier && _mutableGlobal(e))
+            e.name
+          else if (signalOfValue(e) != null ||
+              (fieldAccessOf(e)?.isMutable ?? false) ||
+              !(staticFieldOf(e)?.isFinal ?? true) ||
+              !(thisFieldOf(e)?.isFinal ?? true))
+            e.toSource(),
       ].firstOrNull,
     );
   }
 
   factory _Member.global(String name) => _Member(null, null, name);
 
-  final MethodInvocation? firstCall;
-  final MethodInvocation? firstUserCall;
+  final AstNode? firstCall;
+  final AstNode? firstUserCall;
   final String? firstMutableGlobal;
 }
 
@@ -314,13 +501,13 @@ final class RecursionRule implements ValidationRule {
 
   @override
   void check(CompilationUnit unit, ValidationContext context) {
-    final functions = compiledFunctions(unit).toList();
-    final byName = {for (final f in functions) f.name.lexeme: f};
+    final functions = compiledCallables(unit);
+    final byName = {for (final f in functions) f.displayName: f};
+    final names = {for (final f in functions) f.element: f.displayName};
     final calls = {
-      for (final f in functions)
-        f.name.lexeme: (_CallCollector(byName.keys.toSet())..visit(f.functionExpression.body)).callees,
+      for (final f in functions) f.displayName: (_CallCollector(names)..visit(f.body)).callees,
     };
-    for (final component in _stronglyConnected(functions.map((f) => f.name.lexeme).toList(), calls)) {
+    for (final component in _stronglyConnected(functions.map((f) => f.displayName).toList(), calls)) {
       final first = component.first; // Components keep source order, so this is the first declared.
       final isCycle = component.length > 1 || calls[first]!.contains(first);
       if (!isCycle) continue;
@@ -395,20 +582,41 @@ final class RecursionRule implements ValidationRule {
   }
 }
 
-/// The user functions called anywhere in a body (any position, so even calls inside rejected code count).
+/// The user functions, methods and getters called anywhere in a body (any position, so even calls inside rejected
+/// code count), by display name.
 final class _CallCollector extends RecursiveAstVisitor<void> {
-  _CallCollector(this.userFunctions);
+  _CallCollector(this.names);
 
-  final Set<String> userFunctions;
+  final Map<Element?, String> names;
   final List<String> callees = [];
 
   void visit(AstNode node) => node.accept(this);
 
+  void _call(AstNode node) {
+    if (names[calleeOf(node)] case final name? when !callees.contains(name)) callees.add(name);
+  }
+
   @override
   void visitMethodInvocation(MethodInvocation node) {
-    if (userFunctionOf(node) != null && userFunctions.contains(node.methodName.name)) {
-      if (!callees.contains(node.methodName.name)) callees.add(node.methodName.name);
-    }
+    _call(node);
     super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    _call(node);
+    super.visitPrefixedIdentifier(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    _call(node);
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    _call(node);
+    super.visitSimpleIdentifier(node);
   }
 }

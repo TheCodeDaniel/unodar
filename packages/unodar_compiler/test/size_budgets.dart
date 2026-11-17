@@ -165,4 +165,65 @@ const sizeBudgets = <String, SizeBudget>{
   // counter: examples/counter, the Phase 5 goal program (step 13); first measurement. RAM (avr-nm): Serial 175 +
   // core 9 + count 5 + isOdd 2 (watched by the Led) + Led 2 + two Buttons 14 + "\r\n\0" 3.
   'counter': SizeBudget(baselineFlash: 2894, baselineRam: 210, maxFlash: 3800, maxRam: 221),
+
+  // Phase 6 first measurements (arduino-cli 1.5.1, arduino:avr 1.8.8, -fwrapv), same rule as before: flash max =
+  // baseline + 30 % rounded up to 50 B, RAM max = baseline + 11 B.
+  // class_fields: two objects of one class (step 3). RAM (avr-nm): Serial 175 (157 + vtable 18) + core 9 + Button 7 +
+  // Every 8 + left 18 + right 18 (each the sum of its fields, 4 + 4 + 1 + 4 + 1 + 4: no padding, no vtable) + 15 B of
+  // .data strings ("\r\n\0" and Print's "nan"/"inf"/"ovf"). Most of the flash is float printing and arithmetic.
+  'class_fields': SizeBudget(baselineFlash: 4608, baselineRam: 250, maxFlash: 6000, maxRam: 261),
+  // class_methods: methods and getters on two objects (step 4). RAM (avr-nm): Serial 175 + core 9 + Button 7 +
+  // Every 8 + small 12 + large 12 (three int fields each; methods add nothing) + "\r\n\0" 3.
+  'class_methods': SizeBudget(baselineFlash: 3078, baselineRam: 226, maxFlash: 4050, maxRam: 237),
+  // class_static: static members (step 5). RAM (avr-nm): Serial 175 + core 9 + Button 7 + Every 8 + a 8 + b 8 (id and
+  // count; static fields are not in objects) + Tally::created 4 + Tally::resets 4 + "\r\n\0" 3. The `static const`
+  // limit and the `static final` rate have no symbol: folded, 0 B.
+  'class_static': SizeBudget(baselineFlash: 2788, baselineRam: 226, maxFlash: 3650, maxRam: 237),
+  // class_composition: member objects, one of them a Servo (step 6). RAM (avr-nm): Serial 175 + core 9 + pair 23 +
+  // other 23 (small 8 + large 8 + Servo 3 + rounds 4: a member object is stored inside its owner) + Servo library
+  // 38 (servos table 36, ServoCount, Channel) + "\r\n\0" 3 + 1 B of .data padding.
+  'class_composition': SizeBudget(baselineFlash: 3830, baselineRam: 272, maxFlash: 5000, maxRam: 283),
+  // enum_basics: an enum as a signal, field, const, local, parameter and return type (step 7). RAM (avr-nm):
+  // Serial 175 + core 9 + Every 8 + mode 2 (Signal<Mode>: a 1-byte enum and the mark) + thermostat 5 (int changes 4
+  // + Mode previous 1) + readings 4 + "\r\n\0" 3.
+  'enum_basics': SizeBudget(baselineFlash: 2340, baselineRam: 206, maxFlash: 3050, maxRam: 217),
+  // on_start: two OnStart callbacks around a Led, a Watch of a signal written in OnStart (step 8). RAM (avr-nm):
+  // Serial 175 + core 9 + level 5 + Led 2 + "\r\n\0" 3; an OnStart is only a function, 0 B.
+  'on_start': SizeBudget(baselineFlash: 2370, baselineRam: 194, maxFlash: 3100, maxRam: 205),
+  // cpp_pin: a user SoftwareSerial binding with @CppPin pins next to a Led and a Button (step 10); @CppPin changes
+  // no code. RAM (avr-nm): core 9 + Led 2 + Button 7 + link 31 + SoftwareSerial's 64 B receive buffer, head, tail and
+  // active object 4 + its vtable 18 + 1 B of .data padding.
+  'cpp_pin': SizeBudget(baselineFlash: 2524, baselineRam: 136, maxFlash: 3300, maxRam: 147),
+  // eeprom: the EEPROM wrapper (step 13). RAM (avr-nm): Serial 175 + core 9 + 4 B of .data strings and padding; the
+  // EEPROM object is an empty struct the linker drops (0 B), its methods are inline avr-libc calls.
+  'eeprom': SizeBudget(baselineFlash: 1938, baselineRam: 188, maxFlash: 2550, maxRam: 199),
+  // spi: the SPI wrapper through its shim unodar_spi.h (step 14): two transactions, transfer and transfer16. RAM
+  // (avr-nm): Serial 175 + core 9 + SPIClass's statics 3 (initialized, interruptMode, interruptSave) + 4 B of .data
+  // strings and padding; the shim object unodar_spi is an empty constexpr struct (0 B). Flash baseline corrected in
+  // the step 21 review from 2354 to 2394 B, the size the golden has measured since step 14 (also when built at that
+  // commit, 9f091e3, with the pinned toolchain): 2354 B was never this golden's measurement. The max is unchanged.
+  'spi': SizeBudget(baselineFlash: 2394, baselineRam: 191, maxFlash: 3100, maxRam: 202),
+  // cpp_print: @CppPrint on a user SoftwareSerial binding (step 15): literals, bools, a double with digits, ints.
+  // RAM (avr-nm): core 9 + link 31 + SoftwareSerial's 64 B receive buffer, head, tail and active object 4 + its
+  // vtable 18 + 4 B of .data; the "true"/"false" texts are flash strings (F()), 0 B.
+  'cpp_print': SizeBudget(baselineFlash: 3632, baselineRam: 130, maxFlash: 4750, maxRam: 141),
+  // software_serial: the SoftwareSerial wrapper (step 16), a top-level port and one as a member object. RAM (avr-nm):
+  // Serial 175 + core 9 + SoftwareSerial's shared 64 B receive buffer, head, tail and active object 4 + its vtable
+  // 18 + gps 31 + radio 35 (link 31, sent 4) + 4 B of .data.
+  'software_serial': SizeBudget(baselineFlash: 3996, baselineRam: 340, maxFlash: 5200, maxRam: 351),
+  // liquid_crystal: the LiquidCrystal wrapper (step 17), every wrapped method once. RAM (avr-nm): Serial 175 + core 9
+  // + lcd 24 + its vtable 12 + 4 B of .data.
+  'liquid_crystal': SizeBudget(baselineFlash: 3162, baselineRam: 224, maxFlash: 4150, maxRam: 235),
+  // switch_enum: switch statements on an enum and on ints (step 18). RAM (avr-nm): Serial 175 + core 9 + 4 B of
+  // .data strings and padding, as eeprom: a switch is code only, 0 B.
+  'switch_enum': SizeBudget(baselineFlash: 1972, baselineRam: 188, maxFlash: 2600, maxRam: 199),
+  // dht: the DHT wrapper (step 19), every wrapped method once, float printing. RAM (avr-nm): Serial 175 + core 9 +
+  // sensor 19 (data 5, pin, type, bit, port, last read time 4, max cycles 4, last result, pull time) + 16 B of .data
+  // (Print's "nan", "inf" and "ovf" for printing floats, "\r\n", 1 B of padding).
+  'dht': SizeBudget(baselineFlash: 5454, baselineRam: 219, maxFlash: 7100, maxRam: 230),
+  // thermostat: examples/thermostat, the Phase 6 goal program (step 22); first measurement. RAM (avr-nm): core 9 +
+  // setpoint 5 + thermostat 5 (hysteresis 4, mode 1) + heater 2 + two Buttons 14 + Every 8 + lcd 24 and its vtable
+  // 12 + sensor 19 + Print's "nan"/"inf"/"ovf" 12 = 110 B, plus Serial 175 (object 157, vtable 18), which the program
+  // never uses: DHT's dependency Adafruit Unified Sensor links it (docs/SUBSET.md "DHT").
+  'thermostat': SizeBudget(baselineFlash: 6260, baselineRam: 285, maxFlash: 8150, maxRam: 296),
 };

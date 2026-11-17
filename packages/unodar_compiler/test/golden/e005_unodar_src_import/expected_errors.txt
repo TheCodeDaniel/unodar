@@ -1,0 +1,2 @@
+input.dart:1:1: error[E005]: an import of 'package:unodar/src/servo.dart' is not supported in this version. Only top-level functions, variables, classes, enums, and binding classes may be declared.
+  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.

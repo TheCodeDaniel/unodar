@@ -1,5 +1,3 @@
-input.dart:8:3: error[E002]: a switch statement is not supported in this version.
-  = help: Use `if` / `else if` instead.
 input.dart:12:3: error[E002]: a for-in loop is not supported in this version.
   = help: Use a counting loop instead: `for (int i = 0; i < n; i++) { ... }`.
 input.dart:15:3: error[E002]: a labeled statement is not supported in this version.

@@ -1,0 +1,11 @@
+name: unodar_example_thermostat
+description: A DHT22 thermostat with an LCD, two buttons and its setpoint in EEPROM (Phase 6 classes and libraries).
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  unodar:
+    path: ../../packages/unodar
