@@ -265,7 +265,8 @@ input.dart:4:15: error[E007]: Dart analysis error: The argument type 'String' ca
 `void main() { runDevice(Device(…)); }`. The compiler reads that call statically and never compiles `main()`
 itself, so anything else is rejected: other statements or calls, parameters, a return type other than `void`,
 `async`, or a `runDevice` argument that is not a `Device(…)` constructor call. To write code that runs once and
-then in a loop, use `setup()` and `loop()` instead.
+then in a loop, use `setup()` and `loop()` instead. An `async` `main()`, or one returning a `Future`, gets its own
+message: the board has no event loop, so there is no `async`, `await` or `Future`.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -283,7 +284,7 @@ input.dart:3:6: error[E008]: unsupported main(): it may only contain a single `r
 A file whose `main()` is rejected is neither a widget program nor a plain sketch, so its `setup()`/`loop()` and its
 widgets are not checked further until `main()` is fixed.
 
-(Golden tests: `test/golden/e008_main`, `e008_main_shapes`.)
+(Golden tests: `test/golden/e008_main`, `e008_main_shapes`, `newcomer_async_main`.)
 
 
 ## E009: Unsupported type

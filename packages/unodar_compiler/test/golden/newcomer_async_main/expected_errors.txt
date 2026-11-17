@@ -1,0 +1,2 @@
+input.dart:7:14: error[E008]: main() cannot be async: the board has no event loop, so there is no async, await or Future.
+  = help: Write `void main() => runDevice(Device(board: Uno(), children: [ … ]));` and do things over time with widgets, e.g. `Every(Duration(seconds: 1), () { … })`.

@@ -171,6 +171,14 @@ abstract final class Diagnostics {
             '`loop()` instead.',
       );
 
+  static Diagnostic asyncMain(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedMain,
+        location: at,
+        message: 'main() cannot be async: the board has no event loop, so there is no async, await or Future.',
+        suggestion: 'Write `void main() => runDevice(Device(board: Uno(), children: [ … ]));` and do things over time '
+            'with widgets, e.g. `Every(Duration(seconds: 1), () { … })`.',
+      );
+
   static Diagnostic nullableType(String type, String nonNullable, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.unsupportedType,
         location: at,

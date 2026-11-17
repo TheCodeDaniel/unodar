@@ -29,7 +29,12 @@ final class MainRule implements ValidationRule {
     final main = mainFunction(unit);
     if (main == null) return;
     if (deviceOfMain(main) == null) {
-      context.report(Diagnostics.unsupportedMain(context.at(main.name)));
+      // An async main (or one returning a Future) is what a Dart developer writes first; say why it cannot work.
+      final body = main.functionExpression.body;
+      final returnsFuture = main.returnType?.type?.isDartAsyncFuture ?? false;
+      context.report(body.isAsynchronous || returnsFuture
+          ? Diagnostics.asyncMain(context.at(main.name))
+          : Diagnostics.unsupportedMain(context.at(main.name)));
       return;
     }
     for (final function in compiledFunctions(unit).where(isEntryPoint)) {
