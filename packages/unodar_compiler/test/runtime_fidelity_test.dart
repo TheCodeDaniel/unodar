@@ -1031,6 +1031,106 @@ void main() {
       });
     });
 
+    group('SPI shim (runtime/unodar_spi.h, hand-written sketch)', () {
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_spi.h')).readAsStringSync();
+      final sketch = File(fromPackage('test', 'runtime', 'spi_shim', 'spi_shim.ino')).readAsStringSync();
+
+      /// The serial output and the SPI log lines without their cycle stamps.
+      Future<(String, List<String>)> run(String shim) async {
+        final build = await compileSketch('spi_shim', sketch, files: {'unodar_spi.h': shim});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        final dir = Directory.systemTemp.createTempSync('unodar_spi_shim_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final log = p.join(dir.path, 'spi.log');
+        final result = await simulate(build.hexPath, extra: ['--spi-reply', 'a0a1a2a3b0c1c2', '--spi-log', log]);
+        return (result.serial, [for (final l in File(log).readAsLinesSync()) l.substring(l.indexOf(' ') + 1)]);
+      }
+
+      test('mode n is SPI_MODEn, the bit order and clock divider are SPISettings\', transfer16 is MSB first', () async {
+        gate.check();
+        final (serial, lines) = await run(header);
+        expect(serial, 'C1C2\r\noff\r\nDONE');
+        expect(lines, [
+          '10 a0 mode=0 order=msbFirst divider=8',
+          '11 a1 mode=1 order=msbFirst divider=8',
+          '12 a2 mode=2 order=msbFirst divider=8',
+          '13 a3 mode=3 order=msbFirst divider=8',
+          '20 b0 mode=2 order=lsbFirst divider=128',
+          '12 c1 mode=0 order=msbFirst divider=2',
+          '34 c2 mode=0 order=msbFirst divider=2',
+        ]);
+      });
+
+      test('negative control: the mode passed unshifted (as SPI_MODEn values) is mode 0 for 1, 2 and 3', () async {
+        gate.check();
+        const shift = 'uint8_t(mode << 2)';
+        expect(header, contains(shift), reason: 'the shim changed; update the negative control');
+        final (_, lines) = await run(header.replaceAll(shift, 'mode'));
+        expect(lines.take(4).map((l) => l.split(' ')[2]), ['mode=0', 'mode=0', 'mode=0', 'mode=0']);
+      });
+    });
+
+    group('SPI talks to a device (golden spi, compiled by unodar)', () {
+      Future<CompileSuccess> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'spi', 'input.dart'));
+        if (result is! CompileSuccess) fail('spi did not compile with unodar: $result');
+        return result;
+      }
+
+      /// The serial output, the SPI log and the pin log, each line with its cycle stamp.
+      Future<(String, List<String>, List<String>)> run(String cpp, Map<String, String> files) async {
+        final build = await compileSketch('spi', cpp, files: files);
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        final dir = Directory.systemTemp.createTempSync('unodar_spi_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final log = p.join(dir.path, 'spi.log');
+        final result =
+            await simulate(build.hexPath, extra: ['--spi-reply', 'ffc22017aa', '--spi-log', log, '--pin-log-cycles']);
+        return (result.serial, File(log).readAsLinesSync(), result.pinLog);
+      }
+
+      test('the slave\'s JEDEC ID is read inside one chip select, then a mode 3 LSB-first byte', () async {
+        gate.check();
+        final result = await generated();
+        expect(result.files.keys, ['unodar_spi.h'], reason: 'the shim is written next to the sketch');
+        final (serial, spi, pins) = await run(result.cpp, result.files);
+        expect(serial, '${0xC2 * 65536 + 0x2017}\r\nDONE');
+        expect([
+          for (final l in spi) l.substring(l.indexOf(' ') + 1)
+        ], [
+          '9f ff mode=0 order=msbFirst divider=4',
+          '00 c2 mode=0 order=msbFirst divider=4',
+          '00 20 mode=0 order=msbFirst divider=4',
+          '00 17 mode=0 order=msbFirst divider=4',
+          'a5 aa mode=3 order=lsbFirst divider=16',
+        ]);
+        // Chip select: D10 low before the first byte of the ID, high after its last, and high again for the A5.
+        int cycle(String line) => int.parse(line.split(' ').first);
+        final select = [
+          for (final l in pins)
+            if (l.contains(' D10 ')) l
+        ];
+        final low = select.where((l) => l.endsWith(' low')).map(cycle).toList();
+        final high = select.where((l) => l.endsWith(' high')).map(cycle).toList();
+        final bytes = spi.map(cycle).toList();
+        expect(low.where((c) => c < bytes.first), isNotEmpty, reason: select.join('\n'));
+        expect(high.where((c) => c > bytes[3] && c < bytes[4]), isNotEmpty, reason: select.join('\n'));
+        expect(low.where((c) => c > bytes[3]), isEmpty, reason: 'the A5 is sent without selecting the chip');
+      });
+
+      test('negative control: SPI_MODE3 passed as Arduino\'s value (0x0C) is out of range for the shim', () async {
+        gate.check();
+        final result = await generated();
+        const mode3 = 'uint8_t(3)';
+        expect(result.cpp, contains(mode3), reason: 'the generated code changed; update the negative control');
+        // What a binding of SPI_MODE3 to the C++ macro would emit: the shim shifts 0x0C out of the mode bits.
+        final (_, spi, _) = await run(result.cpp.replaceAll(mode3, 'uint8_t(SPI_MODE3)'), result.files);
+        expect(spi.last.split(' ')[3], 'mode=0');
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

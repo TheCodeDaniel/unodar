@@ -1,5 +1,6 @@
 import 'package:test/test.dart';
 import 'package:unodar/eeprom.dart';
+import 'package:unodar/spi.dart';
 import 'package:unodar/unodar.dart';
 
 /// The constants are real Dart values so user code type-checks under `dart analyze`. The compiler emits them by
@@ -41,6 +42,12 @@ void main() {
   // Phase 6 (docs/SUBSET.md "Widgets"): OnStart runs its callback once, in setup().
   test('EEPROM is the one object of EepromClass, and its methods type-check', () {
     expect(_eeprom, isA<int Function()>());
+  });
+
+  test('SPI is the one object of SpiClass; MSBFIRST/LSBFIRST mirror Arduino.h, the modes are the mode numbers', () {
+    expect(_spi, isA<int Function()>());
+    expect([LSBFIRST, MSBFIRST], [0, 1]);
+    expect([SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3], [0, 1, 2, 3], reason: 'the shim shifts them into SPCR');
   });
 
   test('OnStart is a widget whose callback takes no parameters', () {
@@ -171,6 +178,15 @@ Widget _onStart() => OnStart(() {
     });
 
 // Phase 6: the EEPROM wrapper, imported on its own. Never called: it only has to type-check.
+int _spi() {
+  SPI.begin();
+  SPI.beginTransaction(1000000, MSBFIRST, SPI_MODE0);
+  final value = SPI.transfer(0x9F) + SPI.transfer16(0);
+  SPI.endTransaction();
+  SPI.end();
+  return value;
+}
+
 int _eeprom() {
   EEPROM.update(0, EEPROM.read(1));
   EEPROM.write(2, 3);

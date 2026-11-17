@@ -8,6 +8,7 @@ import '../api/api_registry.dart';
 import '../api/api_resolution.dart';
 import '../frontend/frontend.dart';
 import '../ir/ir.dart';
+import '../runtime/runtime_files.dart';
 import '../semantics/callables.dart';
 import '../semantics/classes.dart';
 import '../semantics/constant_evaluator.dart';
@@ -50,6 +51,9 @@ final class _Lowerer {
 
   /// Headers of the binding classes the program uses, in order of first use.
   final _headers = <String>{};
+
+  /// Shim headers of the bindings the program uses (`unodar_spi.h`), written next to the `.ino`.
+  final _shims = <String>{};
 
   /// Whether any lowered code calls a `Serial` method (a widget program then opens the port in `setup()`).
   var _usesSerial = false;
@@ -98,7 +102,7 @@ final class _Lowerer {
     return IrProgram(
       sourceName: source.displayName,
       includes: [..._headers, ..._cppIncludes()],
-      localIncludes: [if (device != null) 'unodar_widgets.h'],
+      localIncludes: [if (device != null) 'unodar_widgets.h', ..._shims],
       enums: [
         for (final declaration in userEnumDeclarations(source.unit))
           IrEnum(
@@ -314,7 +318,8 @@ final class _Lowerer {
       ];
 
   void _usesClass(ApiClass cls) {
-    if (cls.header case final header?) _headers.add(header);
+    // A shim header (docs/SUBSET.md "First-party libraries") is a runtime file, included from the sketch folder.
+    if (cls.header case final header?) (runtimeFiles.containsKey(header) ? _shims : _headers).add(header);
   }
 
   int _line(SyntacticEntity node) => source.lineInfo.getLocation(node.offset).lineNumber;

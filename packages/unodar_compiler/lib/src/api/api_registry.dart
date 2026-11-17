@@ -121,12 +121,21 @@ final class ApiFunction {
   }
 }
 
-/// A top-level unodar constant that compiles to a named C++ constant or macro.
+/// A top-level unodar constant that compiles to a named C++ constant or macro, or (a library wrapper's constant
+/// without `@CppName`, e.g. `SPI_MODE1`) to its value.
 final class ApiConstant {
-  const ApiConstant(this.dartName, {required this.cppName});
+  const ApiConstant(this.dartName, {required this.cppName, this.value});
 
   final String dartName;
+
+  /// The C++ text it is emitted as: a name (`HIGH`, `MSBFIRST`) or a decimal literal.
   final String cppName;
+
+  /// The Dart value of a library wrapper's constant, which the conformance probe compares with a named C++ macro.
+  final int? value;
+
+  /// Whether [cppName] is a C++ name rather than the value itself.
+  bool get isNamed => int.tryParse(cppName) == null;
 }
 
 /// A C++ class that Dart code reaches through objects: `HardwareSerial`, or a binding class (`@CppClass`).
@@ -212,10 +221,13 @@ final class ApiObject {
 
 /// Binding classes and objects read from annotations (`binding_reader.dart`).
 final class ApiBindings {
-  const ApiBindings({this.classes = const [], this.objects = const []});
+  const ApiBindings({this.classes = const [], this.objects = const [], this.constants = const []});
 
   final List<ApiClass> classes;
   final List<ApiObject> objects;
+
+  /// The integer constants of library wrappers (`MSBFIRST`, `SPI_MODE1`).
+  final List<ApiConstant> constants;
 }
 
 final class ApiRegistry {
@@ -364,14 +376,21 @@ final class ApiRegistry {
 
   /// This registry plus [bindings]. A binding may not reuse a registered Dart name.
   ApiRegistry withBindings(ApiBindings bindings) {
-    for (final name in [...bindings.classes.map((c) => c.dartName), ...bindings.objects.map((o) => o.dartName)]) {
-      if (_classes.containsKey(name) || _objects.containsKey(name) || _functions.containsKey(name)) {
+    for (final name in [
+      ...bindings.classes.map((c) => c.dartName),
+      ...bindings.objects.map((o) => o.dartName),
+      ...bindings.constants.map((c) => c.dartName),
+    ]) {
+      if (_classes.containsKey(name) ||
+          _objects.containsKey(name) ||
+          _functions.containsKey(name) ||
+          _constants.containsKey(name)) {
         throw ArgumentError('binding $name is already registered');
       }
     }
     return ApiRegistry(
       functions: [..._functions.values],
-      constants: [..._constants.values],
+      constants: [..._constants.values, ...bindings.constants],
       classes: [..._classes.values, ...bindings.classes],
       objects: [..._objects.values, ...bindings.objects],
       widgets: [..._widgets.values],
@@ -403,7 +422,7 @@ final class ApiRegistry {
   /// Method names are not included: they only appear after `object.`.
   Set<String> get reservedNames => {
         for (final f in _functions.values) ...[f.dartName, f.cppName],
-        for (final c in _constants.values) ...[c.dartName, c.cppName],
+        for (final c in _constants.values) ...[c.dartName, if (c.isNamed) c.cppName],
         for (final c in _classes.values) ...[c.dartName, c.cppName],
         for (final o in _objects.values) ...[o.dartName, o.cppName],
         ..._otherNames,

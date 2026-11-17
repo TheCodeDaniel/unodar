@@ -1,15 +1,29 @@
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
-import 'package:unodar_compiler/src/runtime/unodar_widgets_header.dart';
+import 'package:unodar_compiler/src/runtime/runtime_files.dart';
 
 import '../test_paths.dart';
 
-/// The compiler writes its embedded copy of the widget runtime next to every widget program, while the runtime's
-/// own tests (runtime_fidelity_test.dart) run `runtime/unodar_widgets.h`. They must be the same text.
+/// The compiler writes its embedded copies of the runtime headers next to the programs that need them, while the
+/// headers' own tests (runtime_fidelity_test.dart) run the files in `runtime/`. They must be the same text, and every
+/// header in `runtime/` must be embedded.
 void main() {
-  test('the embedded widget runtime is identical to runtime/unodar_widgets.h', () {
-    final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
-    expect(unodarWidgetsHeader, header, reason: 'run tool/embed_runtime.sh to refresh the embedded copy');
+  final headers = [
+    for (final file in Directory(fromPackage('..', '..', 'runtime')).listSync().whereType<File>())
+      if (file.path.endsWith('.h')) file
+  ];
+
+  test('every header in runtime/ is embedded, and nothing else', () {
+    expect(runtimeFiles.keys.toSet(), headers.map((f) => p.basename(f.path)).toSet(),
+        reason: 'run tool/embed_runtime.sh and list the new header in runtime_files.dart');
   });
+
+  for (final file in headers) {
+    final name = p.basename(file.path);
+    test('the embedded $name is identical to runtime/$name', () {
+      expect(runtimeFiles[name], file.readAsStringSync(), reason: 'run tool/embed_runtime.sh to refresh the copy');
+    });
+  }
 }

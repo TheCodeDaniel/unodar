@@ -1,3 +1,4 @@
+import '../runtime/runtime_files.dart';
 import 'api_registry.dart';
 
 /// A C++ file that checks bindings against their headers at compile time (docs/DECISIONS.md, Phase 6 step 11).
@@ -7,6 +8,9 @@ import 'api_registry.dart';
 /// links. A binding that names no such overload, or an ambiguous one, fails to compile. Where the binding declares
 /// the C++ result type (`@CppType` on the method, or a `double`/`bool`/`void` result), a `static_assert` checks that
 /// the call has exactly that type. AVR has no `<type_traits>`, so the probe brings its own `unodar_probe_same`.
+///
+/// A library wrapper's constant with a `@CppName` (`MSBFIRST`) must have the value of that C++ name. Shim headers
+/// (`unodar_spi.h`) are included from the sketch folder: the caller writes [runtimeFiles] next to the probe.
 ///
 /// Printing methods (`Serial.print`, whose argument is any printable value) are skipped: their overload is chosen
 /// per argument by the compiler (docs/SUBSET.md "Serial").
@@ -19,7 +23,7 @@ String conformanceProbe(ApiBindings bindings, {List<String> headers = const []})
     for (final c in bindings.classes)
       if (c.header != null) c.header!
   }) {
-    out.writeln('#include <$header>');
+    out.writeln(runtimeFiles.containsKey(header) ? '#include "$header"' : '#include <$header>');
   }
   out
     ..writeln()
@@ -27,6 +31,14 @@ String conformanceProbe(ApiBindings bindings, {List<String> headers = const []})
     ..writeln('template <typename A> struct unodar_probe_same<A, A> { static constexpr bool value = true; };')
     ..writeln('// Declared, never defined: only used inside decltype, so it never runs.')
     ..writeln('template <typename T> T unodar_probe_value();');
+  for (final constant in bindings.constants) {
+    if (!constant.isNamed) continue;
+    out
+      ..writeln()
+      ..writeln('static_assert(${constant.cppName} == ${constant.value},')
+      ..writeln(
+          '              "${constant.dartName}: the C++ value of ${constant.cppName} is not ${constant.value}");');
+  }
   for (final cls in bindings.classes) {
     out
       ..writeln()

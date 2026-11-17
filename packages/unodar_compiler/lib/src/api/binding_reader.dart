@@ -26,28 +26,36 @@ final class BindingReader {
   ApiBindings readLibrary(LibraryElement library, {bool Function(ClassElement cls)? include}) =>
       _read(library.classes.where(include ?? (_) => true), library.topLevelVariables);
 
-  /// The bindings `package:unodar` exports to [library] through its imports (`Wire`, `Servo`, …).
+  /// The bindings `package:unodar` exports to [library] through its imports (`Wire`, `Servo`, …), and the integer
+  /// constants of the library wrappers it imports (`MSBFIRST`). The constants of `unodar.dart` itself (`HIGH`) are
+  /// hand-written registry rows.
   ApiBindings readImportedUnodar(LibraryElement library) {
     final classes = <ClassElement>[];
     final variables = <TopLevelVariableElement>[];
+    final constants = <TopLevelVariableElement>[];
     for (final import in library.firstFragment.libraryImports) {
       final imported = import.importedLibrary;
       if (imported == null || !isUnodarElement(imported)) continue;
+      final isWrapper = imported.uri.toString() != 'package:unodar/unodar.dart';
       for (final element in imported.exportNamespace.definedNames2.values) {
         switch (element) {
           case ClassElement():
             classes.add(element);
+          case GetterElement(:final TopLevelVariableElement variable) when variable.isConst:
+            if (isWrapper) constants.add(variable);
           case GetterElement(:final TopLevelVariableElement variable):
             variables.add(variable);
         }
       }
     }
-    return _read(classes, variables);
+    return _read(classes, variables, constants);
   }
 
-  ApiBindings _read(Iterable<ClassElement> classes, Iterable<TopLevelVariableElement> variables) {
+  ApiBindings _read(Iterable<ClassElement> classes, Iterable<TopLevelVariableElement> variables,
+      [Iterable<TopLevelVariableElement> constants = const []]) {
     final bound = {for (final c in classes) c: _class(c)}..removeWhere((_, c) => c == null);
     return ApiBindings(
+      constants: [for (final constant in constants) _constant(constant)],
       classes: [for (final c in bound.values) c!],
       objects: [
         for (final variable in variables)
@@ -56,6 +64,14 @@ final class BindingReader {
                 cppName: _string(variable, 'CppName') ?? variable.name!, className: bound[cls]!.dartName),
       ],
     );
+  }
+
+  /// A library wrapper's `const int`: emitted as its `@CppName` (a C++ macro of the same value, which the conformance
+  /// probe checks) or as its value.
+  ApiConstant _constant(TopLevelVariableElement variable) {
+    final value = variable.computeConstantValue()?.toIntValue();
+    if (value == null) throw BindingError(variable, 'a wrapper constant that is not an int');
+    return ApiConstant(variable.name!, cppName: _string(variable, 'CppName') ?? '$value', value: value);
   }
 
   /// The binding class an `external final` top-level variable is an object of, or null.

@@ -197,4 +197,8 @@ const sizeBudgets = <String, SizeBudget>{
   // eeprom: the EEPROM wrapper (step 13). RAM (avr-nm): Serial 175 + core 9 + 4 B of .data strings and padding; the
   // EEPROM object is an empty struct the linker drops (0 B), its methods are inline avr-libc calls.
   'eeprom': SizeBudget(baselineFlash: 1938, baselineRam: 188, maxFlash: 2550, maxRam: 199),
+  // spi: the SPI wrapper through its shim unodar_spi.h (step 14): two transactions, transfer and transfer16. RAM
+  // (avr-nm): Serial 175 + core 9 + SPIClass's statics 3 (initialized, interruptMode, interruptSave) + 4 B of .data
+  // strings and padding; the shim object unodar_spi is an empty constexpr struct (0 B).
+  'spi': SizeBudget(baselineFlash: 2354, baselineRam: 191, maxFlash: 3100, maxRam: 202),
 };

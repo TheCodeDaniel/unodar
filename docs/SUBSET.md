@@ -392,11 +392,15 @@ fixed and visible at build time; leave room for the stack. The size budgets reco
 
 Each library wrapper is imported on its own, next to `package:unodar/unodar.dart`:
 `import 'package:unodar/eeprom.dart';`. Its names (classes, objects) are reserved (E014) only in a program that
-imports it. Any other import, including `package:unodar/src/…`, is E005. Available: **EEPROM** (below). Coming in
-Phase 6: SPI and SoftwareSerial (part of the AVR core), LiquidCrystal 1.0.7 and, if time allows, the DHT sensor
-library 1.4.7. Each wrapper's section will state its RAM and flash cost, the longest time each
+imports it. Any other import, including `package:unodar/src/…`, is E005. Available: **EEPROM** and **SPI**
+(below). Coming in Phase 6: SoftwareSerial (part of the AVR core), LiquidCrystal 1.0.7 and, if time allows, the DHT
+sensor library 1.4.7. Each wrapper's section will state its RAM and flash cost, the longest time each
 method waits, and a **Verified:** line saying what is checked in the avr8js simulator and what only on a real board.
 
+- A wrapper whose C++ API cannot be bound directly comes with a **shim header**, a fixed hand-written file
+  (`runtime/unodar_spi.h`) that unodar writes next to the `.ino` and includes as `#include "unodar_spi.h"`. Its
+  constants (`MSBFIRST`) are emitted by their C++ name when they mean the same value (checked by the conformance
+  probe), otherwise as their value (`SPI_MODE1` is 1, see "SPI").
 - **LiquidCrystal** means Arduino's official library for HD44780 character LCDs wired **in parallel** (RS, E and
   four data pins). LCDs with an I²C backpack (a PCF8574 board, "LiquidCrystal I2C") are **not** covered: their
   library is a community fork, not maintained by Arduino.
@@ -435,6 +439,50 @@ EEPROM.update(0, setpoint);       // writes only if the byte differs
   time (avr8js's 1.8 ms erase plus 1.8 ms write). The binding conforms to `EEPROM.h` (conformance probe). **Only on a
   real board:** the real write time (3.3 ms per the datasheet), endurance, and corruption when power fails during a
   write.
+
+### SPI, part of the AVR core
+
+```dart
+import 'package:unodar/spi.dart';
+import 'package:unodar/unodar.dart';
+
+SPI.begin();
+SPI.beginTransaction(4000000, MSBFIRST, SPI_MODE0);
+digitalWrite(10, LOW);              // select the chip
+SPI.transfer(0x9F);
+final maker = SPI.transfer(0);
+digitalWrite(10, HIGH);
+SPI.endTransaction();
+```
+
+| Dart (`SPI`, an `SpiClass`) | C++ (`unodar_spi.h`, forwarding to `SPI.h`) | Wait (avr8js) |
+|---|---|---|
+| `begin()`, `end()` | `SPI.begin()`, `SPI.end()` | none |
+| `transfer(value)` → `int` | `uint8_t SPI.transfer(uint8_t)` | one byte: 8 SPI clocks (2 µs at 4 MHz, 64 µs at 125 kHz) |
+| `transfer16(value)` → `int` | `uint16_t SPI.transfer16(uint16_t)` | two bytes |
+| `beginTransaction(clock, bitOrder, mode)` | `SPI.beginTransaction(SPISettings(clock, bitOrder, SPI_MODEn))` | none |
+| `endTransaction()` | `SPI.endTransaction()` | none |
+
+- `clock` is in Hz: SPI runs at the fastest of 8 MHz, 4, 2, 1 MHz, 500, 250 or 125 kHz that is not above it (125 kHz
+  if it is lower still). `bitOrder` is `MSBFIRST` or `LSBFIRST` (constants outside 0 to 1 are E004).
+- **`mode` is the SPI mode number, 0 to 3**, as datasheets give it: `SPI_MODE0`…`SPI_MODE3` are 0…3 in Dart. Arduino's
+  C++ `SPI_MODEn` macros are the same modes shifted into the control register (`SPI_MODE1` is 4), so the shim
+  shifts the number itself, and a constant outside 0 to 3 is E004. In C++ a plain `1` would silently be mode 0; here
+  it is mode 1.
+- **Pins:** SPI uses pins 11 (MOSI), 12 (MISO) and 13 (SCK), and `begin()` makes pin 10 an output. Pin 13 is also
+  the built-in LED: **do not use a `Led` or `Button` on pins 10–13 with SPI**. Unodar does not check this yet (E022
+  only compares constructor pins, and `SPI` has none). Any free pin can be the chip select; pin 10 is the usual one.
+- `SPI` is the library's one object (E018 otherwise). Not wrapped: `transfer(buffer, size)` (needs arrays),
+  `usingInterrupt`, and the deprecated `setBitOrder`/`setDataMode`/`setClockDivider`.
+- Cost: 3 B of RAM (the SPI library's state); the shim object is an empty `constexpr` struct, 0 B. The `spi` golden
+  (two transactions) uses 2354 B of flash in total.
+- **Verified:** in avr8js against the runner's scripted SPI slave: the bytes sent and the bytes the slave answered,
+  the mode, bit order and clock divider of each byte (read from SPCR/SPSR), `transfer16` sending the high byte first,
+  and the chip select (pin 10) low around exactly the bytes of one command. The shim is tested on its own: modes 0 to
+  3 and both bit orders give the same register values as `SPISettings` with Arduino's macros, also for a clock that is
+  not a compile-time constant. The binding conforms to the shim, and the shim compiles against `SPI.h`, with a
+  `static_assert` that `SPI_MODEn` is `n << 2` (conformance probe). **Only on a real board:** real chips at speed,
+  signal integrity on long wires, and each device's own timing (chip-select setup times are the program's job).
 
 ## Escape hatch: `cpp()` and `@CppInclude`
 
