@@ -5,10 +5,13 @@
 #
 # Used to generate packages/unodar_compiler/lib/src/emitter/arduino_avr_names.dart and, in
 # test/reserved_names_test.dart, to check that the checked-in list still covers the installed core.
-# Requires arduino-cli with the arduino:avr core; fails loudly otherwise.
+# Requires arduino-cli with the arduino:avr core; fails loudly otherwise. ARDUINO_CLI and ARDUINO_CLI_CONFIG select
+# another arduino-cli and its configuration file (the test passes unodar's managed copy, ~/.unodar, when it is used).
 set -euo pipefail
-command -v arduino-cli >/dev/null || { echo "error: arduino-cli is not on PATH (brew install arduino-cli)" >&2; exit 2; }
-data="$(arduino-cli config get directories.data)"
+cli=("${ARDUINO_CLI:-arduino-cli}")
+[[ -n "${ARDUINO_CLI_CONFIG:-}" ]] && cli+=(--config-file "$ARDUINO_CLI_CONFIG")
+command -v "${cli[0]}" >/dev/null || { echo "error: arduino-cli not found; run \`unodar setup\`" >&2; exit 2; }
+data="$("${cli[@]}" config get directories.data)"
 core="$(ls -d "$data"/packages/arduino/hardware/avr/* 2>/dev/null | sort -V | tail -1)"
 gxx="$(ls -d "$data"/packages/arduino/tools/avr-gcc/*/bin/avr-g++ 2>/dev/null | sort -V | tail -1)"
 [[ -n "$core" && -x "$gxx" ]] || { echo "error: arduino:avr core missing (arduino-cli core install arduino:avr)" >&2; exit 2; }

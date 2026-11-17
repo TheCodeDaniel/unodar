@@ -18,7 +18,7 @@ void main() {
 
   test('every depends= of an installed manifest library is in the manifest', () {
     gate.check();
-    final list = Process.runSync('arduino-cli', ['lib', 'list', '--format', 'json']);
+    final list = testCli!.runSync(['lib', 'list', '--format', 'json']);
     expect(list.exitCode, 0, reason: '${list.stderr}');
     final installed = {
       for (final entry in (jsonDecode(list.stdout as String)['installed_libraries'] as List? ?? const []))

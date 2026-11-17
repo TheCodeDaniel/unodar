@@ -11,22 +11,14 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/emitter/emitter.dart';
+import 'package:unodar_compiler/src/toolchain/pins.dart';
+import 'package:unodar_compiler/src/toolchain/toolchain.dart';
 
 import 'test_paths.dart';
 
-/// The libraries of `tool/arduino_libraries.txt`, in order.
-final List<({String name, String version})> arduinoLibraries =
-    parseArduinoLibraries(File(fromPackage('..', '..', 'tool', 'arduino_libraries.txt')).readAsStringSync());
-
-/// `name@version` lines; `#` comments and blank lines are ignored. The name may contain spaces.
-List<({String name, String version})> parseArduinoLibraries(String text) => [
-      for (final line in LineSplitter.split(text))
-        if (line.trim().isNotEmpty && !line.trimLeft().startsWith('#'))
-          (
-            name: line.substring(0, line.lastIndexOf('@')).trim(),
-            version: line.substring(line.lastIndexOf('@') + 1).trim()
-          ),
-    ];
+/// The libraries of `tool/arduino_libraries.txt`, in order (the copy embedded in the compiler, kept identical by
+/// `toolchain_pins_test`).
+final List<PinnedLibrary> arduinoLibraries = ToolchainPins.embedded.libraries;
 
 /// The command that installs [library] exactly as CI does.
 String installCommand(({String name, String version}) library) {
@@ -43,32 +35,19 @@ Install with:
   arduino-cli lib update-index
 ${arduinoLibraries.map((l) => '  ${installCommand(l)}').join('\n')}''';
 
-/// Null when the toolchain is ready; otherwise what is missing.
-String? missingToolchain() {
-  try {
-    final cores = Process.runSync('arduino-cli', ['core', 'list']);
-    if (cores.exitCode != 0) return 'arduino-cli failed: ${cores.stderr}';
-    final libraries = Process.runSync('arduino-cli', ['lib', 'list']);
-    if (libraries.exitCode != 0) return 'arduino-cli failed: ${libraries.stderr}';
-    return missingFrom(coreList: cores.stdout as String, libraryList: libraries.stdout as String);
-  } on ProcessException {
-    return 'arduino-cli is not on PATH';
-  }
-}
+/// The toolchain the tests use, found as the CLI finds it (`locateToolchain`: the managed copy in `~/.unodar` or
+/// `$UNODAR_HOME` first, then `arduino-cli` on `PATH`), or the reason there is none.
+final ToolchainLookup _lookup =
+    locateToolchain(home: UnodarHome.fromEnvironment(Platform.environment), environment: Platform.environment);
 
-/// What is missing given the output of `arduino-cli core list` and `arduino-cli lib list`, or null. Library names
-/// may contain spaces, so a line matches when it starts with the name followed by whitespace and a version.
-String? missingFrom({required String coreList, required String libraryList}) {
-  if (!coreList.contains('arduino:avr')) return 'the arduino:avr core is not installed';
-  for (final library in arduinoLibraries) {
-    final installed = RegExp('^${RegExp.escape(library.name)}\\s+(\\S+)', multiLine: true).firstMatch(libraryList);
-    if (installed == null) return 'the ${library.name} library is not installed';
-    if (installed.group(1) != library.version) {
-      return 'the ${library.name} library is ${installed.group(1)}, but unodar is tested with ${library.version}';
-    }
-  }
-  return null;
-}
+/// The arduino-cli of [_lookup], or null.
+final ArduinoCli? testCli = switch (_lookup) { ToolchainFound(:final cli) => cli, ToolchainNotFound() => null };
+
+/// Null when the toolchain is ready; otherwise what is missing.
+String? missingToolchain() => switch (_lookup) {
+      ToolchainFound() => null,
+      ToolchainNotFound(:final reasons) => reasons.join('; '),
+    };
 
 /// The `depends=` names of a `library.properties` file (version constraints such as `A (>=1.0)` dropped).
 List<String> dependsOf(String properties) {
@@ -152,7 +131,7 @@ Future<ArduinoBuild> compileSketch(String name, String cpp,
     File(p.join(dir.path, fileName)).writeAsStringSync(contents);
   }
 
-  final run = await Process.run('arduino-cli', [
+  final run = await testCli!.run([
     'compile',
     '--fqbn',
     const UnoTarget().fqbn,
