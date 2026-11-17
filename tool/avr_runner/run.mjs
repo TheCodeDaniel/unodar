@@ -5,6 +5,8 @@
 //                                [--pin PIN=LEVEL@MS]... [--pin-log FILE] [--pin-log-cycles]
 //                                [--eeprom FILE] [--eeprom-writes FILE] [--spi-reply HEX] [--spi-log FILE]
 //                                [--lcd RS,E,D4,D5,D6,D7 [--lcd-size COLSxROWS] --lcd-log FILE]
+//                                [--dht PIN [--dht-reading TEMP,HUM@MS]... [--dht-bad-checksum] [--dht-one-us US]
+//                                 --dht-log FILE]
 //
 // The CPU runs at 16 MHz with timers 0-2, USART0, the ADC and GPIO ports B, C and D, which is what the Arduino
 // core needs for millis(), micros(), delay(), analogRead(), digitalRead/Write() and Serial. It stops after N cycles
@@ -36,6 +38,12 @@
 // `screen <row> |<text>|` per row, the display/cursor/blink flags, the cursor position, the mode and the number of
 // violations (see hd44780.mjs).
 //
+// --dht PIN connects a DHT22 temperature and humidity sensor to PIN's data line (open-drain, with the pin's pull-up).
+// --dht-reading TEMP,HUM@MS is what it measures from MS on (default 21.5,48.2@0; repeat it for a schedule).
+// --dht-bad-checksum sends every frame with a wrong checksum; --dht-one-us US sends 1 bits US us long instead of 70
+// (a negative control). --dht-log FILE records each answered start signal as `<ms> start <low> ms, sent T=… H=…
+// frame=<hex>`, each violation as `<ms> violation <text>`, then `violations <n>` (see dht22.mjs).
+//
 // unodar's runtime fidelity harness (packages/unodar_compiler/test/runtime_fidelity_test.dart) prints one
 // PASS/FAIL line per check and a final DONE line, and runs this with --until DONE.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -61,6 +69,7 @@ import {
   timer2Config,
   usart0Config,
 } from 'avr8js';
+import { Dht22 } from './dht22.mjs';
 import { Hd44780 } from './hd44780.mjs';
 
 const clockHz = 16_000_000;
@@ -100,6 +109,11 @@ function parseArguments(argv) {
     lcd: null,
     lcdSize: [16, 2],
     lcdLog: null,
+    dht: null,
+    dhtReadings: [],
+    dhtBadChecksum: false,
+    dhtOneUs: 70,
+    dhtLog: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -136,6 +150,20 @@ function parseArguments(argv) {
       if (!match) fail('--lcd-size takes COLSxROWS, e.g. 16x2');
       options.lcdSize = [Number(match[1]), Number(match[2])];
     } else if (arg === '--lcd-log') options.lcdLog = value();
+    else if (arg === '--dht') {
+      options.dht = value();
+      if (!pinPosition(options.dht)) fail('--dht takes a pin, one of D0-D13 and A0-A5');
+    } else if (arg === '--dht-reading') {
+      const match = /^(-?[0-9]+(?:\.[0-9])?),([0-9]+(?:\.[0-9])?)@([0-9]+(?:\.[0-9]+)?)$/.exec(value());
+      if (!match) fail('--dht-reading takes TEMP,HUM@MS with at most one decimal, e.g. 21.5,48.2@0');
+      options.dhtReadings.push({
+        temperature: Number(match[1]),
+        humidity: Number(match[2]),
+        at: Math.round(Number(match[3]) * cyclesPerMs),
+      });
+    } else if (arg === '--dht-bad-checksum') options.dhtBadChecksum = true;
+    else if (arg === '--dht-one-us') options.dhtOneUs = Number(value());
+    else if (arg === '--dht-log') options.dhtLog = value();
     else if (arg.startsWith('--')) fail(`unknown option ${arg}`);
     else options.hex = arg;
   }
@@ -143,11 +171,15 @@ function parseArguments(argv) {
     fail(
       'usage: run.mjs <program.hex> [--cycles N] [--until TEXT] [--adc CHANNEL=VOLTS]... [--pin PIN=LEVEL@MS]... ' +
         '[--pin-log FILE] [--pin-log-cycles] [--eeprom FILE] [--eeprom-writes FILE] [--spi-reply HEX] [--spi-log FILE] ' +
-        '[--lcd RS,E,D4,D5,D6,D7 [--lcd-size COLSxROWS] --lcd-log FILE]',
+        '[--lcd RS,E,D4,D5,D6,D7 [--lcd-size COLSxROWS] --lcd-log FILE] ' +
+        '[--dht PIN [--dht-reading TEMP,HUM@MS]... [--dht-bad-checksum] [--dht-one-us US] --dht-log FILE]',
     );
   }
   if (!Number.isSafeInteger(options.cycles) || options.cycles <= 0) fail('--cycles must be a positive integer');
   if ((options.lcd === null) !== (options.lcdLog === null)) fail('--lcd and --lcd-log go together');
+  if ((options.dht === null) !== (options.dhtLog === null)) fail('--dht and --dht-log go together');
+  if (options.dhtReadings.length === 0) options.dhtReadings.push({ temperature: 21.5, humidity: 48.2, at: 0 });
+  options.dhtReadings.sort((a, b) => a.at - b.at);
   return options;
 }
 
@@ -206,6 +238,22 @@ const pinLog = [];
 const lcd = options.lcd === null ? null : new Hd44780({ clockHz, cols: options.lcdSize[0], rows: options.lcdSize[1] });
 const lcdRoles = new Map((options.lcd ?? []).map((pin, i) => [pin, ['rs', 'e', 'd4', 'd5', 'd6', 'd7'][i]]));
 
+// The DHT22, if connected: it pulls its pin low or lets it go, between the MCU's own changes.
+const dht =
+  options.dht === null
+    ? null
+    : new Dht22({
+        clockHz,
+        readings: options.dhtReadings,
+        badChecksum: options.dhtBadChecksum,
+        oneUs: options.dhtOneUs,
+        drive: (low) => {
+          if (low) driven.set(options.dht, 'low');
+          else driven.delete(options.dht);
+          updatePort(pinPosition(options.dht)[0]);
+        },
+      });
+
 /// Recomputes the input level of every pin of `port` (driven, pulled up, or LOW) and logs state changes.
 function updatePort(portName) {
   const port = ports[portName];
@@ -220,6 +268,9 @@ function updatePort(portName) {
       if (lastStates.has(name)) pinLog.push(`${at} ${name} ${stateNames[state]}`);
       lastStates.set(name, state);
       if (lcd !== null && lcdRoles.has(name)) lcd.pin(lcdRoles.get(name), state === PinState.High, cpu.cycles);
+      if (dht !== null && name === options.dht) {
+        for (const [delay, event] of dht.mcuPin(stateNames[state], cpu.cycles)) cpu.addClockEvent(event, delay);
+      }
     }
   }
 }
@@ -300,6 +351,7 @@ if (options.pinLog !== null) writeFileSync(options.pinLog, pinLog.map((line) => 
 if (options.eeprom !== null) writeFileSync(options.eeprom, eepromBackend.memory);
 if (options.eepromWrites !== null) writeFileSync(options.eepromWrites, `${eepromWrites}\n`);
 if (options.lcdLog !== null) writeFileSync(options.lcdLog, lcd.report().map((line) => `${line}\n`).join(''));
+if (options.dhtLog !== null) writeFileSync(options.dhtLog, dht.report().map((line) => `${line}\n`).join(''));
 if (options.spiLog !== null) writeFileSync(options.spiLog, spiLog.map((line) => `${line}\n`).join(''));
 process.stderr.write(`avr_runner: stopped after ${cpu.cycles} cycles (${reason})\n`);
 process.exitCode = options.until !== null && !stoppedByUntil ? 1 : 0;

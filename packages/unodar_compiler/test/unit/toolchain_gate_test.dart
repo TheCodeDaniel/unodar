@@ -7,13 +7,19 @@ import '../arduino_toolchain.dart';
 void main() {
   const core = 'ID          Installed Latest Name\narduino:avr 1.8.8     1.8.8  Arduino AVR Boards\n';
   // Every library of the manifest, as `arduino-cli lib list` prints them.
-  const installed = 'Name          Installed Available Location Description\n'
-      'LiquidCrystal 1.0.7     -         user     -\n'
-      'Servo         1.3.0     -         user     -\n';
+  const installed = 'Name                    Installed Available Location Description\n'
+      'Adafruit Unified Sensor 1.1.15    -         user     -\n'
+      'DHT sensor library      1.4.7     -         user     -\n'
+      'LiquidCrystal           1.0.7     -         user     -\n'
+      'Servo                   1.3.0     -         user     -\n';
 
-  test('the manifest lists Servo 1.3.0 and LiquidCrystal 1.0.7', () {
-    expect(
-        arduinoLibraries, containsAll([(name: 'Servo', version: '1.3.0'), (name: 'LiquidCrystal', version: '1.0.7')]));
+  test('the manifest lists Servo 1.3.0, LiquidCrystal 1.0.7, DHT sensor library 1.4.7 and its dependency', () {
+    expect(arduinoLibraries, [
+      (name: 'Servo', version: '1.3.0'),
+      (name: 'LiquidCrystal', version: '1.0.7'),
+      (name: 'DHT sensor library', version: '1.4.7'),
+      (name: 'Adafruit Unified Sensor', version: '1.1.15'),
+    ]);
   });
 
   test('ready when the core and every manifest library are installed', () {

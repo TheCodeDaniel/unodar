@@ -34,11 +34,11 @@ void main() {
     bindings = const BindingReader(UnoTarget()).readImportedUnodar(library);
   });
 
-  test('the first-party bindings (Wire, Servo, EEPROM, SPI, SoftwareSerial, LiquidCrystal) are probed and compile',
+  test('the first-party bindings (Wire, Servo, EEPROM, SPI, SoftwareSerial, LiquidCrystal, DHT) are probed and compile',
       () async {
     gate.check();
     expect(bindings.classes.map((c) => c.dartName),
-        containsAll(['TwoWire', 'Servo', 'EepromClass', 'SpiClass', 'SoftwareSerial', 'LiquidCrystal']));
+        containsAll(['TwoWire', 'Servo', 'EepromClass', 'SpiClass', 'SoftwareSerial', 'LiquidCrystal', 'Dht']));
     final probe = conformanceProbe(bindings);
     expect(probe, contains('Wire.requestFrom('));
     expect(probe, contains('unodar_probe_value<Servo &>().attach('));
@@ -51,6 +51,8 @@ void main() {
     expect(probe, contains('unodar_probe_print(static_cast<SoftwareSerial *>(nullptr))'));
     expect(probe, contains('unodar_probe_print(static_cast<LiquidCrystal *>(nullptr))'));
     expect(probe, contains('unodar_probe_value<LiquidCrystal &>().setCursor('));
+    expect(probe, contains('unodar_probe_value<DHT &>().readTemperature(unodar_probe_value<bool>(), '));
+    expect(probe, contains('static_assert(DHT22 == 22,'));
     expect(probe, isNot(contains('SPI_MODE1 ==')), reason: 'a constant without @CppName is emitted as its value');
     final build = await compileSketch('conformance', probe, files: runtimeFiles);
     printOnFailure(probe);

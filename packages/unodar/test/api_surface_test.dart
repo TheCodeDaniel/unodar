@@ -1,4 +1,5 @@
 import 'package:test/test.dart';
+import 'package:unodar/dht.dart';
 import 'package:unodar/eeprom.dart';
 import 'package:unodar/liquid_crystal.dart';
 import 'package:unodar/software_serial.dart';
@@ -50,6 +51,11 @@ void main() {
 
   test('LiquidCrystal is a class with a 4-bit constructor and print, but no println', () {
     expect(_liquidCrystal, isA<int Function()>());
+  });
+
+  test('Dht is a class with a constructor taking the pin and a sensor type; the types mirror DHT.h', () {
+    expect(_dht, isA<double Function()>());
+    expect([DHT11, DHT12, DHT21, DHT22, AM2301], [11, 12, 21, 22, 21]);
   });
 
   test('SoftwareSerial is a class with a constructor and Serial\'s print methods', () {
@@ -208,6 +214,16 @@ int _liquidCrystal() {
   _lcd.scrollDisplayLeft();
   _lcd.scrollDisplayRight();
   return _lcd.write(223);
+}
+
+final _sensor = Dht(2, DHT22);
+
+double _dht() {
+  _sensor.begin();
+  if (!_sensor.read(force: true)) return _sensor.readHumidity();
+  final celsius = _sensor.readTemperature(fahrenheit: false);
+  return _sensor.computeHeatIndex(_sensor.convertCtoF(celsius), _sensor.readHumidity(), fahrenheit: true) +
+      _sensor.convertFtoC(50.0);
 }
 
 final _gps = SoftwareSerial(10, 11);

@@ -255,6 +255,41 @@ void main() {
         expect(report, contains('violations 3'));
       });
 
+      /// The DHT22 model's report for [program] (`--dht-log`), with the sensor on D2, and the serial output.
+      Future<({String serial, List<String> report})> dhtRun(String program, [List<String> options = const []]) async {
+        final dir = Directory.systemTemp.createTempSync('unodar_dht_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final log = p.join(dir.path, 'dht.log');
+        final result =
+            await simulate(program, cycles: 4000 * 16000, extra: ['--dht', 'D2', '--dht-log', log, ...options]);
+        return (serial: result.serial, report: File(log).readAsLinesSync());
+      }
+
+      test('DHT22: DHT sensor library reads the frame the model sends; a forced read 2.5 s later gets a new one',
+          () async {
+        gate.check();
+        final run = await dhtRun(await hex('dht'), ['--dht-reading', '21.5,48.2@0', '--dht-reading', '-3.7,91.0@1000']);
+        expect(run.serial, 'ok 21.5 48.2\r\n21.5\r\nok -3.7 91.0\r\nDONE');
+        // 48.2 % is 0x01E2, -3.7 degrees 0x8025 (sign bit); the checksum is the low byte of the four bytes' sum
+        // (0x03 + 0x8E + 0x80 + 0x25 = 0x136). The library holds the line low for delayMicroseconds(1100), 1.109 or
+        // 1.110 ms depending on the build.
+        expect([
+          for (final l in run.report) l.substring(l.indexOf(' ') + 1)
+        ], [
+          matches(RegExp(r'^start 1\.1\d\d ms, sent T=21\.5 H=48\.2 frame=01e200d7ba$')),
+          matches(RegExp(r'^start 1\.1\d\d ms, sent T=-3\.7 H=91 frame=038e802536$')),
+          '0', // the last line, `violations 0`, without its first word
+        ]);
+      });
+
+      test('negative control: a 0.5 ms start signal is too short; the model reports it and does not answer', () async {
+        gate.check();
+        final run = await dhtRun(await hex('dht_short_start'));
+        expect(run.serial, 'no answer\r\nDONE');
+        expect(run.report,
+            [matches(RegExp(r'^0\.6\d\d violation start signal 0\.5\d\d ms low \(0\.8 to 20 ms\)$')), 'violations 1']);
+      });
+
       test('cycle-stamped pin log: D13 goes high and low 2 cycles apart', () async {
         gate.check();
         final result = await simulate(await hex('pins_cycles'), extra: ['--pin-log-cycles']);
@@ -1383,6 +1418,68 @@ void main() {
         expect(cpp, contains(call), reason: 'the generated code changed; update the negative control');
         final report = await run(cpp.replaceAll(call, 'lcd.setCursor(1, 0);'));
         expect(state(report).take(2), ['screen 0 |THeater true    |', 'screen 1 |                |']);
+      });
+    });
+
+    group('a DHT22 read through the DHT wrapper (golden dht, compiled by unodar)', () {
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'dht', 'input.dart'));
+        if (result is! CompileSuccess) fail('dht did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      /// The serial output, the DHT22 model's report and the pin log (ms) of [cpp], with the sensor on D2.
+      Future<({String serial, List<String> report, List<String> pinLog})> run(String cpp,
+          [List<String> options = const []]) async {
+        final build = await compileSketch('dht', cpp);
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        final dir = Directory.systemTemp.createTempSync('unodar_dht_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final log = p.join(dir.path, 'dht.log');
+        final result =
+            await simulate(build.hexPath, cycles: 4000 * 16000, extra: ['--dht', 'D2', '--dht-log', log, ...options]);
+        return (serial: result.serial, report: File(log).readAsLinesSync(), pinLog: result.pinLog);
+      }
+
+      test('the values, the 2 s cache (one exchange for four reads), the conversions, and millis() ticks lost',
+          () async {
+        gate.check();
+        final result = await run(await generated());
+        // 21.5 C is 70.70 F; the heat index of 30 C at 70 % is 35.04 C (Rothfusz, as computed independently).
+        expect(
+            result.serial,
+            'true 21.5 48.2\r\ntrue 21.5 48.2\r\n70.70\r\n35.04\r\n212.0\r\n100.0\r\n'
+            '2103\r\nDONE');
+        // Two exchanges: the first report() (the second one, readTemperature(fahrenheit: true) and the reads inside
+        // each report() use the cached result), and the forced read 2.1 s later.
+        final starts = [
+          for (final l in result.report)
+            if (l.contains(' start ')) double.parse(l.split(' ').first)
+        ];
+        expect(starts.length, 2);
+        expect(starts.last - starts.first, inInclusiveRange(2100, 2120));
+        expect(result.report.last, 'violations 0');
+        // Pin 13 stamps the simulated time around delay(2100) and the forced exchange: millis() counted 2103 ms of
+        // it. The difference is the timer interrupts lost while the exchange kept interrupts off.
+        double at(String change) => double.parse(result.pinLog.lastWhere((l) => l.endsWith(change)).split(' ')[0]);
+        final simulated = at(' D13 low') - at(' D13 high');
+        printOnFailure('simulated $simulated ms, millis() 2103 ms');
+        expect((simulated - 2103).round(), 3, reason: 'about 3 ms of millis() lost per exchange');
+      });
+
+      test('a frame with a bad checksum reads as false and NaN', () async {
+        gate.check();
+        final result = await run(await generated(), ['--dht-bad-checksum']);
+        expect(result.serial, startsWith('false nan nan\r\nfalse nan nan\r\nnan\r\n'));
+      });
+
+      test('negative control: 1 bits sent shorter than the 50 us low time decode as 0s (a wrong bit threshold)',
+          () async {
+        gate.check();
+        // Every bit then reads 0: an all-zero frame has a valid checksum, so read() succeeds with 0.0 and 0.0.
+        final result = await run(await generated(), ['--dht-one-us', '45']);
+        expect(result.serial, startsWith('true 0.0 0.0\r\n'));
       });
     });
 

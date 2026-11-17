@@ -215,4 +215,8 @@ const sizeBudgets = <String, SizeBudget>{
   // switch_enum: switch statements on an enum and on ints (step 18). RAM (avr-nm): Serial 175 + core 9 + 4 B of
   // .data strings and padding, as eeprom: a switch is code only, 0 B.
   'switch_enum': SizeBudget(baselineFlash: 1972, baselineRam: 188, maxFlash: 2600, maxRam: 199),
+  // dht: the DHT wrapper (step 19), every wrapped method once, float printing. RAM (avr-nm): Serial 175 + core 9 +
+  // sensor 19 (data 5, pin, type, bit, port, last read time 4, max cycles 4, last result, pull time) + 16 B of .data
+  // (Print's "nan", "inf" and "ovf" for printing floats, "\r\n", 1 B of padding).
+  'dht': SizeBudget(baselineFlash: 5454, baselineRam: 219, maxFlash: 7100, maxRam: 230),
 };

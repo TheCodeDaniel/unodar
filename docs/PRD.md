@@ -369,7 +369,7 @@ Key long-term decisions (already made — do not relitigate without asking):
 3. ~~Computed/derived signals~~ **Decided (Phase 5):** restricted expressions. A `Computed` is a single `=>` expression over signals and Computeds declared above it and constants, no calls; general closures may come later. See `docs/DECISIONS.md`.
 4. Fixed-size list design (e.g. `FixedList<int, 8>`): **not in Phase 6** (maintainer decision, 2026-11-16); still open for a later phase, together with immutable value classes. See `docs/DECISIONS.md`.
 5. Board abstraction shape before ESP32 (Phase 9).
-6. ~~C++ header binding generator~~ **Decided (Phase 6):** no generator in Phase 6; every binding gets a conformance probe instead, and the effort of each hand-written wrapper is recorded to revisit the question with data. See `docs/DECISIONS.md`.
+6. ~~C++ header binding generator~~ **Closed (Phase 6): conformance probe, no generator.** Every binding gets a conformance probe; the effort of the six hand-written wrappers (EEPROM, SPI, SoftwareSerial, LiquidCrystal, DHT, and `@CppPrint`) was recorded, and in each the signatures took minutes while the time went into what no header shows (the surface, ranges, pins, waits, simulator models). See `docs/DECISIONS.md`.
 
 ---
 

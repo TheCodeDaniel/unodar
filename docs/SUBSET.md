@@ -412,7 +412,7 @@ fixed and visible at build time; leave room for the stack. The size budgets reco
 Each library wrapper is imported on its own, next to `package:unodar/unodar.dart`:
 `import 'package:unodar/eeprom.dart';`. Its names (classes, objects) are reserved (E014) only in a program that
 imports it. Any other import, including `package:unodar/src/…`, is E005. Available: **EEPROM**, **SPI**,
-**SoftwareSerial** and **LiquidCrystal** (below); the DHT sensor library 1.4.7 may follow. Each wrapper's section
+**SoftwareSerial**, **LiquidCrystal** and **DHT** (below). Each wrapper's section
 states its RAM and flash cost, the longest time each method waits, and a **Verified:** line saying what is checked
 in the avr8js simulator and what only on a real board.
 
@@ -612,6 +612,74 @@ void setup() {
   overflows its 16-bit count and waits about 0.85 ms, so the first instruction comes **1 ms** after reset (measured).
   Most modules cope through the initialization by instruction that follows; one that does not shows nothing until
   `begin()` runs it again.
+
+### DHT, from the library index
+
+Install it once, with its dependency, exactly at the tested versions (both pinned in `tool/arduino_libraries.txt`):
+`arduino-cli lib install --no-deps "DHT sensor library@1.4.7" "Adafruit Unified Sensor@1.1.15"`.
+
+```dart
+import 'package:unodar/dht.dart';
+import 'package:unodar/unodar.dart';
+
+final sensor = Dht(2, DHT22);                    // data line on pin 2
+
+void setup() {
+  Serial.begin(9600);
+  sensor.begin();
+}
+
+void loop() {
+  if (sensor.read()) {
+    Serial.println(sensor.readTemperature(), digits: 1);
+  }
+  delay(2000);
+}
+```
+
+| Dart (`Dht`) | C++ (`DHT.h`, class `DHT`) | Wait (avr8js, DHT22) |
+|---|---|---|
+| `Dht(pin, type)` | `DHT(uint8_t, uint8_t)`; `pin` is a `@CppPin`, `type` one of `DHT11`, `DHT12`, `DHT21`/`AM2301`, `DHT22` (11 to 22, E004 outside) | none |
+| `begin()` | `begin()`: the pin gets its pull-up, and the next `read()` talks to the sensor at once | none |
+| `read({force = false})` → `bool` | `read(bool)`: an exchange, unless the last one was less than 2 s ago (then its result again); true if the frame's checksum matched | an exchange: **6.2 ms**, of which about **4 ms with interrupts off** (5 ms at most, when most bits are 1s); a cached result: a few µs |
+| `readTemperature({fahrenheit = false, force = false})` → `double` | `float readTemperature(bool, bool)`: calls `read()`, then °C (or °F) of the last valid frame; `NaN` if it failed | as `read()` |
+| `readHumidity({force = false})` → `double` | `float readHumidity(bool)`: percent, or `NaN` | as `read()` |
+| `computeHeatIndex(t, h, {fahrenheit = false})` → `double` | `computeHeatIndex(float, float, bool)`: the felt temperature (NOAA's formula) | none (float math only) |
+| `convertCtoF(c)`, `convertFtoC(f)` → `double` | `float` | none |
+
+- **Check `read()`**, then read the values: after a failed exchange the values are `NaN`, and NaN cannot be tested
+  in the subset (`x.isNaN` is E002) except as `x != x`. `read()` and the two value methods share one cached exchange,
+  so `read()` followed by `readTemperature()` and `readHumidity()` talks to the sensor once.
+- **Every 2 s at most.** The sensor measures at most every 2 seconds, so the library returns the last result for
+  any call within 2 s of the previous exchange. `force: true` talks to it anyway, which a real sensor may answer
+  with stale data or not at all; avoid it.
+- **Interrupts off.** During the 40 bits the library turns interrupts off (it times the bits by counting loop
+  cycles), so `millis()` and `micros()` fall behind by about **3 ms per exchange** (measured), and nothing else that
+  needs an interrupt runs meanwhile. Read the sensor from an `Every` of 2 s or more, not on every `loop()` pass.
+- A non-constant `type` that is not a sensor type, or a constant from 13 to 20 (inside `@CppRange(11, 22)`), makes
+  every reading `NaN`: the library has no conversion for it. On a DHT11 the start signal is 20 ms instead of 1.1 ms.
+- Cost: 19 B of RAM per sensor, **plus `Serial`'s 175 B even in a program that never uses `Serial`**: the
+  dependency Adafruit Unified Sensor has a function that prints with `Serial` (`printSensorDetails()`), and
+  arduino-cli links every object file of a library, which brings in `Serial` and its buffers. A program that only
+  reads a DHT22 into a variable uses 2630 B of flash and 203 B of RAM (an empty sketch: 444 B and 9 B). The `dht`
+  golden (every method, and float printing, which adds Print's `nan`, `inf` and `ovf` strings, 12 B of RAM) uses
+  5454 B of flash and 219 B of RAM in total.
+- **Verified:** in avr8js, against the runner's DHT22 model on the data pin (it answers a start signal of 0.8 to
+  20 ms with the datasheet's response and 40 bits of 50 µs low and 26 or 70 µs high, as an open-drain line with the
+  pull-up): the library decodes the exact temperature and humidity, including negative temperatures; a frame with a
+  bad checksum gives `false` and `NaN`; four reads within 2 s make one exchange, and a forced one makes another; the
+  start signal is 1.1 ms; and `millis()` loses 3 ms over an exchange, against the simulated time. The model itself is
+  checked with the library in C++, and with a start signal that is too short (no answer, reported). Its negative
+  control sends 1 bits shorter than the 50 µs low time, which the library then reads as 0s. The binding conforms to
+  `DHT.h`, and `DHT22` is 22 there (conformance probe). **What the simulator cannot show:** the sensor itself
+  (accuracy, about ±0.5 °C and ±2 to 5 % on a DHT22, and how fast it follows a change); a real sensor's timing
+  spread (the model sends the datasheet's typical times exactly); the time after power-on before a sensor answers (about
+  1 s on a DHT22: a read in `setup()` right after power-up can fail on a board); what a real sensor does when read
+  more often than every 2 s; the DHT11 (the model is a DHT22); wiring (the Uno's internal pull-up, 20 to 50 kΩ,
+  is enough for short wires, long ones need 4.7 to 10 kΩ to 5 V) and electrical noise, which shows up as checksum
+  failures; and what the 4 ms without interrupts costs the rest of a real board: bytes arriving on `Serial` beyond
+  its 2-byte hardware buffer, or on a `SoftwareSerial`, are lost, and a `Servo` pulse can stretch. Wokwi has a
+  `wokwi-dht22` part for a visual check.
 
 ## Escape hatch: `cpp()` and `@CppInclude`
 
