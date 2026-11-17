@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:unodar_compiler/src/cli/cli.dart';
 import 'package:unodar_compiler/src/compiler.dart';
+import 'package:unodar_compiler/src/version.dart';
 
 import '../test_paths.dart';
 
@@ -79,6 +80,20 @@ void main() {
     final build = await run(['build', '--help']);
     expect(build.exitCode, 0);
     expect(build.out, contains('--output'));
+  });
+
+  test('--version prints the compiler version and exits 0', () async {
+    final r = await run(['--version']);
+    expect(r.exitCode, 0, reason: r.err);
+    expect(r.out, 'unodar $unodarVersion\n');
+  });
+
+  test('the compiler version is the version of both packages', () {
+    for (final package in ['unodar', 'unodar_compiler']) {
+      final pubspec = File(fromPackage('..', package, 'pubspec.yaml')).readAsStringSync();
+      expect(RegExp(r'^version: (\S+)$', multiLine: true).firstMatch(pubspec)?.group(1), unodarVersion,
+          reason: '$package/pubspec.yaml');
+    }
   });
 
   test('bin/unodar.dart runs as a real process', () async {

@@ -2,7 +2,7 @@ name: unodar
 description: >-
   Flutter-style Dart API for Arduino-class microcontrollers. Declarations only: the unodar compiler reads code
   written against this API and emits Arduino C++. Nothing in this package is ever executed.
-version: 0.1.0-dev
+version: 0.7.0-dev
 publish_to: none
 resolution: workspace
 

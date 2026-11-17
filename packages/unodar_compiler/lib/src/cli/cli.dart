@@ -4,6 +4,7 @@ import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
 import '../compiler.dart';
+import '../version.dart';
 
 /// Process exit codes (PRD §9.6).
 abstract final class ExitCodes {
@@ -25,9 +26,15 @@ Usage: unodar <command> [arguments]
 Commands:
   build    Compile a Dart sketch to <outdir>/<name>/<name>.ino
 
+Options:
+  -h, --help       Show this help.
+      --version    Print the version of unodar.
+
 Run "unodar build --help" for command options.''';
 
-ArgParser _globalParser() => ArgParser()..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
+ArgParser _globalParser() => ArgParser()
+  ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.')
+  ..addFlag('version', negatable: false, help: 'Print the version of unodar.');
 
 ArgParser _buildParser() => ArgParser()
   ..addOption('output',
@@ -46,6 +53,10 @@ Future<int> runCli(List<String> arguments, {required StringSink out, required St
       top = global.parse(commandIndex == -1 ? arguments : arguments.sublist(0, commandIndex));
       if (top.flag('help')) {
         out.writeln(_usageHeader);
+        return ExitCodes.success;
+      }
+      if (top.flag('version')) {
+        out.writeln('unodar $unodarVersion');
         return ExitCodes.success;
       }
       if (commandIndex == -1) return _usageError(err, 'missing command.');
