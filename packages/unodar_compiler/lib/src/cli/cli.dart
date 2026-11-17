@@ -4,11 +4,13 @@ import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
 import '../compiler.dart';
+import '../toolchain/doctor.dart';
+import '../toolchain/toolchain.dart';
 import '../version.dart';
 
-/// Process exit codes (PRD §9.6).
+/// Process exit codes (PRD §9.6; 3 and 4 from Phase 7, see docs/DIAGNOSTICS.md "Exit codes").
 abstract final class ExitCodes {
-  /// The sketch compiled.
+  /// The command succeeded (`doctor`: everything is ready).
   static const success = 0;
 
   /// The user's Dart source has diagnostics.
@@ -16,34 +18,96 @@ abstract final class ExitCodes {
 
   /// Anything that is not a problem in the user's source: bad usage, unreadable input, I/O failure, compiler bug.
   static const tooling = 2;
+
+  /// The Arduino toolchain is missing, has the wrong version, or cannot run (`doctor` found a problem; a download
+  /// failed). The fix is `unodar setup`.
+  static const toolchain = 3;
+
+  /// The board: none found, several found without `--port`, the port busy or not permitted, or the upload failed.
+  static const board = 4;
 }
 
-const _usageHeader = '''
+/// What a command runs with: its output streams, the environment and the working directory (injectable so that
+/// tests run commands in-process against fake toolchains).
+final class CliContext {
+  const CliContext({required this.out, required this.err, required this.environment, required this.workingDirectory});
+
+  final StringSink out;
+  final StringSink err;
+  final Map<String, String> environment;
+  final String workingDirectory;
+
+  UnodarHome get home => UnodarHome.fromEnvironment(environment);
+
+  /// [path] relative to [workingDirectory].
+  String resolve(String path) => p.normalize(p.join(workingDirectory, path));
+}
+
+/// One subcommand.
+final class _Command {
+  const _Command(this.name, this.summary, this.usage, this.parser, this.run);
+
+  final String name;
+  final String summary;
+  final String usage;
+  final ArgParser Function() parser;
+  final Future<int> Function(ArgResults args, CliContext context) run;
+}
+
+ArgParser _withHelp(ArgParser parser) => parser..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
+
+final _commands = [
+  _Command(
+    'build',
+    'Compile a Dart program to <outdir>/<name>/<name>.ino',
+    'unodar build <file.dart> [-o <outdir>]',
+    () => _withHelp(ArgParser()
+      ..addOption('output',
+          abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')),
+    _build,
+  ),
+  _Command(
+    'doctor',
+    'Check the Arduino toolchain and say how to fix what is missing',
+    'unodar doctor [--dev]',
+    () => _withHelp(ArgParser()
+      ..addFlag('dev',
+          negatable: false, help: 'Also check what contributors need: Node.js and the avr8js runner of the tests.')),
+    _doctor,
+  ),
+];
+
+String get _usageHeader => '''
 unodar: compile Flutter-style Dart to Arduino C++ (experimental).
 
 Usage: unodar <command> [arguments]
 
 Commands:
-  build    Compile a Dart sketch to <outdir>/<name>/<name>.ino
+${_commands.map((c) => '  ${c.name.padRight(8)} ${c.summary}').join('\n')}
 
 Options:
   -h, --help       Show this help.
       --version    Print the version of unodar.
 
-Run "unodar build --help" for command options.''';
+Run "unodar <command> --help" for command options.''';
 
 ArgParser _globalParser() => ArgParser()
   ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.')
   ..addFlag('version', negatable: false, help: 'Print the version of unodar.');
 
-ArgParser _buildParser() => ArgParser()
-  ..addOption('output',
-      abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')
-  ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
-
 /// Entry point for the `unodar` CLI. Returns the process exit code; writes only to [out] and [err] so tests can run
-/// it in-process. `bin/unodar.dart` wires these to stdout/stderr.
-Future<int> runCli(List<String> arguments, {required StringSink out, required StringSink err}) async {
+/// it in-process. `bin/unodar.dart` wires these to stdout/stderr. [environment] and [workingDirectory] default to
+/// the process's own.
+Future<int> runCli(List<String> arguments,
+    {required StringSink out,
+    required StringSink err,
+    Map<String, String>? environment,
+    String? workingDirectory}) async {
+  final context = CliContext(
+      out: out,
+      err: err,
+      environment: environment ?? Platform.environment,
+      workingDirectory: workingDirectory ?? Directory.current.path);
   try {
     final global = _globalParser();
     final ArgResults top;
@@ -60,12 +124,29 @@ Future<int> runCli(List<String> arguments, {required StringSink out, required St
         return ExitCodes.success;
       }
       if (commandIndex == -1) return _usageError(err, 'missing command.');
-      final command = arguments[commandIndex];
-      final rest = arguments.sublist(commandIndex + 1);
-      return switch (command) {
-        'build' => await _build(rest, out: out, err: err),
-        _ => _usageError(err, 'unknown command "$command".'),
-      };
+      final name = arguments[commandIndex];
+      final command = _commands.where((c) => c.name == name).firstOrNull;
+      if (command == null) return _usageError(err, 'unknown command "$name".');
+      final parser = command.parser();
+      final ArgResults args;
+      try {
+        args = parser.parse(arguments.sublist(commandIndex + 1));
+      } on FormatException catch (e) {
+        return _commandUsageError(err, command, parser, e.message);
+      }
+      if (args.flag('help')) {
+        out
+          ..writeln('${command.summary}.')
+          ..writeln()
+          ..writeln('Usage: ${command.usage}')
+          ..writeln()
+          ..writeln(parser.usage);
+        return ExitCodes.success;
+      }
+      return await command.run(args, context);
+    } on _UsageException catch (e) {
+      final command = _commands.firstWhere((c) => c.name == e.command);
+      return _commandUsageError(err, command, command.parser(), e.message);
     } on FormatException catch (e) {
       return _usageError(err, e.message);
     }
@@ -73,10 +154,20 @@ Future<int> runCli(List<String> arguments, {required StringSink out, required St
     // A crash here is a compiler bug, never the user's fault: say so and exit with the tooling code.
     err
       ..writeln('internal error: $e')
-      ..writeln('This is a bug in unodar. Please report it with the input file and this trace:')
+      ..writeln('This is a bug in unodar. Please report it at $issuesUrl with the input file and this trace:')
       ..writeln(stack);
     return ExitCodes.tooling;
   }
+}
+
+/// Where bugs are reported.
+const issuesUrl = 'https://github.com/TheCodeDaniel/unodar/issues';
+
+final class _UsageException implements Exception {
+  const _UsageException(this.command, this.message);
+
+  final String command;
+  final String message;
 }
 
 int _usageError(StringSink err, String message) {
@@ -87,36 +178,30 @@ int _usageError(StringSink err, String message) {
   return ExitCodes.tooling;
 }
 
-Future<int> _build(List<String> arguments, {required StringSink out, required StringSink err}) async {
-  final parser = _buildParser();
-  final ArgResults args;
-  try {
-    args = parser.parse(arguments);
-  } on FormatException catch (e) {
-    return _buildUsageError(err, parser, e.message);
-  }
-  if (args.flag('help')) {
-    out
-      ..writeln('Compile a Dart sketch to Arduino C++.')
-      ..writeln()
-      ..writeln('Usage: unodar build <file.dart> [-o <outdir>]')
-      ..writeln()
-      ..writeln(parser.usage);
-    return ExitCodes.success;
-  }
-  if (args.rest.length != 1) return _buildUsageError(err, parser, 'expected exactly one <file.dart>.');
+int _commandUsageError(StringSink err, _Command command, ArgParser parser, String message) {
+  err
+    ..writeln('error: $message')
+    ..writeln()
+    ..writeln('Usage: ${command.usage}')
+    ..writeln(parser.usage);
+  return ExitCodes.tooling;
+}
 
+Future<int> _build(ArgResults args, CliContext context) async {
+  if (args.rest.length != 1) throw const _UsageException('build', 'expected exactly one <file.dart>.');
   final input = args.rest.single;
-  switch (await Compiler().compile(input)) {
+  final err = context.err;
+  switch (await Compiler().compile(context.resolve(input))) {
     case final CompileSuccess result:
       final String ino;
       try {
-        ino = writeSketch(args.option('output')!, p.basenameWithoutExtension(input), result);
+        ino = writeSketch(context.resolve(args.option('output')!), p.basenameWithoutExtension(input), result);
       } on FileSystemException catch (e) {
         err.writeln('error: could not write ${e.path ?? args.option('output')}: ${e.osError?.message ?? e.message}');
         return ExitCodes.tooling;
       }
-      out.writeln(ino);
+      // Printed as given: relative to the working directory when `-o` was relative.
+      context.out.writeln(p.isAbsolute(args.option('output')!) ? ino : p.relative(ino, from: context.workingDirectory));
       return ExitCodes.success;
     case CompileFailure(:final diagnostics):
       for (final diagnostic in diagnostics) {
@@ -130,6 +215,17 @@ Future<int> _build(List<String> arguments, {required StringSink out, required St
   }
 }
 
+Future<int> _doctor(ArgResults args, CliContext context) async {
+  final dev = args.flag('dev');
+  final checks = runDoctor(
+      home: context.home,
+      environment: context.environment,
+      dev: dev,
+      checkout: dev ? findCheckout(context.workingDirectory) : null);
+  context.out.writeln(renderDoctor(checks));
+  return checks.any((c) => c.status == CheckStatus.problem) ? ExitCodes.toolchain : ExitCodes.success;
+}
+
 /// Writes [result] as `<outDir>/<name>/<name>.ino` (arduino-cli requires the sketch folder and the `.ino` to share a
 /// name), plus its extra files (the widget runtime header) in the same folder, and returns the `.ino` path. A file
 /// from an earlier build that this program no longer needs is left alone: arduino-cli only compiles a header that
@@ -141,13 +237,4 @@ String writeSketch(String outDir, String name, CompileSuccess result) {
     File(p.join(folder.path, fileName)).writeAsStringSync(contents, flush: true);
   }
   return ino.path;
-}
-
-int _buildUsageError(StringSink err, ArgParser parser, String message) {
-  err
-    ..writeln('error: $message')
-    ..writeln()
-    ..writeln('Usage: unodar build <file.dart> [-o <outdir>]')
-    ..writeln(parser.usage);
-  return ExitCodes.tooling;
 }

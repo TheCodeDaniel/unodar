@@ -12,11 +12,15 @@ The file is the source's base name. Diagnostics are printed in source order, fol
 
 ## Exit codes
 
+Every `unodar` command uses the same codes:
+
 | Code | Meaning |
 |---|---|
-| 0 | Success: the sketch was written. |
+| 0 | Success: the sketch was written (`doctor`: everything is ready). |
 | 1 | Diagnostics: fix your Dart source. |
 | 2 | Tooling error: bad command-line usage, unreadable input, unwritable output, or an internal compiler error. |
+| 3 | Toolchain not ready: arduino-cli, the `arduino:avr` core or a pinned library is missing, has another version, or cannot run (`doctor` found a problem). Run `unodar setup`. |
+| 4 | Board: none found, several found without `--port`, the port is busy or not permitted, or the upload failed. |
 
 ## E001: Missing required `setup()` or `loop()`
 
