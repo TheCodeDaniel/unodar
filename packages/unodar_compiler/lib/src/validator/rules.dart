@@ -34,6 +34,10 @@ final class ValidationContext {
   final ConstantEvaluator constants = const ConstantEvaluator();
   final List<Diagnostic> diagnostics = [];
 
+  /// The argument lists of calls reported as unknown (E003), from start to end. Nothing inside them is reported:
+  /// the call is wrong as a whole, and its arguments are checked once it is rewritten (`Validator.validate`).
+  final List<(SourceLocation, SourceLocation)> unknownCallArguments = [];
+
   void report(Diagnostic diagnostic) => diagnostics.add(diagnostic);
 
   SourceLocation at(SyntacticEntity node) => source.locationOf(node.offset);

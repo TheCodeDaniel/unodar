@@ -26,15 +26,30 @@ abstract final class Diagnostics {
 
   /// [cppExample] is the call as C++ text for the escape-hatch hint (`tone(8, 440)`), or null for a method call on
   /// a Dart value, which has no C++ equivalent.
-  static Diagnostic unknownFunction(String name, String? cppExample, SourceLocation at) => Diagnostic(
+  static Diagnostic unknownFunction(String name, String? cppExample, SourceLocation at, {bool isMethod = false}) =>
+      Diagnostic(
         code: DiagnosticCode.unknownFunction,
         location: at,
         message: "unknown function '$name': it is neither declared in this file nor part of the unodar API.",
-        suggestion: cppExample == null
+        suggestion: isMethod
             ? 'Methods of numbers and other Dart values are not supported; use operators or a function declared in '
                 'this file. See docs/SUBSET.md for the unodar API.'
             : 'Declare the function in this file, or call the Arduino function through the escape hatch, e.g. '
-                "`cpp('$cppExample;');`. See docs/SUBSET.md for the unodar API.",
+                "`cpp('${cppExample ?? '$name(…)'};');`. See docs/SUBSET.md for the unodar API.",
+      );
+
+  /// A function of Dart or Flutter that a newcomer reaches for first (`print`, `debugPrint`, `setState`), E003.
+  static Diagnostic dartOnlyFunction(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unknownFunction,
+        location: at,
+        message: name == 'setState'
+            ? 'there is no setState() in unodar: widgets are never rebuilt, they are set up once and polled.'
+            : "Dart's $name() has nowhere to print on the board.",
+        suggestion: name == 'setState'
+            ? 'Keep the state in a Signal (`final count = Signal<int>(0);`, then `count.value++;`) and react to it with '
+                '`Watch(count, (v) { … })` or `Led(pin: 13, on: …)`, or keep it in a top-level variable.'
+            : "Print over the USB serial port instead, e.g. `Serial.println('hello');`, and read it with a serial "
+                'monitor (`arduino-cli monitor` or the Arduino IDE).',
       );
 
   /// A method of a widget that `package:unodar` declares but this compiler version does not support yet (E003).

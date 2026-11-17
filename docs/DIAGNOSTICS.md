@@ -111,7 +111,9 @@ unodar reports E003 instead when the call is a statement of its own) and method 
 method that the binding does not declare is a Dart error (E007). A widget method that `package:unodar` declares
 but this compiler version does not support yet is E003 too ("the Led method '…' is not supported in this
 version"). The suggestion points to the escape hatch,
-`cpp('…')`, for Arduino functions unodar does not wrap yet.
+`cpp('…')`, for Arduino functions unodar does not wrap yet. Dart's `print` and `debugPrint` and Flutter's `setState`
+get their own message and help (`Serial.println`; a `Signal`). The arguments of an unknown call are not checked:
+the call is wrong as a whole (`print('hi')` is one diagnostic, not also one for the string literal).
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -130,7 +132,7 @@ input.dart:8:3: error[E003]: unknown function 'tone': it is neither declared in 
   = help: Declare the function in this file, or call the Arduino function through the escape hatch, e.g. `cpp('tone(8, 440);');`. See docs/SUBSET.md for the unodar API.
 ```
 
-(Golden tests: `test/golden/e003_unknown_function`, `e003_method_call`.)
+(Golden tests: `test/golden/e003_unknown_function`, `e003_method_call`, `newcomer_print`, `newcomer_set_state`.)
 
 ## E004: Unsupported argument
 

@@ -64,6 +64,10 @@ final class Validator {
     for (final rule in rules) {
       rule.check(source.unit, context);
     }
-    return sortDiagnostics(context.diagnostics);
+    bool before(SourceLocation a, SourceLocation b) => a.line < b.line || (a.line == b.line && a.column < b.column);
+    bool inside(SourceLocation at, (SourceLocation, SourceLocation) range) =>
+        !before(at, range.$1) && before(at, range.$2);
+    return sortDiagnostics(
+        context.diagnostics.where((d) => !context.unknownCallArguments.any((range) => inside(d.location, range))));
   }
 }

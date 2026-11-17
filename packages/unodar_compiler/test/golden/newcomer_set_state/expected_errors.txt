@@ -1,0 +1,2 @@
+input.dart:11:13: error[E003]: there is no setState() in unodar: widgets are never rebuilt, they are set up once and polled.
+  = help: Keep the state in a Signal (`final count = Signal<int>(0);`, then `count.value++;`) and react to it with `Watch(count, (v) { … })` or `Led(pin: 13, on: …)`, or keep it in a top-level variable.

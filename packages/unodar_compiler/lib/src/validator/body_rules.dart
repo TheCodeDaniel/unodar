@@ -449,11 +449,17 @@ final class ApiCallRule implements ValidationRule {
       // A method of a binding-typed local, parameter, or invalid binding class: reported as E017/E018 already.
       if (call.target != null && isObjectType(call.target!.staticType)) continue;
       final target = call.target;
+      context.unknownCallArguments
+          .add((context.at(call.argumentList), context.source.locationOf(call.argumentList.end)));
+      // Dart's and Flutter's names that a newcomer reaches for first get their own help.
+      if (target == null && const {'print', 'debugPrint', 'setState'}.contains(call.methodName.name)) {
+        context.report(Diagnostics.dartOnlyFunction(call.methodName.name, context.at(call.methodName)));
+        continue;
+      }
       final name = target == null ? call.methodName.name : '${target.toSource()}.${call.methodName.name}';
       final source = call.toSource();
-      final example =
-          target == null && !source.contains("'") && !source.contains('"') && !source.contains('\n') ? source : null;
-      context.report(Diagnostics.unknownFunction(name, example, context.at(call.methodName)));
+      final example = !source.contains("'") && !source.contains('"') && !source.contains('\n') ? source : null;
+      context.report(Diagnostics.unknownFunction(name, example, context.at(call.methodName), isMethod: target != null));
     }
   }
 }
