@@ -495,8 +495,9 @@ SPI.endTransaction();
   Pins of member objects (inside your own classes) are not compared, as for `@CppPin`.
 - `SPI` is the library's one object (E018 otherwise). Not wrapped: `transfer(buffer, size)` (needs arrays),
   `usingInterrupt`, and the deprecated `setBitOrder`/`setDataMode`/`setClockDivider`.
-- Cost: 3 B of RAM (the SPI library's state); the shim object is an empty `constexpr` struct, 0 B. The `spi` golden
-  (two transactions) uses 2354 B of flash in total.
+- Cost: 3 B of RAM (the SPI library's state; 1 B in a program that uses no SPI interrupt state); the shim object is
+  an empty `constexpr` struct, 0 B. Flash: 394 B for `begin`, one transaction and one transfer; the `spi` golden (two
+  transactions and `Serial`) uses 2394 B in total.
 - **Verified:** in avr8js against the runner's scripted SPI slave: the bytes sent and the bytes the slave answered,
   the mode, bit order and clock divider of each byte (read from SPCR/SPSR), `transfer16` sending the high byte first,
   and the chip select (pin 10) low around exactly the bytes of one command. The shim is tested on its own: modes 0 to
@@ -1209,14 +1210,16 @@ every value or have a `default` (E007 otherwise), so it never silently skips one
 
 ### Cost of classes and enums
 
-Sizes on the Uno, fixed at build time (measured in step 21 of the Phase 6 plan; these are the expected values):
+Sizes on the Uno, fixed at build time (measured with `avr-nm` and arduino-cli; see `test/size_budgets.dart`):
 
 | Construct | RAM | Flash |
 |---|---|---|
-| Object | the sum of its fields: `int`/`double` 4 B, `Int16`/`Uint16` 2 B, `bool`/`Uint8`/enum 1 B, members as their own objects; no padding, no vtable. A class without fields: 1 B (C++'s minimum), or 0 B if the linker drops it. | Construction: 0 B (constant-initialized) |
-| Method, getter | 0 B | As a top-level function; the object's address is passed in registers, and is often optimized away for a single object |
+| Object | the sum of its fields: `int`/`double` 4 B, `Int16`/`Uint16` 2 B, `bool`/`Uint8`/enum 1 B, members as their own objects; no padding, no vtable. A class without fields: 1 B (C++'s minimum), or 0 B if the linker drops it. | Construction: 0 B (constant-initialized; no constructor code is linked) |
+| Method, getter | 0 B | Exactly as the same top-level function (measured: identical flash with one object and with two) |
 | Static field | As a global (`static const`: 0 B) | |
 | Enum value or variable | 1 B | Comparisons are 8-bit |
+| `switch` | 0 B | Code only |
+| `OnStart` | 0 B | 16 to 22 B for a one-line callback |
 
 ## Translation and layout
 

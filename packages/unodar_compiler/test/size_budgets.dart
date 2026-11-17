@@ -199,8 +199,10 @@ const sizeBudgets = <String, SizeBudget>{
   'eeprom': SizeBudget(baselineFlash: 1938, baselineRam: 188, maxFlash: 2550, maxRam: 199),
   // spi: the SPI wrapper through its shim unodar_spi.h (step 14): two transactions, transfer and transfer16. RAM
   // (avr-nm): Serial 175 + core 9 + SPIClass's statics 3 (initialized, interruptMode, interruptSave) + 4 B of .data
-  // strings and padding; the shim object unodar_spi is an empty constexpr struct (0 B).
-  'spi': SizeBudget(baselineFlash: 2354, baselineRam: 191, maxFlash: 3100, maxRam: 202),
+  // strings and padding; the shim object unodar_spi is an empty constexpr struct (0 B). Flash baseline corrected in
+  // the step 21 review from 2354 to 2394 B, the size the golden has measured since step 14 (also when built at that
+  // commit, 9f091e3, with the pinned toolchain): 2354 B was never this golden's measurement. The max is unchanged.
+  'spi': SizeBudget(baselineFlash: 2394, baselineRam: 191, maxFlash: 3100, maxRam: 202),
   // cpp_print: @CppPrint on a user SoftwareSerial binding (step 15): literals, bools, a double with digits, ints.
   // RAM (avr-nm): core 9 + link 31 + SoftwareSerial's 64 B receive buffer, head, tail and active object 4 + its
   // vtable 18 + 4 B of .data; the "true"/"false" texts are flash strings (F()), 0 B.

@@ -422,26 +422,29 @@ Classes and enums are pure computation and pins, so everything about them is pro
 `avr-nm`, and avr8js behaviour with a negative control per construct (for example, fields emitted `static`, which
 makes two instances share their state).
 
-## 5. Memory and flash cost (estimates; measured in step 21)
+## 5. Memory and flash cost (measured in step 21)
 
-These are fixed at compile time. They are estimates from the library sources and Phase 5 measurements; step 21
-replaces them with measurements, as Phase 5 did.
+Step 1 estimated these; step 21 measured them (arduino-cli 1.5.1, arduino:avr 1.8.8, the pinned libraries, `-fwrapv`,
+`-Os`, LTO). RAM per object is read per symbol with `avr-nm` (the comments in `test/size_budgets.dart` break every
+golden's RAM down). "Minimal use" is a program that uses only that library, minus an empty sketch (444 B of flash, 9 B
+of RAM: the core's `millis()` state).
 
 | Feature | RAM | Flash |
 |---|---|---|
-| Object of a user class | sum of its fields (`int`/`double` 4, `Int16`/`Uint16` 2, `bool`/`Uint8`/enum 1); no padding, no vtable. A class without fields: 1 B (the C++ minimum), or 0 if the linker drops it | Constructor 0 B (constant-initialized) |
-| Method or getter | 0 B | As the same top-level function. The receiver is a 2-byte pointer in registers, often removed by LTO for a single instance: estimate +0–10 B per call. Instances share the code. |
-| Static field | as a global (`static const`: 0 B, folded) | 0 B |
-| Composition | sum of the members | Constructors of binding members run before `setup()`, as today |
-| Enum | 1 B per variable or field; `Signal<Mode>` 2 B | `==` is an 8-bit compare; `.index` widened only where it is used |
-| `OnStart` | 0 B | One function and a call (about 4–10 B) |
-| `@CppPin`, `@CppPrint`, conformance probe | 0 B | 0 B (compile-time only) |
-| EEPROM | 0 B | About 20–60 B per kind of call (inline `eeprom_read_byte`/`eeprom_write_byte`) |
-| SPI | about 1–3 B (SPIClass statics) | About 150–250 B for `begin` + `transfer` + one transaction |
-| SoftwareSerial | 64 B RX buffer (shared) + about 20 B per object + vtable | About 1.2–1.8 KB, including `Print` |
-| LiquidCrystal | about 25 B per object + `Print` vtable | About 1.0–1.5 KB, plus `Print`'s number formatting (about 0.5 KB) if nothing else links it |
-| DHT | about 15 B per object | About 1–1.5 KB, plus float code if nothing else links it |
-| Goal program | about 90–120 B (no `Serial`) | About 4–5 KB |
+| Object of a user class | Exactly the sum of its fields (`int`/`double` 4, `Int16`/`Uint16` 2, `bool`/`Uint8`/enum 1): a `Counter` of golden `class_fields` is 18 B, a `Meter` of `class_methods` 12 B; no padding, no vtable | Construction 0 B: the only static constructor in `class_fields` is `Serial`'s |
+| Method or getter | 0 B | **The same as a top-level function**: a method called three times on one object, and on two objects, gave the same flash and RAM as the equivalent functions on globals (1852 B and 1950 B) |
+| Static field | As a global: a static mutable `int` is one 4 B variable for the class; `static const`/`static final` 0 B (folded) (`class_static`) | 0 B |
+| Composition | The sum of the members: a `Pair` of `class_composition` is 23 B (two 8 B `Counter`s, a 3 B Servo, a 4 B `int`) | A binding member's constructor runs before `setup()` |
+| Enum | 1 B per variable or field; `Signal<Mode>` 2 B (`enum_basics`) | 8-bit compares; `.index` widened only where it is used |
+| `switch` | 0 B (`switch_enum` has exactly an empty program's globals plus `Serial`) | Code only |
+| `OnStart` | 0 B (`on_start`) | 16 to 22 B for a one-line callback (the call and the callback) |
+| `@CppPin`, `@CppPrint`, `@CppUsesPins`, conformance probe | 0 B | 0 B (compile-time only) |
+| EEPROM | 0 B (the object is an empty struct) | Minimal use (`update` of a `read`): 76 B |
+| SPI | 1 B minimal (3 B with interrupt state, golden `spi`) | Minimal use (begin, one transaction, one transfer): 394 B; golden `spi` 2394 B with `Serial` |
+| SoftwareSerial | 117 B for one object: 31 B per object + 68 B shared (the 64 B receive buffer and its state) + an 18 B vtable | Minimal use (begin, print a literal): 1752 B, `Print` included |
+| LiquidCrystal | 36 B for one display: 24 B + a 12 B vtable | Minimal use (begin, print a literal): 1236 B |
+| DHT | 19 B per sensor, **plus `Serial`'s 175 B** even if the program does not use `Serial` (Adafruit Unified Sensor's `printSensorDetails()` links it) | Minimal use (begin, read, readTemperature into a variable): 2186 B, `Serial` and float code included |
+| Goal program | Measured in step 22 | Measured in step 22 |
 
 ## 6. New diagnostics (next free: E027)
 
