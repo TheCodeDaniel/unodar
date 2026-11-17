@@ -213,6 +213,18 @@ final class CppEmitter {
         out.writeln('${indent}for ($init;$test;$step) {');
         _block(out, body, depth + 1, file);
         out.writeln('$indent}');
+      case IrSwitch(:final subject, :final cases):
+        out.writeln('${indent}switch (${_expr(subject)}) {');
+        for (final IrSwitchCase(:labels, :body, :isDefault) in cases) {
+          final heads = [for (final label in labels) 'case ${_expr(label)}:', if (isDefault) 'default:'];
+          for (final head in heads.take(heads.length - 1)) {
+            out.writeln('$indent  $head');
+          }
+          out.writeln('$indent  ${heads.last} {');
+          _block(out, body, depth + 2, file);
+          out.writeln('$indent  } break;');
+        }
+        out.writeln('$indent}');
       case IrBlock(:final body):
         out.writeln('$indent{');
         _block(out, body, depth + 1, file);
@@ -270,6 +282,7 @@ final class CppEmitter {
         IrWhile() ||
         IrFor() ||
         IrBlock() ||
+        IrSwitch() ||
         IrRawCpp() =>
           throw InvalidIrError('compound statement in a simple position'),
       };
@@ -589,6 +602,8 @@ final class CppEmitter {
             _modInStatements(body),
         IrReturn(:final value) => _modInExpression(value),
         IrBlock(:final body) => _modInStatements(body),
+        IrSwitch(:final subject, :final cases) =>
+          _modInExpression(subject) || cases.any((c) => c.labels.any(_modInExpression) || _modInStatements(c.body)),
         IrIncrement() || IrBreak() || IrContinue() || IrRawCpp() => false,
       };
 }

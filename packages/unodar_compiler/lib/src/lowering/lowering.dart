@@ -598,9 +598,27 @@ final class _Lowerer {
         return IrBreak(line: line);
       case ContinueStatement(label: null):
         return IrContinue(line: line);
+      case SwitchStatement(:final expression, :final members):
+        return IrSwitch(_expression(expression), _cases(members), line: line);
       default:
         throw LoweringError('unsupported statement ${statement.toSource()}');
     }
+  }
+
+  /// Dart 3 cases: an empty case shares the body of the next one, so labels collect until a case has statements.
+  List<IrSwitchCase> _cases(List<SwitchMember> members) {
+    final cases = <IrSwitchCase>[];
+    var labels = <IrExpression>[];
+    var isDefault = false;
+    for (final (index, member) in members.indexed) {
+      labels.addAll(caseConstants(member).map(_expression));
+      isDefault = isDefault || member is SwitchDefault;
+      if (member.statements.isEmpty && index != members.length - 1) continue;
+      cases.add(IrSwitchCase(labels, _statements(member.statements), isDefault: isDefault));
+      labels = [];
+      isDefault = false;
+    }
+    return cases;
   }
 
   IrLocal _local(VariableDeclaration variable) {

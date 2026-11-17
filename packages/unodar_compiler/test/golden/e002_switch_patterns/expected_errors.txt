@@ -1,0 +1,14 @@
+input.dart:15:10: error[E002]: this case pattern is not supported in this version.
+  = help: Use constant patterns: literals, `const` values and enum values, combined with `||`, e.g. `case 1 || 2:`.
+input.dart:17:12: error[E002]: a `when` guard in a switch case is not supported in this version.
+  = help: Test the condition with `if` inside the case.
+input.dart:19:10: error[E002]: a `_` case is not supported in this version.
+  = help: Write `default:` instead.
+input.dart:25:15: error[E002]: a case that repeats a value of line 23 is not supported in this version.
+  = help: Remove one of them: in Dart the second can never match, and C++ rejects duplicate case labels.
+input.dart:29:5: error[E002]: a labeled case is not supported in this version.
+  = help: Remove the label; only unlabeled `break` and `continue` are supported.
+input.dart:33:3: error[E002]: a switch on a 'double' value is not supported in this version.
+  = help: Switch on an int or an enum value, or use `if` / `else if`.
+input.dart:37:16: error[E002]: a switch expression is not supported in this version.
+  = help: See docs/SUBSET.md for the supported statements and expressions.

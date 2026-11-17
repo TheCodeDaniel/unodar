@@ -976,6 +976,45 @@ void main() {
       });
     });
 
+    group('switch statements on an enum and on ints (golden switch_enum, compiled by unodar)', () {
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'switch_enum', 'input.dart'));
+        if (result is! CompileSuccess) fail('switch_enum did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      Future<String> run(String cpp) async {
+        final build = await compileSketch('switch_enum', cpp);
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, until: 'DONE', cycles: 200 * 16000)).serial;
+      }
+
+      test('each case runs alone, empty cases share the next body, break and continue as in Dart', () async {
+        gate.check();
+        // The same program run by the Dart VM prints exactly these lines: score() for idle, heating, cooling, error;
+        // classify() for -2 to 6 (default, -1, 0 and 1 sharing a body, the const limit 3, 4 || 5 sharing default's
+        // body); count(6), where `continue` skips 2 and `break` leaves only the switch at 4: 0 + 1 + 3 + 4 + 5.
+        expect(
+            await run(await generated()),
+            '0\r\n10\r\n10\r\n-1\r\n'
+            '999\r\n100\r\n200\r\n201\r\n999\r\n6\r\n999\r\n999\r\n999\r\n'
+            '13\r\nDONE');
+      });
+
+      test('negative control: without the break after each case, C++ falls through to the next case', () async {
+        gate.check();
+        final cpp = await generated();
+        expect(cpp, contains('} break;'), reason: 'the generated code changed; update the negative control');
+        // classify(-1) now runs every later body too and ends in default's: 999 instead of 100, and so do 0, 1 and 3.
+        expect(
+            await run(cpp.replaceAll('} break;', '}')),
+            '0\r\n10\r\n10\r\n-1\r\n'
+            '999\r\n999\r\n999\r\n999\r\n999\r\n999\r\n999\r\n999\r\n999\r\n'
+            '13\r\nDONE');
+      });
+    });
+
     group('OnStart runs once in setup(), in children order, before the initial delivery (golden on_start)', () {
       final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
 

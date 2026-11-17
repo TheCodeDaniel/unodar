@@ -498,7 +498,7 @@ Every construct step adds its goldens first, and in the same commit:
 | 16 | (**done**) SoftwareSerial wrapper (`begin`, `print`/`println`, `available`, `read`, `write`) | Golden `software_serial`; avr8js: TX decoded from the pin log, RX by scheduled edges; control: wrong baud |
 | 17 | (**done**) LiquidCrystal wrapper (4-bit constructor with `@CppPin`, `begin`, `clear`, `home`, `setCursor`, `print`/`println`, `display`/`noDisplay`, `cursor`/`noCursor`, `blink`/`noBlink`, `scrollDisplayLeft`/`Right`) + runner HD44780 model | Golden `liquid_crystal`; avr8js: exact screen text and minimum timings; control: a wrong row offset |
 | — | **Cut line.** Everything above stands alone. Below is optional and can be dropped without breaking anything above. Steps 14 and 16 can also be dropped one at a time: nothing later depends on them. | |
-| 18 | (optional) `switch` statements on enums and ints, with constant cases | Goldens `switch_enum`, `e002_switch_patterns`; avr8js; control: a missing `break` (fallthrough) |
+| 18 | (**done**) `switch` statements on enums and ints, with constant cases | Goldens `switch_enum`, `e002_switch_patterns`; avr8js; control: a missing `break` (fallthrough) |
 | 19 | (optional) DHT wrapper + runner DHT22 model; `Adafruit Unified Sensor` pinned | Golden `dht`; avr8js: values, NaN on a bad checksum, the 2 s cache, lost `millis()` ticks measured; control: a wrong bit threshold |
 | 20 | (only if D3 = include) immutable value classes | Golden `value_class`; avr8js; control: a mutable field accepted |
 | 21 | Size-budget review (dedicated commit): every Phase 6 budget, RAM per object golden, §5 replaced by measurements | `size_budgets.dart` |

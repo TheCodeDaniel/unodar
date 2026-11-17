@@ -212,4 +212,7 @@ const sizeBudgets = <String, SizeBudget>{
   // liquid_crystal: the LiquidCrystal wrapper (step 17), every wrapped method once. RAM (avr-nm): Serial 175 + core 9
   // + lcd 24 + its vtable 12 + 4 B of .data.
   'liquid_crystal': SizeBudget(baselineFlash: 3162, baselineRam: 224, maxFlash: 4150, maxRam: 235),
+  // switch_enum: switch statements on an enum and on ints (step 18). RAM (avr-nm): Serial 175 + core 9 + 4 B of
+  // .data strings and padding, as eeprom: a switch is code only, 0 B.
+  'switch_enum': SizeBudget(baselineFlash: 1972, baselineRam: 188, maxFlash: 2600, maxRam: 199),
 };

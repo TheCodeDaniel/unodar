@@ -118,13 +118,17 @@ Allowed inside any function body:
 | `while` | |
 | `for` | C-style: `for (init; condition; updates)`, each part optional. Updates follow the assignment rule. |
 | `return` | `return;` or `return e;`. |
+| `switch` | On an `int` (or `Uint8`/`Uint16`/`Int16`) or an enum value. Each case is a constant pattern, a literal (`-1`), a `const` (`limit`, `Tally.limit`) or an enum value (`Mode.idle`), or several joined with `\|\|` (`case 4 \|\| 5:`); `default:` is optional. **Dart 3 semantics:** a case with statements never falls through (C++ gets `case …: { … } break;`), and an empty case shares the body of the next one. `break` leaves the switch, `continue` the enclosing loop, as in Dart. |
 | `break`, `continue` | Unlabeled only. |
 | Nested block | `{ … }` |
 | Raw C++ | `cpp('…');` as a statement of its own, see [Escape hatch](#escape-hatch-cpp-and-cppinclude). |
 
-Rejected (E002): `do`/`while`, `switch`, `for`-`in`, labeled statements and labeled `break`/`continue`, `try`,
+Rejected (E002): `do`/`while`, `for`-`in`, labeled statements and labeled `break`/`continue`, `try`,
 `throw`, `assert`, `yield`, empty statements (`;`), pattern declarations, `late` locals, a `for` that declares more
-than one variable, and expression statements that are not a call or an assignment (`x + 1;`). Local functions are
+than one variable, and expression statements that are not a call or an assignment (`x + 1;`). In a `switch`:
+patterns other than constants (`_`, `> 5`, `var x`, records; write `default:` for `_`), `when` guards, labeled
+cases, two cases with the same value (Dart would never reach the second; C++ rejects duplicate labels), and a switch
+on a `double` or `bool`; switch *expressions* (`x = switch (n) { … };`) are E002 too. Local functions are
 E012. A rejected statement is reported as a whole; the code inside it is checked once it has been rewritten.
 
 ## Expressions
@@ -1131,8 +1135,9 @@ generated file, so every function and class can use them.
 | `Signal<Mode>`, `Watch` of it | `unodar::Signal<Mode>` |
 
 Rejected: enums with fields, constructors, methods, `implements` or `with`; `Mode.values` (a list); `mode.name`
-(E028). Printing an enum value is E009 (Dart would print `Mode.idle`): print `mode.index`. `switch` is not
-supported yet (E002); use `if`/`else if`.
+(E028). Printing an enum value is E009 (Dart would print `Mode.idle`): print `mode.index`. A `switch` on an enum
+lists its values as cases (`case Mode.idle:`, `case Mode.heating || Mode.cooling:`); Dart requires it to cover
+every value or have a `default` (E007 otherwise), so it never silently skips one.
 
 ### Cost of classes and enums
 

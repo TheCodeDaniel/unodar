@@ -62,11 +62,63 @@ final class StatementRule implements ValidationRule {
         }
       case ExpressionStatement(:final expression):
         _statementLevel(expression, context);
+      case SwitchStatement():
+        _switch(statement, context);
       case FunctionDeclarationStatement(:final functionDeclaration):
         context.report(Diagnostics.localFunction(functionDeclaration.name.lexeme, context.at(statement)));
       default:
         final (what, help) = describeUnsupportedStatement(statement);
         unsupported(what, help);
+    }
+  }
+
+  /// A `switch` statement on an `int` or an enum, with constant cases (combined with `||`) and an optional `default`
+  /// (docs/SUBSET.md "Statements"). Each problem is reported at the case that has it.
+  void _switch(SwitchStatement statement, ValidationContext context) {
+    void unsupported(AstNode at, String what, String help) =>
+        context.report(Diagnostics.unsupportedStatement(what, help, context.at(at)));
+    final type = irTypeOf(statement.expression.staticType);
+    if (type == IrType.float32 || type == IrType.bool_) {
+      unsupported(statement, "a switch on a '${type == IrType.float32 ? 'double' : 'bool'}' value",
+          'Switch on an int or an enum value, or use `if` / `else if`.');
+      return;
+    }
+    if (type == null) return; // An unsupported type, reported by the type rule (E009).
+    final seen = <Object, int>{};
+    for (final member in statement.members) {
+      if (member.labels.isNotEmpty) {
+        unsupported(member.labels.first, 'a labeled case', removeLabel);
+        continue;
+      }
+      switch (member) {
+        case SwitchDefault(): // Last: a `default` before other cases is a Dart error (E007).
+          break;
+        case SwitchPatternCase(:final guardedPattern) when guardedPattern.whenClause != null:
+          unsupported(guardedPattern.whenClause!, 'a `when` guard in a switch case',
+              'Test the condition with `if` inside the case.');
+        case SwitchPatternCase(:final guardedPattern) when !isConstantCasePattern(guardedPattern.pattern):
+          unsupported(
+              guardedPattern.pattern,
+              guardedPattern.pattern is WildcardPattern ? 'a `_` case' : 'this case pattern',
+              guardedPattern.pattern is WildcardPattern
+                  ? 'Write `default:` instead.'
+                  : 'Use constant patterns: literals, `const` values and enum values, combined with `||`, e.g. '
+                      '`case 1 || 2:`.');
+        case SwitchPatternCase():
+          for (final constant in caseConstants(member)) {
+            final value = context.constants.valueOf(constant);
+            if (value == null) continue; // Not a constant: the analyzer (E007) or E010 says why.
+            final line = context.at(constant).line;
+            if (seen[value] case final first?) {
+              unsupported(constant, 'a case that repeats a value of line $first',
+                  'Remove one of them: in Dart the second can never match, and C++ rejects duplicate case labels.');
+            } else {
+              seen[value] = line;
+            }
+          }
+        default:
+          unsupported(member, 'this switch case', genericHelp);
+      }
     }
   }
 

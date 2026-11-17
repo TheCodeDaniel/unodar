@@ -16,7 +16,6 @@ const bitwiseHelp = 'Bitwise and shift operators arrive in a later phase; use ar
 /// What a rejected statement is called, and what to do instead.
 (String, String) describeUnsupportedStatement(Statement statement) => switch (statement) {
       DoStatement() => ('a do-while loop', 'Use a `while` loop instead.'),
-      SwitchStatement() => ('a switch statement', 'Use `if` / `else if` instead.'),
       LabeledStatement() => ('a labeled statement', removeLabel),
       TryStatement() => ('a try statement', 'Exceptions are not supported on the device; remove it.'),
       AssertStatement() => ('an assert statement', 'Asserts are not supported on the device; remove it.'),

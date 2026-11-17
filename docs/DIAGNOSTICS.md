@@ -41,7 +41,9 @@ input.dart:1:1: error[E001]: missing required function 'loop()'. Every unodar sk
 ## E002: Unsupported statement or expression kind
 
 A statement, operator, or expression form that is outside the subset (see `docs/SUBSET.md`): `do`/`while`,
-`switch`, `for`-`in`, labeled statements, `try`, `throw`, `assert`, empty statements; bitwise and shift operators,
+`for`-`in`, labeled statements, `try`, `throw`, `assert`, empty statements; in a `switch`, case patterns other than
+constants combined with `||` (`_`, `> 5`, `var x`), `when` guards, labeled cases, a repeated case value, and a switch
+on a `double` or `bool`; switch expressions; bitwise and shift operators,
 `??`, `is`/`as`, `%` or `~/` on doubles, compound assignments other than `+=`/`-=`; assignments, `++`, or `--`
 used inside a larger expression; property access such as `x.isEven`; a string literal anywhere except as the argument of `Serial.print`/`println`,
 string interpolation, a string containing a NUL character; `null`, collection literals, cascades. The suggestion is
@@ -74,7 +76,8 @@ input.dart:12:9: error[E002]: `++` inside an expression is not supported in this
 ```
 
 (Golden tests: `test/golden/e002_do_while`, `e002_statements`, `e002_operators`, `e002_double_operators`,
-`e002_expressions`, `e002_assignment_in_expression`, `e002_string_outside_serial`, `e002_string_interpolation`.)
+`e002_expressions`, `e002_assignment_in_expression`, `e002_string_outside_serial`, `e002_string_interpolation`,
+`e002_switch_patterns`.)
 
 ## E003: Call to a function that is not part of the supported unodar API
 

@@ -390,6 +390,24 @@ final class IrRawCpp extends IrStatement {
   final String code;
 }
 
+/// `switch (subject) { case …: { … } break; … }`: Dart 3 cases never fall through, so every case ends with a
+/// `break`. Empty Dart cases share the body of the next one, so one [IrSwitchCase] may have several [labels].
+final class IrSwitch extends IrStatement {
+  const IrSwitch(this.subject, this.cases, {required super.line});
+
+  final IrExpression subject;
+  final List<IrSwitchCase> cases;
+}
+
+/// The constant [labels] of one body (`case 1: case 2:`), and `default:` when [isDefault]; [body] may be empty.
+final class IrSwitchCase {
+  const IrSwitchCase(this.labels, this.body, {this.isDefault = false});
+
+  final List<IrExpression> labels;
+  final List<IrStatement> body;
+  final bool isDefault;
+}
+
 /// A nested `{ … }` block.
 final class IrBlock extends IrStatement {
   const IrBlock(this.body, {required super.line});

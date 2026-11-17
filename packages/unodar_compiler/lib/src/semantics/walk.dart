@@ -30,8 +30,9 @@ Iterable<Statement> _statements(Statement statement) sync* {
   }
 }
 
-/// The statements directly nested in [statement] that the subset compiles. Rejected statements (do, switch,
-/// labeled, …) are not entered: they are reported once, as a whole.
+/// The statements directly nested in [statement] that the subset compiles. Rejected statements (do, labeled, …) are
+/// not entered: they are reported once, as a whole. A `switch` is entered: its problems are in its cases' patterns,
+/// and its bodies are ordinary statements.
 List<Statement> childStatements(Statement statement) => switch (statement) {
       Block(:final statements) => statements,
       IfStatement(:final thenStatement, :final elseStatement) => [
@@ -39,8 +40,32 @@ List<Statement> childStatements(Statement statement) => switch (statement) {
           if (elseStatement != null) elseStatement
         ],
       WhileStatement(:final body) || ForStatement(:final body) => [body],
+      SwitchStatement(:final members) => [for (final member in members) ...member.statements],
       _ => const [],
     };
+
+/// The constant expressions of a switch case: `1` of `case 1:`, each operand of `case 1 || 2:`. Empty for `default`
+/// and for patterns the subset does not compile (the switch rule reports those).
+List<Expression> caseConstants(SwitchMember member) => switch (member) {
+      SwitchPatternCase(:final guardedPattern) => _constantsOf(guardedPattern.pattern) ?? const [],
+      _ => const [],
+    };
+
+/// The constant pattern expressions of [pattern] (`1`, `Mode.idle`, `1 || 2`), or null for any other pattern.
+List<Expression>? _constantsOf(DartPattern pattern) => switch (pattern) {
+      ConstantPattern(:final expression) => [expression],
+      LogicalOrPattern(:final leftOperand, :final rightOperand) => switch ((
+          _constantsOf(leftOperand),
+          _constantsOf(rightOperand)
+        )) {
+          (final left?, final right?) => [...left, ...right],
+          _ => null,
+        },
+      _ => null,
+    };
+
+/// Whether [pattern] is made only of constant patterns, combined with `||`.
+bool isConstantCasePattern(DartPattern pattern) => _constantsOf(pattern) != null;
 
 /// The body of every compiled function and method, then of every widget callback (a callback is compiled like a
 /// `void` function without parameters).
@@ -143,6 +168,7 @@ List<Expression> rootsOf(Statement statement) => switch (statement) {
           _ => const [],
         },
       ReturnStatement(:final expression) => [if (expression != null) expression],
+      SwitchStatement(:final expression, :final members) => [expression, ...members.expand(caseConstants)],
       _ => const [],
     };
 
