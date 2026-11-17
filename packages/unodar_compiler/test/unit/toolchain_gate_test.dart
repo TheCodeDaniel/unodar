@@ -6,22 +6,28 @@ import '../arduino_toolchain.dart';
 /// different version of one), with the exact install commands.
 void main() {
   const core = 'ID          Installed Latest Name\narduino:avr 1.8.8     1.8.8  Arduino AVR Boards\n';
-  const servo = 'Name  Installed Available Location Description\nServo 1.3.0     -         user     -\n';
+  // Every library of the manifest, as `arduino-cli lib list` prints them.
+  const installed = 'Name          Installed Available Location Description\n'
+      'LiquidCrystal 1.0.7     -         user     -\n'
+      'Servo         1.3.0     -         user     -\n';
 
-  test('the manifest lists Servo 1.3.0', () {
-    expect(arduinoLibraries, contains((name: 'Servo', version: '1.3.0')));
+  test('the manifest lists Servo 1.3.0 and LiquidCrystal 1.0.7', () {
+    expect(
+        arduinoLibraries, containsAll([(name: 'Servo', version: '1.3.0'), (name: 'LiquidCrystal', version: '1.0.7')]));
   });
 
   test('ready when the core and every manifest library are installed', () {
-    expect(missingFrom(coreList: core, libraryList: servo), isNull);
+    expect(missingFrom(coreList: core, libraryList: installed), isNull);
   });
 
   test('reports a missing core first', () {
-    expect(missingFrom(coreList: 'No platforms installed.\n', libraryList: servo), contains('arduino:avr'));
+    expect(missingFrom(coreList: 'No platforms installed.\n', libraryList: installed), contains('arduino:avr'));
   });
 
   test('reports a missing library or another version, and the install help names the exact version', () {
     expect(missingFrom(coreList: core, libraryList: 'No libraries installed.\n'), 'the Servo library is not installed');
+    expect(missingFrom(coreList: core, libraryList: 'Servo 1.3.0 - user -\n'),
+        'the LiquidCrystal library is not installed');
     expect(missingFrom(coreList: core, libraryList: 'ServoEasing 3.0.0 - user -\n'), isNotNull);
     expect(missingFrom(coreList: core, libraryList: 'Servo 1.2.2 - user -\n'),
         'the Servo library is 1.2.2, but unodar is tested with 1.3.0');

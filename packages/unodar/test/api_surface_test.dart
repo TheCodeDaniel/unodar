@@ -1,5 +1,6 @@
 import 'package:test/test.dart';
 import 'package:unodar/eeprom.dart';
+import 'package:unodar/liquid_crystal.dart';
 import 'package:unodar/software_serial.dart';
 import 'package:unodar/spi.dart';
 import 'package:unodar/unodar.dart';
@@ -44,6 +45,10 @@ void main() {
   // Phase 6 (docs/SUBSET.md "Widgets"): OnStart runs its callback once, in setup().
   test('EEPROM is the one object of EepromClass, and its methods type-check', () {
     expect(_eeprom, isA<int Function()>());
+  });
+
+  test('LiquidCrystal is a class with a 4-bit constructor and print, but no println', () {
+    expect(_liquidCrystal, isA<int Function()>());
   });
 
   test('SoftwareSerial is a class with a constructor and Serial\'s print methods', () {
@@ -184,6 +189,26 @@ Widget _onStart() => OnStart(() {
     });
 
 // Phase 6: the EEPROM wrapper, imported on its own. Never called: it only has to type-check.
+final _lcd = LiquidCrystal(12, 11, 5, 4, 3, 2);
+
+int _liquidCrystal() {
+  _lcd.begin(16, 2);
+  _lcd.clear();
+  _lcd.home();
+  _lcd.setCursor(0, 1);
+  _lcd.print('Temp ');
+  _lcd.print(21.5, digits: 1);
+  _lcd.display();
+  _lcd.noDisplay();
+  _lcd.cursor();
+  _lcd.noCursor();
+  _lcd.blink();
+  _lcd.noBlink();
+  _lcd.scrollDisplayLeft();
+  _lcd.scrollDisplayRight();
+  return _lcd.write(223);
+}
+
 final _gps = SoftwareSerial(10, 11);
 
 int _softwareSerial() {

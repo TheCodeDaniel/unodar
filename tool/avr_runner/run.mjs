@@ -4,6 +4,7 @@
 //   node tool/avr_runner/run.mjs <program.hex> [--cycles N] [--until TEXT] [--adc CHANNEL=VOLTS]...
 //                                [--pin PIN=LEVEL@MS]... [--pin-log FILE] [--pin-log-cycles]
 //                                [--eeprom FILE] [--eeprom-writes FILE] [--spi-reply HEX] [--spi-log FILE]
+//                                [--lcd RS,E,D4,D5,D6,D7 [--lcd-size COLSxROWS] --lcd-log FILE]
 //
 // The CPU runs at 16 MHz with timers 0-2, USART0, the ADC and GPIO ports B, C and D, which is what the Arduino
 // core needs for millis(), micros(), delay(), analogRead(), digitalRead/Write() and Serial. It stops after N cycles
@@ -28,6 +29,12 @@
 // --spi-reply HEX is a scripted SPI slave: each byte the program transfers as master gets the next byte of HEX back
 // (`a5ff01`), then 0xFF. --spi-log FILE records each transfer as `<cycle> <sent> <received> mode=<0-3>
 // order=<msbFirst|lsbFirst> divider=<n>`, hex bytes, the settings read from SPCR/SPSR at that moment.
+//
+// --lcd RS,E,D4,D5,D6,D7 connects an HD44780 character LCD in 4-bit mode to those pins (e.g. D12,D11,D5,D4,D3,D2;
+// R/W tied to GND), a COLSxROWS display (default 16x2). --lcd-log FILE records each instruction it executes as
+// `<cycle> cmd8|cmd|data 0x..`, each timing violation as `<cycle> violation <text>`, and then the final state:
+// `screen <row> |<text>|` per row, the display/cursor/blink flags, the cursor position, the mode and the number of
+// violations (see hd44780.mjs).
 //
 // unodar's runtime fidelity harness (packages/unodar_compiler/test/runtime_fidelity_test.dart) prints one
 // PASS/FAIL line per check and a final DONE line, and runs this with --until DONE.
@@ -54,6 +61,7 @@ import {
   timer2Config,
   usart0Config,
 } from 'avr8js';
+import { Hd44780 } from './hd44780.mjs';
 
 const clockHz = 16_000_000;
 const cyclesPerMs = clockHz / 1000;
@@ -89,6 +97,9 @@ function parseArguments(argv) {
     eepromWrites: null,
     spiReply: null,
     spiLog: null,
+    lcd: null,
+    lcdSize: [16, 2],
+    lcdLog: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -114,16 +125,29 @@ function parseArguments(argv) {
       if (!/^([0-9a-fA-F]{2})*$/.test(hex)) fail('--spi-reply takes bytes in hex, e.g. a5ff01');
       options.spiReply = Buffer.from(hex, 'hex');
     } else if (arg === '--spi-log') options.spiLog = value();
+    else if (arg === '--lcd') {
+      const pins = value().split(',');
+      if (pins.length !== 6 || !pins.every(pinPosition) || new Set(pins).size !== 6) {
+        fail('--lcd takes six different pins RS,E,D4,D5,D6,D7, e.g. D12,D11,D5,D4,D3,D2');
+      }
+      options.lcd = pins;
+    } else if (arg === '--lcd-size') {
+      const match = /^([0-9]+)x([1-4])$/.exec(value());
+      if (!match) fail('--lcd-size takes COLSxROWS, e.g. 16x2');
+      options.lcdSize = [Number(match[1]), Number(match[2])];
+    } else if (arg === '--lcd-log') options.lcdLog = value();
     else if (arg.startsWith('--')) fail(`unknown option ${arg}`);
     else options.hex = arg;
   }
   if (!options.hex) {
     fail(
       'usage: run.mjs <program.hex> [--cycles N] [--until TEXT] [--adc CHANNEL=VOLTS]... [--pin PIN=LEVEL@MS]... ' +
-        '[--pin-log FILE] [--pin-log-cycles] [--eeprom FILE] [--eeprom-writes FILE] [--spi-reply HEX] [--spi-log FILE]',
+        '[--pin-log FILE] [--pin-log-cycles] [--eeprom FILE] [--eeprom-writes FILE] [--spi-reply HEX] [--spi-log FILE] ' +
+        '[--lcd RS,E,D4,D5,D6,D7 [--lcd-size COLSxROWS] --lcd-log FILE]',
     );
   }
   if (!Number.isSafeInteger(options.cycles) || options.cycles <= 0) fail('--cycles must be a positive integer');
+  if ((options.lcd === null) !== (options.lcdLog === null)) fail('--lcd and --lcd-log go together');
   return options;
 }
 
@@ -178,6 +202,10 @@ const stateNames = {
 const lastStates = new Map();
 const pinLog = [];
 
+// The LCD, if connected: pin name -> its role.
+const lcd = options.lcd === null ? null : new Hd44780({ clockHz, cols: options.lcdSize[0], rows: options.lcdSize[1] });
+const lcdRoles = new Map((options.lcd ?? []).map((pin, i) => [pin, ['rs', 'e', 'd4', 'd5', 'd6', 'd7'][i]]));
+
 /// Recomputes the input level of every pin of `port` (driven, pulled up, or LOW) and logs state changes.
 function updatePort(portName) {
   const port = ports[portName];
@@ -191,6 +219,7 @@ function updatePort(portName) {
       const at = options.pinLogCycles ? `${cpu.cycles}` : (cpu.cycles / cyclesPerMs).toFixed(3);
       if (lastStates.has(name)) pinLog.push(`${at} ${name} ${stateNames[state]}`);
       lastStates.set(name, state);
+      if (lcd !== null && lcdRoles.has(name)) lcd.pin(lcdRoles.get(name), state === PinState.High, cpu.cycles);
     }
   }
 }
@@ -270,6 +299,7 @@ const reason = stoppedByUntil ? `found ${JSON.stringify(options.until)}` : 'cycl
 if (options.pinLog !== null) writeFileSync(options.pinLog, pinLog.map((line) => `${line}\n`).join(''));
 if (options.eeprom !== null) writeFileSync(options.eeprom, eepromBackend.memory);
 if (options.eepromWrites !== null) writeFileSync(options.eepromWrites, `${eepromWrites}\n`);
+if (options.lcdLog !== null) writeFileSync(options.lcdLog, lcd.report().map((line) => `${line}\n`).join(''));
 if (options.spiLog !== null) writeFileSync(options.spiLog, spiLog.map((line) => `${line}\n`).join(''));
 process.stderr.write(`avr_runner: stopped after ${cpu.cycles} cycles (${reason})\n`);
 process.exitCode = options.until !== null && !stoppedByUntil ? 1 : 0;

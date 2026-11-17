@@ -209,4 +209,7 @@ const sizeBudgets = <String, SizeBudget>{
   // Serial 175 + core 9 + SoftwareSerial's shared 64 B receive buffer, head, tail and active object 4 + its vtable
   // 18 + gps 31 + radio 35 (link 31, sent 4) + 4 B of .data.
   'software_serial': SizeBudget(baselineFlash: 3996, baselineRam: 340, maxFlash: 5200, maxRam: 351),
+  // liquid_crystal: the LiquidCrystal wrapper (step 17), every wrapped method once. RAM (avr-nm): Serial 175 + core 9
+  // + lcd 24 + its vtable 12 + 4 B of .data.
+  'liquid_crystal': SizeBudget(baselineFlash: 3162, baselineRam: 224, maxFlash: 4150, maxRam: 235),
 };

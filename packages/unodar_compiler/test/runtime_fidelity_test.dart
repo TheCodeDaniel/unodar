@@ -207,6 +207,54 @@ void main() {
         expect(result.serial, 'FF FF FF \r\nFF\r\nDONE');
       });
 
+      /// The HD44780 model's report for [program] (`--lcd-log`), with LiquidCrystal's example wiring.
+      Future<List<String>> lcdReport(String program) async {
+        final dir = Directory.systemTemp.createTempSync('unodar_lcd_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final log = p.join(dir.path, 'lcd.log');
+        await simulate(program, extra: ['--lcd', 'D12,D11,D5,D4,D3,D2', '--lcd-log', log]);
+        return File(log).readAsLinesSync();
+      }
+
+      test('HD44780: LiquidCrystal\'s instructions, screen text, cursor and display shift, no violations', () async {
+        gate.check();
+        final report = await lcdReport(await hex('lcd'));
+        final instructions = [
+          for (final l in report)
+            if (RegExp(r'^\d+ (cmd8|cmd|data) ').hasMatch(l)) l.substring(l.indexOf(' ') + 1)
+        ];
+        // The constructor's initialization (16x1), then begin(16, 2)'s, which resynchronizes the chip that is
+        // already in 4-bit mode: 0x3, 0x3 read as one byte 0x33 (8-bit), then 0x30 and 0x20 in 8-bit mode.
+        expect(instructions.take(15), [
+          'cmd8 0x30', 'cmd8 0x30', 'cmd8 0x30', 'cmd8 0x20', 'cmd 0x20', 'cmd 0x0c', 'cmd 0x01', 'cmd 0x06', //
+          'cmd 0x33', 'cmd8 0x30', 'cmd8 0x20', 'cmd 0x28', 'cmd 0x0c', 'cmd 0x01', 'cmd 0x06',
+        ]);
+        expect(report.where((l) => !RegExp(r'^\d+ ').hasMatch(l)), [
+          'screen 0 | Hello, world!  |',
+          'screen 1 | > 42           |',
+          'display on cursor on blink on',
+          'cursor row 1 col 2',
+          'mode 4-bit lines 2 shift 1',
+          'first instruction at 1.027 ms',
+          'violations 0',
+        ]);
+      });
+
+      test('negative control: each broken timing is reported', () async {
+        gate.check();
+        final report = await lcdReport(await hex('lcd_violations'));
+        final violations = [
+          for (final l in report)
+            if (l.contains(' violation ')) l.substring(l.indexOf('violation ') + 'violation '.length)
+        ];
+        expect(violations, [
+          matches(RegExp(r'^E rose 1\d{3}\.\d us too early, while clear display was busy$')),
+          'E pulse of 125 ns (minimum 450 ns)',
+          'D4 changed while E was high',
+        ]);
+        expect(report, contains('violations 3'));
+      });
+
       test('cycle-stamped pin log: D13 goes high and low 2 cycles apart', () async {
         gate.check();
         final result = await simulate(await hex('pins_cycles'), extra: ['--pin-log-cycles']);
@@ -1233,6 +1281,69 @@ void main() {
         printOnFailure('largest TX edge error at 115200: ${gps.maxEdgeError} bit');
         expect(String.fromCharCodes(gps.bytes), 'gps true\r\nA');
         expect(gps.maxEdgeError, lessThan(0.25));
+      });
+    });
+
+    group('LiquidCrystal drives an HD44780 (golden liquid_crystal, compiled by unodar)', () {
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'liquid_crystal', 'input.dart'));
+        if (result is! CompileSuccess) fail('liquid_crystal did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      /// The HD44780 model's report: instruction lines (`<cycle> cmd|cmd8|data 0x..`) and the final state.
+      Future<List<String>> run(String cpp) async {
+        final build = await compileSketch('liquid_crystal', cpp);
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        final dir = Directory.systemTemp.createTempSync('unodar_lcd_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final log = p.join(dir.path, 'lcd.log');
+        await simulate(build.hexPath, extra: ['--lcd', 'D12,D11,D5,D4,D3,D2', '--lcd-log', log]);
+        return File(log).readAsLinesSync();
+      }
+
+      List<String> state(List<String> report) => [
+            for (final l in report)
+              if (!RegExp(r'^\d+ ').hasMatch(l) && !l.startsWith('first instruction')) l
+          ];
+
+      test('the exact screen text, cursor and flags, and no timing violation', () async {
+        gate.check();
+        final report = await run(await generated());
+        expect(state(report), [
+          'screen 0 |Temp 21.5{df}C     |',
+          'screen 1 |Heater true     |',
+          'display on cursor on blink off',
+          'cursor row 1 col 15',
+          'mode 4-bit lines 2 shift 0',
+          'violations 0',
+        ]);
+        // The waits, measured: the gap after clear() and home(), and between two characters.
+        final instructions = [
+          for (final l in report)
+            if (RegExp(r'^\d+ (cmd|data) ').hasMatch(l)) (int.parse(l.split(' ')[0]), l.split(' ').skip(1).join(' '))
+        ];
+        double gapUs(int i) => (instructions[i + 1].$1 - instructions[i].$1) / 16;
+        final clear = instructions.lastIndexWhere((i) => i.$2 == 'cmd 0x01');
+        final home = instructions.lastIndexWhere((i) => i.$2 == 'cmd 0x02');
+        final characters = [
+          for (var i = 0; i + 1 < instructions.length; i++)
+            if (instructions[i].$2.startsWith('data') && instructions[i + 1].$2.startsWith('data')) gapUs(i)
+        ];
+        printOnFailure('clear ${gapUs(clear)} us, home ${gapUs(home)} us, characters $characters us');
+        expect(gapUs(clear), inInclusiveRange(1520, 2300));
+        expect(gapUs(home), inInclusiveRange(1520, 2300));
+        expect(characters, everyElement(inInclusiveRange(280, 400)), reason: 'two E pulses, each with a 100 us wait');
+      });
+
+      test('negative control: setCursor with column and row swapped writes the second line into the first', () async {
+        gate.check();
+        final cpp = await generated();
+        const call = 'lcd.setCursor(0, 1);';
+        expect(cpp, contains(call), reason: 'the generated code changed; update the negative control');
+        final report = await run(cpp.replaceAll(call, 'lcd.setCursor(1, 0);'));
+        expect(state(report).take(2), ['screen 0 |THeater true    |', 'screen 1 |                |']);
       });
     });
 

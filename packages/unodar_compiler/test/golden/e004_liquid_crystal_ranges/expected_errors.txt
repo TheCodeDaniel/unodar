@@ -1,0 +1,8 @@
+input.dart:4:44: error[E004]: pin 22 is out of range for LiquidCrystal: the Uno has pins 0 to 19 (D0–D13, and A0–A5 as 14–19).
+  = help: Pass a pin from 0 to 19, e.g. `13` or `A0`.
+input.dart:6:5: error[E022]: pin 12 is already used by 'lcd' (line 4).
+  = help: Give each widget its own pin.
+input.dart:8:21: error[E004]: argument 40 is out of range for parameter 'col' of lcd.setCursor, which accepts 0 to 39 (`@CppRange`).
+  = help: Pass a value from 0 to 39; the library does not handle values outside it.
+input.dart:9:24: error[E004]: argument 4 is out of range for parameter 'row' of lcd.setCursor, which accepts 0 to 3 (`@CppRange`).
+  = help: Pass a value from 0 to 3; the library does not handle values outside it.

@@ -401,10 +401,10 @@ fixed and visible at build time; leave room for the stack. The size budgets reco
 
 Each library wrapper is imported on its own, next to `package:unodar/unodar.dart`:
 `import 'package:unodar/eeprom.dart';`. Its names (classes, objects) are reserved (E014) only in a program that
-imports it. Any other import, including `package:unodar/src/…`, is E005. Available: **EEPROM**, **SPI**
-and **SoftwareSerial** (below). Coming in Phase 6: LiquidCrystal 1.0.7 and, if time allows, the DHT sensor library
-1.4.7. Each wrapper's section will state its RAM and flash cost, the longest time each
-method waits, and a **Verified:** line saying what is checked in the avr8js simulator and what only on a real board.
+imports it. Any other import, including `package:unodar/src/…`, is E005. Available: **EEPROM**, **SPI**,
+**SoftwareSerial** and **LiquidCrystal** (below); the DHT sensor library 1.4.7 may follow. Each wrapper's section
+states its RAM and flash cost, the longest time each method waits, and a **Verified:** line saying what is checked
+in the avr8js simulator and what only on a real board.
 
 - A wrapper whose C++ API cannot be bound directly comes with a **shim header**, a fixed hand-written file
   (`runtime/unodar_spi.h`) that unodar writes next to the `.ino` and includes as `#include "unodar_spi.h"`. Its
@@ -541,6 +541,64 @@ void loop() {
   that is a member of a user class sends on its own pins. The binding conforms to `SoftwareSerial.h`, which derives
   from `Print` (conformance probe). **Only on a real board:** baud tolerance against real devices' clocks, receiving
   above 57600, and interaction with other interrupt users (Servo, `Serial` at high speeds).
+
+### LiquidCrystal, from the Arduino library index
+
+Install it once with `arduino-cli lib install --no-deps LiquidCrystal@1.0.7` (pinned in `tool/arduino_libraries.txt`,
+like Servo).
+
+```dart
+import 'package:unodar/liquid_crystal.dart';
+import 'package:unodar/unodar.dart';
+
+final lcd = LiquidCrystal(12, 11, 5, 4, 3, 2);   // RS, E, D4, D5, D6, D7; R/W to GND
+
+void setup() {
+  lcd.begin(16, 2);
+  lcd.print('Temp ');
+  lcd.print(21.5, digits: 1);
+  lcd.write(223);                                // the degree sign on most displays
+  lcd.setCursor(0, 1);                           // column 0, row 1
+  lcd.print('Heater ');
+  lcd.print(true);                               // "true", as in Dart
+}
+```
+
+| Dart (`LiquidCrystal`) | C++ (`LiquidCrystal.h`) | Wait (avr8js) |
+|---|---|---|
+| `LiquidCrystal(rs, enable, d4, d5, d6, d7)` | the 4-bit constructor; six `@CppPin`s | initializes the display as one row: **about 14 ms before `setup()` runs** |
+| `begin(cols, rows)` | `begin(uint8_t, uint8_t)`; 1–40 columns, 1–4 rows (E004 outside) | about 13 ms |
+| `clear()`, `home()` | | 2.3 ms each |
+| `setCursor(col, row)` | `setCursor(uint8_t, uint8_t)`: **column first**, both from 0; col 0–39, row 0–3 | 0.3 ms |
+| `print(value)` | `Print`'s, with `Serial`'s dispatch (`@CppPrint`) | 0.3 ms per character |
+| `write(code)` → `int` | `size_t write(uint8_t)`: one character by its code | 0.3 ms |
+| `display()`/`noDisplay()`, `cursor()`/`noCursor()`, `blink()`/`noBlink()` | | 0.3 ms |
+| `scrollDisplayLeft()`, `scrollDisplayRight()` | | 0.3 ms |
+
+- **No `println`.** The LCD has no line breaks: Arduino's `lcd.println()` shows `\r\n` as two odd characters. Move
+  to the next row with `setCursor(0, 1)` (calling `lcd.println` is a Dart error, E007).
+- Waits are busy waits, so they delay everything else. A full 16×2 screen takes about 10 ms to write, plus 2.3 ms
+  for a `clear()`: rewrite only what changed, and not on every `loop()` pass. In a widget program call `begin()`
+  in `OnStart`.
+- A non-constant row above the display's last row is clamped to it; a column outside the display writes into
+  memory you do not see (it may appear after scrolling).
+- Wiring: only the **parallel** 4-bit wiring (no I²C backpack, see "First-party libraries"). R/W must be tied to
+  GND, and the 8-bit and R/W constructors are not wrapped. The six pins are checked like widget pins (E004, E022).
+  `createChar` (needs an array), `leftToRight`/`rightToLeft`/`autoscroll` and `command` are not wrapped.
+- Cost: 24 B of RAM per display plus a 12-byte table of virtual functions; the `liquid_crystal` golden (every
+  method and `Serial`) uses 3162 B of flash.
+- **Verified:** in avr8js, against the runner's HD44780 model on the six pins: every instruction (the constructor's
+  initialization, then `begin()`'s, which resynchronizes the controller from 4-bit mode as a real one does), the
+  exact screen text, cursor position, display/cursor/blink flags and display shift, and the timings: enable pulse at
+  least 450 ns, data stable while E is high, and no instruction while the previous one is executing (37 µs, 1.52 ms
+  for clear and home, and the 4.1 ms/100 µs of the initialization). The model itself is tested with deliberate
+  violations. The binding conforms to `LiquidCrystal.h`, which derives from `Print` (conformance probe). **Only on a
+  real board** (or Wokwi's `lcd1602`, visually): contrast, the slower timings of clone controllers, the look of the
+  characters above 127 (the degree sign is 223 on the usual Japanese ROM), and power-up. The datasheet asks for 40 ms
+  after power-on before the first instruction; the library means to wait 50 ms, but `delayMicroseconds(50000)`
+  overflows its 16-bit count and waits about 0.85 ms, so the first instruction comes **1 ms** after reset (measured).
+  Most modules cope through the initialization by instruction that follows; one that does not shows nothing until
+  `begin()` runs it again.
 
 ## Escape hatch: `cpp()` and `@CppInclude`
 
