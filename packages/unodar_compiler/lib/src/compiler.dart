@@ -9,6 +9,7 @@ import 'emitter/emitter.dart';
 import 'frontend/frontend.dart';
 import 'lowering/lowering.dart';
 import 'runtime/runtime_files.dart';
+import 'validator/declaration_rules.dart';
 import 'validator/rules.dart';
 import 'validator/validator.dart';
 
@@ -68,6 +69,11 @@ final class Compiler {
       case FrontendInputError(:final message):
         return CompileInputError(message);
     }
+
+    // A rejected import stops compilation first, alone: what it would provide is undefined (a Flutter import does
+    // not even resolve), so every analyzer error and rule after it would only repeat the same problem.
+    final imports = DirectiveRule.importDiagnostics(source.unit, (node) => source.locationOf(node.offset));
+    if (imports.isNotEmpty) return CompileFailure(sortDiagnostics(imports));
 
     // Analyzer errors normally stop compilation (E007): validating a broken AST yields misleading diagnostics.
     // The one exception is a call to an undefined function written as a plain statement, e.g.

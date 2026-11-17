@@ -183,7 +183,10 @@ Top-level functions and variables are supported, and so are your own classes and
 E028), binding classes (annotated `@CppClass`, checked by E017) and `external` objects of a binding type.
 Extensions, extension types, typedefs, and top-level getters/setters are not, nor are `late` variables or `external` variables of any
 other type. Also used for directives: any import other than an unprefixed `package:unodar/unodar.dart` or one of unodar's
-library wrappers (`package:unodar/eeprom.dart`), including `package:unodar/src/…`, and `export`/`part`.
+library wrappers (`package:unodar/eeprom.dart`), including `package:unodar/src/…`, Flutter, `dart:` libraries and
+packages that do not resolve, and `export`/`part`. A rejected import is reported **alone**, before anything else is
+checked: what it would have provided does not exist, so every use of it would only repeat the problem (an import of
+`package:flutter/material.dart` gives one diagnostic, not one per widget).
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -206,7 +209,8 @@ input.dart:7:1: error[E005]: a late variable ('ledPin') is not supported in this
   = help: Remove `late` and give the variable a constant initializer.
 ```
 
-(Golden tests: `test/golden/e005_extension`, `e005_import`, `e005_other_declarations`, `e005_unodar_src_import`.)
+(Golden tests: `test/golden/e005_extension`, `e005_import`, `e005_other_declarations`, `e005_unodar_src_import`,
+`e005_unresolved_import`, `newcomer_flutter_import`, `newcomer_dart_async`.)
 
 ## E006: Invalid `setup`/`loop` signature
 
@@ -233,7 +237,8 @@ input.dart:7:1: error[E006]: invalid signature for 'loop': it has no return type
 
 ## E007: Dart analysis error in the source file
 
-Any analyzer *error* (warnings and hints are ignored): type errors, syntax errors, unresolved imports. When any E007 is present, compilation stops before the subset checks, because a broken AST produces misleading follow-on diagnostics.
+Any analyzer *error* (warnings and hints are ignored): type errors, syntax errors, an unresolved `package:unodar/…`
+import (any other unsupported import is E005). When any E007 is present, compilation stops before the subset checks, because a broken AST produces misleading follow-on diagnostics.
 
 ```dart
 import 'package:unodar/unodar.dart';

@@ -94,6 +94,45 @@ abstract final class Diagnostics {
             suggestion ?? 'Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.',
       );
 
+  /// An import other than `package:unodar/<library>.dart` (E005), worded by what the user was reaching for.
+  static Diagnostic unsupportedImport(String uri, SourceLocation at) {
+    final (reason, help) = switch (uri) {
+      _ when uri.startsWith('package:flutter/') || uri.startsWith('package:flutter_') => (
+          'unodar programs run on the board without Flutter',
+          "Remove it. unodar's widgets (Led, Button, Every, …) and runDevice() come from "
+              "`import 'package:unodar/unodar.dart';`."
+        ),
+      'dart:async' => (
+          'the board has no event loop, so there is no Timer, Future or Stream',
+          'Remove it. Run code repeatedly with a widget, e.g. `Every(Duration(seconds: 1), () { … })`, or with '
+              'millis() in loop().'
+        ),
+      _ when uri.startsWith('dart:') => (
+          'the Dart core libraries do not exist on the board',
+          'Remove it. What a program can use is the unodar API (`package:unodar/unodar.dart`) and the operators of '
+              'the subset.'
+        ),
+      _ => (
+          "only `package:unodar/unodar.dart` and unodar's library wrappers (`package:unodar/eeprom.dart`, …) can be "
+              'imported',
+          "Remove it. For an Arduino library unodar does not wrap, write a binding (`@CppClass`) or use `cpp('…')`."
+        ),
+    };
+    return Diagnostic(
+        code: DiagnosticCode.unsupportedDeclaration,
+        location: at,
+        message: "an import of '$uri' is not supported: $reason.",
+        suggestion: help);
+  }
+
+  /// A directive other than an import of unodar (a prefix, `deferred`, `export`, `part`), E005.
+  static Diagnostic unsupportedDirective(String what, String help, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedDeclaration,
+        location: at,
+        message: '$what is not supported in this version.',
+        suggestion: help,
+      );
+
   static Diagnostic invalidEntrySignature(String name, String problem, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.invalidEntrySignature,
         location: at,

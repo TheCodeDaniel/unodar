@@ -1,0 +1,2 @@
+input.dart:1:1: error[E005]: an import of 'package:flutter/material.dart' is not supported: unodar programs run on the board without Flutter.
+  = help: Remove it. unodar's widgets (Led, Button, Every, …) and runDevice() come from `import 'package:unodar/unodar.dart';`.

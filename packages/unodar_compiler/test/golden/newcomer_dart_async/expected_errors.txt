@@ -1,0 +1,2 @@
+input.dart:1:1: error[E005]: an import of 'dart:async' is not supported: the board has no event loop, so there is no Timer, Future or Stream.
+  = help: Remove it. Run code repeatedly with a widget, e.g. `Every(Duration(seconds: 1), () { … })`, or with millis() in loop().
