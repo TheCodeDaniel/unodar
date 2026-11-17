@@ -166,6 +166,11 @@ const sizeBudgets = <String, SizeBudget>{
   // core 9 + count 5 + isOdd 2 (watched by the Led) + Led 2 + two Buttons 14 + "\r\n\0" 3.
   'counter': SizeBudget(baselineFlash: 2894, baselineRam: 210, maxFlash: 3800, maxRam: 221),
 
+  // Phase 7: the main.dart that `unodar new` writes (a Led on LED_BUILTIN toggled by an Every), first measured
+  // 2026-11-17 with arduino-cli 1.5.1 and arduino:avr 1.8.8 by `unodar build`. RAM: core 9 + Led 2 + Every 8 = 19 B.
+  // Limits by the usual rule: flash max = baseline + 30 %, rounded up to 50 B; RAM max = baseline + 11 B.
+  'new_project': SizeBudget(baselineFlash: 940, baselineRam: 19, maxFlash: 1250, maxRam: 30),
+
   // Phase 6 first measurements (arduino-cli 1.5.1, arduino:avr 1.8.8, -fwrapv), same rule as before: flash max =
   // baseline + 30 % rounded up to 50 B, RAM max = baseline + 11 B.
   // class_fields: two objects of one class (step 3). RAM (avr-nm): Serial 175 (157 + vtable 18) + core 9 + Button 7 +

@@ -7,9 +7,11 @@ import '../compiler.dart';
 import '../toolchain/arduino_build.dart';
 import '../toolchain/doctor.dart';
 import '../toolchain/ports.dart';
+import '../toolchain/project.dart';
 import '../toolchain/setup.dart';
 import '../toolchain/toolchain.dart';
 import '../version.dart';
+import 'new_project.dart';
 
 /// Process exit codes (PRD §9.6; 3 and 4 from Phase 7, see docs/DIAGNOSTICS.md "Exit codes").
 abstract final class ExitCodes {
@@ -93,6 +95,18 @@ final _commands = [
       ..addOption('output',
           abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')),
     _flash,
+  ),
+  _Command(
+    'new',
+    'Create a project folder with a main.dart that blinks the LED on the board',
+    'unodar new <name> [--no-pub]',
+    () => _withHelp(ArgParser()
+      ..addFlag('pub', defaultsTo: true, help: 'Run `dart pub get` in the new project.')
+      ..addOption('unodar-path',
+          valueHelp: 'dir',
+          hide: true,
+          help: 'Depend on package:unodar in this folder (a checkout\'s packages/unodar) instead of the release tag.')),
+    _new,
   ),
   _Command(
     'setup',
@@ -231,6 +245,10 @@ Future<BuiltProgram> buildProgram(ArgResults args, CliContext context,
   if (args.rest.length > 1) throw _UsageException(command, 'expected at most one <file.dart>.');
   final input = args.rest.isEmpty ? 'main.dart' : args.rest.single;
   final err = context.err;
+  if (unodarVersionProblem(p.dirname(context.resolve(input))) case final problem?) {
+    err.writeln('error: $problem');
+    return (exitCode: ExitCodes.toolchain, sketchFolder: null, buildPath: null, cli: null);
+  }
   final CompileSuccess result;
   switch (await Compiler().compile(context.resolve(input))) {
     case final CompileSuccess success:
@@ -342,13 +360,50 @@ String uploadProblem(String output, String port) {
   return 'the upload to $port failed (output above).';
 }
 
+Future<int> _new(ArgResults args, CliContext context) async {
+  if (args.rest.length != 1) throw const _UsageException('new', 'expected the name of the new project.');
+  final directory = context.resolve(args.rest.single);
+  final name = p.basename(directory);
+  final err = context.err;
+  if (!isPackageName(name)) {
+    err.writeln("error: '$name' cannot be a project name: use lower-case letters, digits and underscores, starting "
+        'with a letter (a Dart package name), e.g. `unodar new blink_test`.');
+    return ExitCodes.tooling;
+  }
+  final existing = Directory(directory);
+  if (existing.existsSync() && existing.listSync().isNotEmpty) {
+    err.writeln('error: ${args.rest.single} already exists and is not empty; choose another name.');
+    return ExitCodes.tooling;
+  }
+  final unodarPath = args.option('unodar-path');
+  final files = writeNewProject(directory, unodarPath: unodarPath == null ? null : context.resolve(unodarPath));
+  context.out.writeln('Created ${args.rest.single}/ with ${files.join(', ')}.');
+  if (args.flag('pub')) {
+    context.out.writeln('Running `dart pub get`...');
+    final pub = await Process.run(Platform.resolvedExecutable, ['pub', 'get'], workingDirectory: directory);
+    if (pub.exitCode != 0) {
+      err
+        ..writeln('${pub.stderr}${pub.stdout}'.trim())
+        ..writeln('error: `dart pub get` failed in ${args.rest.single}; fix the problem above and run it there again.');
+      return ExitCodes.tooling;
+    }
+  }
+  context.out
+    ..writeln()
+    ..writeln('Next:')
+    ..writeln('  cd ${args.rest.single}')
+    ..writeln('  unodar flash      # with the Uno plugged in; `unodar build` only builds');
+  return ExitCodes.success;
+}
+
 Future<int> _doctor(ArgResults args, CliContext context) async {
   final dev = args.flag('dev');
   final checks = runDoctor(
       home: context.home,
       environment: context.environment,
       dev: dev,
-      checkout: dev ? findCheckout(context.workingDirectory) : null);
+      checkout: dev ? findCheckout(context.workingDirectory) : null,
+      project: context.workingDirectory);
   context.out.writeln(renderDoctor(checks));
   return checks.any((c) => c.status == CheckStatus.problem) ? ExitCodes.toolchain : ExitCodes.success;
 }

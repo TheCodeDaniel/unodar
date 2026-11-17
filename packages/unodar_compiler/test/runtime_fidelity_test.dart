@@ -1483,6 +1483,41 @@ void main() {
       });
     });
 
+    group('the program `unodar new` writes blinks the board LED (compiled by unodar)', () {
+      // The first program a newcomer runs: it must do what its comment says, on pin 13, with no wiring.
+      final source = fromPackage('test', 'golden', 'new_project', 'input.dart');
+      final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+
+      Future<List<String>> run(String Function(String cpp) edit) async {
+        final result = await Compiler().compile(source);
+        if (result is! CompileSuccess) fail('the template did not compile with unodar: $result');
+        final build = await compileSketch('new_project', edit(result.cpp), files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        return (await simulate(build.hexPath, until: null, cycles: 2100 * 16000)).pinLog;
+      }
+
+      List<double> times(List<String> log, String state) => [
+            for (final line in log)
+              if (line.endsWith(' D13 $state')) double.parse(line.split(' ').first)
+          ];
+
+      test('pin 13 is on for 500 ms and off for 500 ms', () async {
+        gate.check();
+        final log = await run((cpp) => cpp);
+        printOnFailure(log.join('\n'));
+        Matcher near(int ms) => allOf(greaterThanOrEqualTo(ms - 2), lessThan(ms + 2));
+        expect(times(log, 'high'), [near(500), near(1500)]);
+        expect(times(log, 'low'), [lessThan(1), near(1000), near(2000)]);
+      });
+
+      test('negative control: on() instead of toggle() lights it once and never blinks', () async {
+        gate.check();
+        final log = await run((cpp) => cpp.replaceFirst('led.toggle();', 'led.on();'));
+        expect(times(log, 'high'), hasLength(1), reason: log.join('\n'));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

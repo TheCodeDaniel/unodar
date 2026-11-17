@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../version.dart';
 import 'pins.dart';
+import 'project.dart';
 import 'toolchain.dart';
 
 /// How a doctor line counts.
@@ -43,6 +44,7 @@ List<DoctorCheck> runDoctor({
   bool dev = false,
   String? checkout,
   ToolchainPins? pins,
+  String? project,
 }) {
   pins ??= ToolchainPins.embedded;
   final checks = <DoctorCheck>[];
@@ -104,6 +106,15 @@ List<DoctorCheck> runDoctor({
         fix: 'unodar setup'));
   }
 
+  if (project != null) {
+    if (resolvedUnodar(project) case (:final version, project: final root)) {
+      final problem = unodarVersionProblem(project);
+      checks.add(problem == null
+          ? DoctorCheck(CheckStatus.ok, 'project $root uses unodar $version (matches this compiler)')
+          : DoctorCheck(CheckStatus.problem, 'project $root uses unodar $version, but this compiler is $unodarVersion',
+              fix: 'change the unodar `ref:` in pubspec.yaml to v$unodarVersion and run `dart pub get`'));
+    }
+  }
   if (Platform.isLinux) checks.add(_serialPermission(environment));
   if (managed != null && onPath != null) {
     checks.add(DoctorCheck(CheckStatus.info, 'arduino-cli on PATH (${onPath.executable}): not used'));
