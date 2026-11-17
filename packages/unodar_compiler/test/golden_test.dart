@@ -27,9 +27,9 @@ void main() {
 
   test('golden directory is not empty', () => expect(cases, isNotEmpty));
 
-  // The pulse and counter goldens are examples/pulse and examples/counter, so the examples' output is reviewed,
-  // compiled, and size-budgeted too.
-  for (final example in ['pulse', 'counter']) {
+  // The pulse, counter and thermostat goldens are verbatim copies of their examples, so the examples' output is
+  // reviewed, compiled, and size-budgeted too.
+  for (final example in ['pulse', 'counter', 'thermostat']) {
     test('the $example golden is a verbatim copy of examples/$example/main.dart', () {
       expect(File(fromPackage('test', 'golden', example, 'input.dart')).readAsStringSync(),
           File(fromPackage('..', '..', 'examples', example, 'main.dart')).readAsStringSync());

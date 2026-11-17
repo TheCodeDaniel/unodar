@@ -38,7 +38,7 @@ build_properties=(
 
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
-for example in blink pulse dial button_led counter; do
+for example in blink pulse dial button_led counter thermostat; do
   ino="$(dart run packages/unodar_compiler/bin/unodar.dart build "examples/$example/main.dart" -o "$out/$example")"
   echo "generated: $ino"
   arduino-cli compile --fqbn arduino:avr:uno "${build_properties[@]}" "$(dirname "$ino")"

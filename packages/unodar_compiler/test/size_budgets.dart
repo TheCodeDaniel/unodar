@@ -221,4 +221,9 @@ const sizeBudgets = <String, SizeBudget>{
   // sensor 19 (data 5, pin, type, bit, port, last read time 4, max cycles 4, last result, pull time) + 16 B of .data
   // (Print's "nan", "inf" and "ovf" for printing floats, "\r\n", 1 B of padding).
   'dht': SizeBudget(baselineFlash: 5454, baselineRam: 219, maxFlash: 7100, maxRam: 230),
+  // thermostat: examples/thermostat, the Phase 6 goal program (step 22); first measurement. RAM (avr-nm): core 9 +
+  // setpoint 5 + thermostat 5 (hysteresis 4, mode 1) + heater 2 + two Buttons 14 + Every 8 + lcd 24 and its vtable
+  // 12 + sensor 19 + Print's "nan"/"inf"/"ovf" 12 = 110 B, plus Serial 175 (object 157, vtable 18), which the program
+  // never uses: DHT's dependency Adafruit Unified Sensor links it (docs/SUBSET.md "DHT").
+  'thermostat': SizeBudget(baselineFlash: 6260, baselineRam: 285, maxFlash: 8150, maxRam: 296),
 };

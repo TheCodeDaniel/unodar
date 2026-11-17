@@ -1581,6 +1581,126 @@ void main() {
       });
     });
 
+    group('goal program: the thermostat (examples/thermostat, compiled by unodar)', () {
+      // examples/thermostat, the Phase 6 goal program: a DHT22 on D8 read every 2.5 s, the heater on D13, buttons up
+      // on D6 and down on D7, an HD44780 on D12, D11, D5, D4, D3, D2, the setpoint in EEPROM byte 0.
+      final source = fromPackage('..', '..', 'examples', 'thermostat', 'main.dart');
+      // Bouncing presses: up, up, down (21 -> 22 -> 23 -> 22), each stable 4 or 5 ms after it starts.
+      const presses = [
+        '--pin', 'D6=low@500', '--pin', 'D6=open@502', '--pin', 'D6=low@504', '--pin', 'D6=open@650', //
+        '--pin', 'D6=low@1000', '--pin', 'D6=open@1003', '--pin', 'D6=low@1005', '--pin', 'D6=open@1150', //
+        '--pin', 'D7=low@1500', '--pin', 'D7=open@1502', '--pin', 'D7=low@1504', '--pin', 'D7=open@1650',
+      ];
+      // The temperature sweep, against the setpoint 22 and hysteresis 1 (heat below 21, stop above 23). Readings
+      // are taken at 2.5, 5, 7.5, 10 and 12.5 s: 18.0 heats; 22.5 keeps heating; 23.5 stops; 21.5 stays idle;
+      // 20.5 heats again.
+      const sweep = [
+        '--dht-reading', '18.0,40.0@0', '--dht-reading', '22.5,40.0@4000', '--dht-reading', '23.5,40.0@6500', //
+        '--dht-reading', '21.5,40.0@9000', '--dht-reading', '20.5,40.0@11500',
+      ];
+
+      Future<String> generated() async {
+        final result = await Compiler().compile(source);
+        if (result is! CompileSuccess) fail('examples/thermostat did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      /// Runs [cpp] for [ms] simulated milliseconds with [eeprom] as its EEPROM file, and returns the LCD's final
+      /// state, the DHT22 model's report, the EEPROM writes of the run and the D13 (heater) changes in ms.
+      Future<({List<String> lcd, List<String> dht, int writes, List<String> heater})> run(
+          String cpp, String eeprom, int ms, List<String> options) async {
+        final header = File(fromPackage('..', '..', 'runtime', 'unodar_widgets.h')).readAsStringSync();
+        final build = await compileSketch('thermostat', cpp, files: {'unodar_widgets.h': header});
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        final dir = Directory.systemTemp.createTempSync('unodar_thermostat_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final lcd = p.join(dir.path, 'lcd.log');
+        final dht = p.join(dir.path, 'dht.log');
+        final writes = p.join(dir.path, 'writes.txt');
+        final result = await simulate(build.hexPath, until: null, cycles: ms * 16000, extra: [
+          '--lcd', 'D12,D11,D5,D4,D3,D2', '--lcd-log', lcd, '--dht', 'D8', '--dht-log', dht, //
+          '--eeprom', eeprom, '--eeprom-writes', writes, ...options,
+        ]);
+        return (
+          lcd: [
+            for (final l in File(lcd).readAsLinesSync())
+              if (!RegExp(r'^\d+ ').hasMatch(l) && !l.startsWith('first instruction')) l
+          ],
+          dht: File(dht).readAsLinesSync(),
+          writes: int.parse(File(writes).readAsStringSync().trim()),
+          heater: [
+            for (final l in result.pinLog)
+              if (l.contains(' D13 ')) l
+          ],
+        );
+      }
+
+      /// The heater's changes after boot (the first line is pinMode's LOW in setup()), as (state, ms) pairs.
+      List<(String, double)> switches(List<String> heater) =>
+          [for (final l in heater.skip(1)) (l.split(' ')[2], double.parse(l.split(' ')[0]))];
+
+      test('presses move the setpoint, the heater follows the hysteresis rule, the LCD shows it, EEPROM keeps it',
+          () async {
+        gate.check();
+        final dir = Directory.systemTemp.createTempSync('unodar_thermostat_ee_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final eeprom = p.join(dir.path, 'eeprom.bin');
+        final cpp = await generated();
+        final first = await run(cpp, eeprom, 13500, [...presses, ...sweep]);
+        expect(first.lcd, [
+          'screen 0 |Temp 20.5       |',
+          'screen 1 |Set 22  heating |',
+          'display on cursor off blink off',
+          'cursor row 1 col 15',
+          'mode 4-bit lines 2 shift 0',
+          'violations 0',
+        ]);
+        expect(first.dht.where((l) => l.contains(' start ')).length, 5);
+        expect(first.dht.last, 'violations 0');
+        // A tick 2.5 s apart in millis() is 2.5 s plus the 3 ms each exchange costs millis() in simulated time.
+        Matcher near(int ms) => inInclusiveRange(ms, ms + 50);
+        final heater = switches(first.heater);
+        expect(heater.map((s) => s.$1), ['high', 'low', 'high']);
+        expect(heater.map((s) => s.$2), [near(2500), near(7500), near(12500)]);
+        // The initial delivery writes 21 onto the erased byte, then each press writes once: 22, 23, 22.
+        expect(first.writes, 4);
+        expect(File(eeprom).readAsBytesSync().first, 22);
+
+        // A reset: the same EEPROM, no presses, 21.5 degrees. The saved setpoint is shown at boot, 21.5 is not below
+        // 21, and updating byte 0 with the value it holds writes nothing.
+        final second = await run(cpp, eeprom, 3000, ['--dht-reading', '21.5,40.0@0']);
+        expect(second.lcd.take(2), ['screen 0 |Temp 21.5       |', 'screen 1 |Set 22  idle    |']);
+        expect(second.writes, 0);
+        expect(switches(second.heater), isEmpty);
+      });
+
+      test('a failed reading (bad checksum) shows an error and keeps the heater off', () async {
+        gate.check();
+        final dir = Directory.systemTemp.createTempSync('unodar_thermostat_ee_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final result = await run(await generated(), p.join(dir.path, 'eeprom.bin'), 3000,
+            ['--dht-reading', '18.0,40.0@0', '--dht-bad-checksum']);
+        expect(result.lcd.take(2), ['screen 0 |Temp error      |', 'screen 1 |Set 21          |']);
+        expect(switches(result.heater), isEmpty);
+      });
+
+      test('negative control: without the hysteresis on the way up, the heater stops at 22.5 instead of 23.5',
+          () async {
+        gate.check();
+        final cpp = await generated();
+        const stop = 'temperature > target + hysteresis';
+        expect(cpp, contains(stop), reason: 'the generated code changed; update the negative control');
+        final dir = Directory.systemTemp.createTempSync('unodar_thermostat_ee_');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final result = await run(
+            cpp.replaceFirst(stop, 'temperature > target'), p.join(dir.path, 'e.bin'), 13500, [...presses, ...sweep]);
+        final heater = switches(result.heater);
+        expect(heater.map((s) => s.$1), ['high', 'low', 'high']);
+        expect(heater[1].$2, inInclusiveRange(5000, 5050), reason: 'off at the 5 s reading (22.5 > 22)');
+      });
+    });
+
     test('examples/dial reports the potentiometer reading over Serial', () async {
       gate.check();
       final result = await Compiler().compile(fromPackage('..', '..', 'examples', 'dial', 'main.dart'));

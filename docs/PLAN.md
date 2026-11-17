@@ -444,7 +444,7 @@ of RAM: the core's `millis()` state).
 | SoftwareSerial | 117 B for one object: 31 B per object + 68 B shared (the 64 B receive buffer and its state) + an 18 B vtable | Minimal use (begin, print a literal): 1752 B, `Print` included |
 | LiquidCrystal | 36 B for one display: 24 B + a 12 B vtable | Minimal use (begin, print a literal): 1236 B |
 | DHT | 19 B per sensor, **plus `Serial`'s 175 B** even if the program does not use `Serial` (Adafruit Unified Sensor's `printSensorDetails()` links it) | Minimal use (begin, read, readTemperature into a variable): 2186 B, `Serial` and float code included |
-| Goal program | Measured in step 22 | Measured in step 22 |
+| Goal program (`examples/thermostat`, DHT22) | 285 B: 110 B of its own (objects, signal, widgets, LCD, sensor, Print's float strings), plus `Serial`'s 175 B, which it never uses (DHT's dependency links it) | 6260 B |
 
 ## 6. New diagnostics (next free: E027)
 
@@ -505,7 +505,7 @@ Every construct step adds its goldens first, and in the same commit:
 | 19 | (**done**) DHT wrapper + runner DHT22 model; `Adafruit Unified Sensor` pinned | Golden `dht`; avr8js: values, NaN on a bad checksum, the 2 s cache, lost `millis()` ticks measured; control: a wrong bit threshold |
 | 20 | (only if D3 = include) immutable value classes | Golden `value_class`; avr8js; control: a mutable field accepted |
 | 21 | Size-budget review (dedicated commit): every Phase 6 budget, RAM per object golden, §5 replaced by measurements | `size_budgets.dart` |
-| 22 | `examples/thermostat` (the goal program; DHT22 instead of the potentiometer if step 19 landed) with `wokwi/` (lcd1602, two buttons, a potentiometer or DHT22, an LED as the heater), built by `tool/check_arduino.sh` | avr8js goal test: bouncing presses, the A0 sweep, the exact LCD text, the heater pin log, the setpoint kept across a reset; negative control |
+| 22 | (**done**) `examples/thermostat` (the goal program; DHT22 instead of the potentiometer if step 19 landed) with `wokwi/` (lcd1602, two buttons, a potentiometer or DHT22, an LED as the heater), built by `tool/check_arduino.sh` | avr8js goal test: bouncing presses, the A0 sweep, the exact LCD text, the heater pin log, the setpoint kept across a reset; negative control |
 | 23 | Final docs pass (README status and known limits, PRD status, PLAN); full check suite; end report | — |
 
 ## 8. Open decisions (for the maintainer)
