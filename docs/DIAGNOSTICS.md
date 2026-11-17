@@ -552,7 +552,7 @@ input.dart:7:19: error[E017]: unsupported binding method 'readTemperature': it h
 ```
 
 (Golden tests: `test/golden/e017_binding_members`, `e017_binding_signatures`, `e017_annotations`,
-`e017_cpp_range`, `e017_cpp_pin`.)
+`e017_cpp_range`, `e017_cpp_pin`, `e017_annotations_in_classes`.)
 
 ## E018: Object misuse
 
