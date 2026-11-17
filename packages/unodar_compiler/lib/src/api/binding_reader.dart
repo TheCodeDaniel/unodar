@@ -94,16 +94,21 @@ final class BindingReader {
       cppName: cppName,
       header: _string(element, 'CppHeader'),
       constructor: constructors.isEmpty ? null : _parameters(constructors.single),
+      isPrint: hasInteropAnnotation(element, 'CppPrint'),
       methods: [
         for (final method in element.methods)
-          ApiFunction(
-            method.name!,
-            cppName: _string(method, 'CppName') ?? method.name!,
-            parameters: _parameters(method),
-            returnType: _irType(method.returnType, method),
-            cppReturnType: _cppResultType(method),
-            convertsArguments: true,
-          ),
+          if (hasInteropAnnotation(element, 'CppPrint') && isPrintMethod(method))
+            // Serial's dispatch (docs/SUBSET.md "Serial"): the value's static type picks the C++ overload.
+            ApiFunction(method.name!, cppName: method.name!, parameters: ApiRegistry.printParameters)
+          else
+            ApiFunction(
+              method.name!,
+              cppName: _string(method, 'CppName') ?? method.name!,
+              parameters: _parameters(method),
+              returnType: _irType(method.returnType, method),
+              cppReturnType: _cppResultType(method),
+              convertsArguments: true,
+            ),
       ],
     );
   }

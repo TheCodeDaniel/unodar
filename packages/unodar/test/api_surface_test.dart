@@ -24,6 +24,7 @@ void main() {
     const include = CppInclude('avr/wdt.h');
     const range = CppRange(33, 1059);
     expect(const CppPin(), isA<CppPin>());
+    expect(const CppPrint(), isA<CppPrint>());
     expect([header.header, cppClass.name, name.name, type.type, include.header, range.min, range.max],
         ['Servo.h', 'Servo', 'write', 'uint8_t', 'avr/wdt.h', 33, 1059]);
   });

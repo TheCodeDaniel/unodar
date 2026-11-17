@@ -2,6 +2,7 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/syntactic_entity.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import '../api/api_resolution.dart';
@@ -51,11 +52,35 @@ List<Diagnostic> bindingClassDiagnostics(ClassDeclaration declaration, ResolvedS
     if (declaration.abstractKeyword == null && !declaration.body.members.any((m) => m is ConstructorDeclaration))
       'it is not abstract but declares no external constructor',
   ];
+  final printing = hasInteropAnnotation(element, 'CppPrint');
+  bool isPrint(ClassMember m) => m is MethodDeclaration && (m.name.lexeme == 'print' || m.name.lexeme == 'println');
+  if (printing && !declaration.body.members.any(isPrint)) {
+    final annotation = declaration.metadata
+        .firstWhere((a) => a.elementAnnotation != null && interopAnnotationName(a.elementAnnotation!) == 'CppPrint');
+    diagnostics.add(Diagnostics.annotationArgument(
+        'CppPrint',
+        "'$className' declares no print or println",
+        'Declare `external void print(Object value, {int digits = 2});` (or println), or remove @CppPrint.',
+        at(annotation)));
+  }
   if (classProblems.isNotEmpty) {
     diagnostics.add(Diagnostics.bindingClass(className, englishList(classProblems), at(declaration.namePart)));
   }
 
   for (final member in declaration.body.members) {
+    if (printing && member is MethodDeclaration && isPrint(member)) {
+      // `external void print(Object value, {int digits = 2});`, nothing else: the dispatch is Serial's.
+      if (!_isPrintSignature(member)) {
+        diagnostics.add(Diagnostics.bindingSignature(
+            'method',
+            member.name.lexeme,
+            'a signature other than `void ${member.name.lexeme}(Object value, {int digits = 2})` (@CppPrint)',
+            'Declare it exactly as `external void ${member.name.lexeme}(Object value, {int digits = 2});`, '
+                'without @CppName or @CppType.',
+            source.locationOf(member.name.offset)));
+      }
+      continue;
+    }
     final start = member.firstTokenAfterCommentAndMetadata;
     void kind(String kind, String name, String help) =>
         diagnostics.add(Diagnostics.bindingMember(kind, name, help, at(start)));
@@ -97,6 +122,23 @@ List<Diagnostic> bindingClassDiagnostics(ClassDeclaration declaration, ResolvedS
   return diagnostics;
 }
 
+/// Whether [method] is `external void print(Object value, {int digits = 2})` (or `println`), without annotations.
+bool _isPrintSignature(MethodDeclaration method) {
+  final element = method.declaredFragment?.element;
+  if (element == null || method.externalKeyword == null || method.isGetter || method.isStatic) return false;
+  if (method.metadata.isNotEmpty || method.typeParameters != null || element.returnType is! VoidType) return false;
+  final parameters = element.formalParameters;
+  if (parameters.length != 2 || parameters.any((p) => p.metadata.annotations.isNotEmpty)) return false;
+  final (value, digits) = (parameters[0], parameters[1]);
+  return value.isRequiredPositional &&
+      value.type.isDartCoreObject &&
+      value.type.nullabilitySuffix == NullabilitySuffix.none &&
+      digits.isOptionalNamed &&
+      digits.name == 'digits' &&
+      digits.type.isDartCoreInt &&
+      digits.computeConstantValue()?.toIntValue() == 2;
+}
+
 /// The signature problems of a binding method or constructor, and the help to show; empty if there are none.
 (List<String>, String) _signatureProblems(
     ExecutableElement executable, List<FormalParameter> parameters, Target target, bool hasTypeParameters) {
@@ -114,6 +156,10 @@ List<Diagnostic> bindingClassDiagnostics(ClassDeclaration declaration, ResolvedS
     final type = irTypeOf(parameter.type);
     if (type == null || type == IrType.void_) {
       problems.add("an unsupported parameter type '${displayType(parameter.type)}' ('${parameter.name}')");
+      if (parameter.type.isDartCoreObject && (executable.name == 'print' || executable.name == 'println')) {
+        help = 'If the C++ class derives from Print, add `@CppPrint()` to the class: its print and println then '
+            'take any printable value, as Serial\'s do.';
+      }
       continue;
     }
     final cppType = _cppTypeOf(parameter);
@@ -217,6 +263,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     final target = node.parent;
     final allowed = switch (name) {
       'CppClass' || 'CppHeader' => target is ClassDeclaration,
+      'CppPrint' => _isBindingClass(target),
       'CppName' => _isBindingMethod(target) || _isExternalObject(target),
       'CppType' => _isBindingMethod(target) || _isBindingParameter(target),
       'CppRange' => _isBindingParameter(target),
@@ -228,7 +275,8 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
       context.report(Diagnostics.misplacedAnnotation(name, _allowedFor[name]!, context.at(node)));
       return;
     }
-    if (name == 'CppPin') return; // No argument; the parameter's type is checked with its signature.
+    // No argument: a pin's type is checked with its signature, a @CppPrint class's print methods with the class.
+    if (name == 'CppPin' || name == 'CppPrint') return;
     if (name == 'CppRange') {
       final arguments = node.arguments?.arguments;
       final bounds = [
@@ -291,6 +339,7 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     'CppType': 'parameters and methods of a binding class',
     'CppRange': 'integer parameters of a binding class',
     'CppPin': 'integer parameters of a binding constructor',
+    'CppPrint': 'binding classes',
     'CppInclude': 'the `library;` directive',
   };
 

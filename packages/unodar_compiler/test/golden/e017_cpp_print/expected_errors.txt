@@ -1,0 +1,10 @@
+input.dart:7:17: error[E017]: unsupported binding method 'print': it has a signature other than `void print(Object value, {int digits = 2})` (@CppPrint).
+  = help: Declare it exactly as `external void print(Object value, {int digits = 2});`, without @CppName or @CppType.
+input.dart:9:16: error[E017]: unsupported binding method 'println': it has a signature other than `void println(Object value, {int digits = 2})` (@CppPrint).
+  = help: Declare it exactly as `external void println(Object value, {int digits = 2});`, without @CppName or @CppType.
+input.dart:14:1: error[E017]: invalid @CppPrint: 'NoPrint' declares no print or println.
+  = help: Declare `external void print(Object value, {int digits = 2});` (or println), or remove @CppPrint.
+input.dart:22:17: error[E017]: unsupported binding method 'print': it has an unsupported parameter type 'Object' ('value').
+  = help: If the C++ class derives from Print, add `@CppPrint()` to the class: its print and println then take any printable value, as Serial's do.
+input.dart:25:1: error[E017]: @CppPrint is not allowed here: it applies only to binding classes.
+  = help: Remove it, or move it to binding classes.

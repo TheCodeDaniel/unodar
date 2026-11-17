@@ -295,15 +295,19 @@ program file, typically in about ten lines.
 ```dart
 @CppHeader('SoftwareSerial.h')
 @CppClass('SoftwareSerial')
+@CppPrint()
 final class SoftSerial {
-  external SoftSerial(@CppType('uint8_t') int rx, @CppType('uint8_t') int tx);
+  external SoftSerial(@CppPin() @CppType('uint8_t') int rx, @CppPin() @CppType('uint8_t') int tx);
   external void begin(@CppType('long') int baud);
   @CppName('write')
   @CppType('size_t')
   external int writeByte(@CppType('uint8_t') int value);
+  external void print(Object value, {int digits = 2});
+  external void println(Object value, {int digits = 2});
 }
 
 final link = SoftSerial(10, 11); // C++: SoftwareSerial link(10, 11);
+// link.println(true);           // C++: link.println(true ? F("true") : F("false"));
 ```
 
 Rules (E017 for any violation):
@@ -334,6 +338,11 @@ Rules (E017 for any violation):
   `external SoftSerial(@CppPin() @CppType('uint8_t') int rx, @CppPin() @CppType('uint8_t') int tx);`. It cannot be
   combined with `@CppRange`. Pins of member objects (inside your own classes) are not compared, because one class
   may have several objects.
+- `@CppPrint()` on the class gives its `print` and `println` the dispatch `Serial` has (see "Serial"): any printable
+  value, a string literal as a flash string (`F("…")`), a `bool` as `true`/`false` (C++ would print `1`/`0`), and
+  `digits:` for a `double` only. Use it for a C++ class derived from Arduino's `Print` (LiquidCrystal,
+  SoftwareSerial). Declare each of the two exactly as `external void print(Object value, {int digits = 2});`, with
+  no `@CppName` or `@CppType`; the class must declare at least one of them.
 - C++ names must be valid C++ identifiers, and header names plain file paths (`Wire.h`, `utility/twi.h`).
 
 **Using a binding** (E018 otherwise): a bound object is a top-level `final` variable initialized by its

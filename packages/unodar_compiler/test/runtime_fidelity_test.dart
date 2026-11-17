@@ -1131,6 +1131,42 @@ void main() {
       });
     });
 
+    group('@CppPrint gives a Print binding Serial\'s dispatch (golden cpp_print, compiled by unodar)', () {
+      Future<String> generated() async {
+        final result = await Compiler().compile(fromPackage('test', 'golden', 'cpp_print', 'input.dart'));
+        if (result is! CompileSuccess) fail('cpp_print did not compile with unodar: $result');
+        return result.cpp;
+      }
+
+      /// The text SoftwareSerial sent on D11 at 9600 baud, with D2 held low (so `ready` is true).
+      Future<String> run(String cpp) async {
+        final build = await compileSketch('cpp_print', cpp);
+        printOnFailure(build.rawOutput);
+        expect(build.success, isTrue);
+        // The output is not on the USART, so --until cannot stop the run: 0.15 s is enough for about 60 bytes.
+        final result = await simulate(build.hexPath,
+            pins: ['D2=low@0'], until: null, cycles: 2400000, extra: ['--pin-log-cycles']);
+        final uart = decodeUart(result.pinLog, 'D11', 9600);
+        return String.fromCharCodes(uart.bytes);
+      }
+
+      test('a bool prints true/false, a double its digits, a Uint8 its number, println(\'\') a line break', () async {
+        gate.check();
+        expect(await run(await generated()), 'ready true\r\nfalse\r\n0.3333 -42\r\n200\r\n\r\nDONE\r\n');
+      });
+
+      test('negative control: Arduino\'s plain print(bool) prints 1 and 0', () async {
+        gate.check();
+        final cpp = await generated();
+        const dispatch = 'link.println(ready ? F("true") : F("false"));';
+        expect(cpp, contains(dispatch), reason: 'the generated code changed; update the negative control');
+        final text = await run(cpp
+            .replaceAll(dispatch, 'link.println(ready);')
+            .replaceAll('link.println(!ready ? F("true") : F("false"));', 'link.println(!ready);'));
+        expect(text, startsWith('ready 1\r\n0\r\n'));
+      });
+    });
+
     group('goal program: a debounced Button toggles a Led, Every ticks (compiled by unodar)', () {
       // examples/button_led, the widget example of docs/SUBSET.md: Button on D2 toggles the Led on D13,
       // Every(500 ms) prints `tick`.

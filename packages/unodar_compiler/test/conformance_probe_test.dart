@@ -86,4 +86,18 @@ void main() {
     expect(build.success, isFalse);
     expect(build.rawOutput, contains('MSBFIRST: the C++ value of MSBFIRST is not 0'));
   });
+
+  test('a @CppPrint class must derive from Print: SoftwareSerial does, Servo does not', () async {
+    gate.check();
+    ApiClass printing(String name, String header) =>
+        ApiClass(name, cppName: name, header: header, methods: const [], isPrint: true);
+    final good = await compileSketch(
+        'conformance_print', conformanceProbe(ApiBindings(classes: [printing('SoftwareSerial', 'SoftwareSerial.h')])));
+    printOnFailure(good.rawOutput);
+    expect(good.success, isTrue);
+    final bad = await compileSketch(
+        'conformance_no_print', conformanceProbe(ApiBindings(classes: [printing('Servo', 'Servo.h')])));
+    expect(bad.success, isFalse);
+    expect(bad.rawOutput, contains('Servo: @CppPrint, but Servo does not derive from Print'));
+  });
 }

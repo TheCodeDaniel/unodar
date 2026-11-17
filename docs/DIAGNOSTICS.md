@@ -526,7 +526,9 @@ not apply to, an argument that is not a string literal, a C++ name that is not a
 is not a plain file path, a `@CppType` that is not one of the accepted types or does not fit the Dart type, or a
 `@CppRange` that is not on an integer binding parameter, whose bounds are not integer literals, are reversed, or lie
 outside the parameter's C++ type; a `@CppPin` anywhere but an integer parameter of a binding constructor, or together
-with `@CppRange`. Interop annotations inside one of your own classes do not apply and are reported as misplaced. All
+with `@CppRange`; a `@CppPrint` anywhere but a binding class, on a class without `print` or `println`, or with a
+`print`/`println` not declared exactly as `external void print(Object value, {int digits = 2})` (an `Object`
+parameter without `@CppPrint` is an unsupported type, with a hint to add it). Interop annotations inside one of your own classes do not apply and are reported as misplaced. All
 problems with one member are listed in one diagnostic.
 
 ```dart
@@ -552,7 +554,7 @@ input.dart:7:19: error[E017]: unsupported binding method 'readTemperature': it h
 ```
 
 (Golden tests: `test/golden/e017_binding_members`, `e017_binding_signatures`, `e017_annotations`,
-`e017_cpp_range`, `e017_cpp_pin`, `e017_annotations_in_classes`.)
+`e017_cpp_range`, `e017_cpp_pin`, `e017_annotations_in_classes`, `e017_cpp_print`.)
 
 ## E018: Object misuse
 

@@ -55,6 +55,14 @@ final class CppPin {
   const CppPin();
 }
 
+/// Gives the `print` and `println` of a binding class the dispatch `Serial` has, for a C++ class derived from
+/// Arduino's `Print` (LiquidCrystal, SoftwareSerial): a string literal is a flash string, a `bool` prints
+/// `true`/`false`, and a `double` takes `digits`. Declare them as
+/// `external void print(Object value, {int digits = 2});` and the same for `println`.
+final class CppPrint {
+  const CppPrint();
+}
+
 /// An extra header for raw C++, e.g. `@CppInclude('avr/wdt.h') library;`. Allowed only on the `library;` directive.
 final class CppInclude {
   const CppInclude(this.header);

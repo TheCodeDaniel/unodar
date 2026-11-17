@@ -201,4 +201,8 @@ const sizeBudgets = <String, SizeBudget>{
   // (avr-nm): Serial 175 + core 9 + SPIClass's statics 3 (initialized, interruptMode, interruptSave) + 4 B of .data
   // strings and padding; the shim object unodar_spi is an empty constexpr struct (0 B).
   'spi': SizeBudget(baselineFlash: 2354, baselineRam: 191, maxFlash: 3100, maxRam: 202),
+  // cpp_print: @CppPrint on a user SoftwareSerial binding (step 15): literals, bools, a double with digits, ints.
+  // RAM (avr-nm): core 9 + link 31 + SoftwareSerial's 64 B receive buffer, head, tail and active object 4 + its
+  // vtable 18 + 4 B of .data; the "true"/"false" texts are flash strings (F()), 0 B.
+  'cpp_print': SizeBudget(baselineFlash: 3632, baselineRam: 130, maxFlash: 4750, maxRam: 141),
 };

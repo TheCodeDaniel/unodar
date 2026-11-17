@@ -12,6 +12,8 @@ import 'api_registry.dart';
 /// A library wrapper's constant with a `@CppName` (`MSBFIRST`) must have the value of that C++ name. Shim headers
 /// (`unodar_spi.h`) are included from the sketch folder: the caller writes [runtimeFiles] next to the probe.
 ///
+/// A `@CppPrint` class must derive from Arduino's `Print`.
+///
 /// Printing methods (`Serial.print`, whose argument is any printable value) are skipped: their overload is chosen
 /// per argument by the compiler (docs/SUBSET.md "Serial").
 String conformanceProbe(ApiBindings bindings, {List<String> headers = const []}) {
@@ -30,7 +32,10 @@ String conformanceProbe(ApiBindings bindings, {List<String> headers = const []})
     ..writeln('template <typename A, typename B> struct unodar_probe_same { static constexpr bool value = false; };')
     ..writeln('template <typename A> struct unodar_probe_same<A, A> { static constexpr bool value = true; };')
     ..writeln('// Declared, never defined: only used inside decltype, so it never runs.')
-    ..writeln('template <typename T> T unodar_probe_value();');
+    ..writeln('template <typename T> T unodar_probe_value();')
+    ..writeln('// Size 1 for a pointer to a class derived from Print, 2 for anything else.')
+    ..writeln('char unodar_probe_print(const Print *);')
+    ..writeln('int unodar_probe_print(...);');
   for (final constant in bindings.constants) {
     if (!constant.isNamed) continue;
     out
@@ -45,6 +50,12 @@ String conformanceProbe(ApiBindings bindings, {List<String> headers = const []})
       ..writeln('// ${cls.dartName} → ${cls.cppName}');
     final object = bindings.objects.where((o) => o.className == cls.dartName).firstOrNull;
     final receiver = object?.cppName ?? 'unodar_probe_value<${cls.cppName} &>()';
+    if (cls.isPrint) {
+      // @CppPrint: print/println are Print's, so the class must convert to `Print &`.
+      out
+        ..writeln('static_assert(sizeof(unodar_probe_print(static_cast<${cls.cppName} *>(nullptr))) == 1,')
+        ..writeln('              "${cls.dartName}: @CppPrint, but ${cls.cppName} does not derive from Print");');
+    }
     if (cls.constructor case final parameters?) {
       out
         ..writeln('static_assert(sizeof(decltype(${cls.cppName}(${_arguments(parameters)}))) > 0,')

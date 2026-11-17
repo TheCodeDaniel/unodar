@@ -140,7 +140,11 @@ final class ApiConstant {
 
 /// A C++ class that Dart code reaches through objects: `HardwareSerial`, or a binding class (`@CppClass`).
 final class ApiClass {
-  const ApiClass(this.dartName, {required this.cppName, this.header, this.constructor, required this.methods});
+  const ApiClass(this.dartName,
+      {required this.cppName, this.header, this.constructor, required this.methods, this.isPrint = false});
+
+  /// Whether the class has `@CppPrint`: its C++ class derives from Arduino's `Print` (the conformance probe checks).
+  final bool isPrint;
 
   final String dartName;
 
@@ -303,8 +307,8 @@ final class ApiRegistry {
         classes: const [
           ApiClass('HardwareSerial', cppName: 'HardwareSerial', methods: [
             ApiFunction('begin', cppName: 'begin', parameters: [ApiParameter.unsignedLong('baud')]),
-            ApiFunction('print', cppName: 'print', parameters: _printParameters),
-            ApiFunction('println', cppName: 'println', parameters: _printParameters),
+            ApiFunction('print', cppName: 'print', parameters: printParameters),
+            ApiFunction('println', cppName: 'println', parameters: printParameters),
           ]),
         ],
         objects: const [ApiObject('Serial', cppName: 'Serial', className: 'HardwareSerial')],
@@ -362,7 +366,7 @@ final class ApiRegistry {
 
   /// `print(Object value, {int digits = 2})`. The value is [ApiParameter.printable]; `digits` is passed only with
   /// a `double` value (`Print::print(double, int)`; `printFloat` takes it as a `uint8_t`, hence its range).
-  static const _printParameters = [
+  static const printParameters = [
     ApiParameter.printable('value'),
     ApiParameter.uint8('digits', isNamed: true, defaultValue: 2),
   ];

@@ -115,25 +115,35 @@ bool isCppArgument(StringLiteral literal) {
   return list is ArgumentList && call is MethodInvocation && isCppCall(call);
 }
 
-/// Whether [literal] is the value argument of `Serial.print`/`println` (its first positional argument), where a
-/// string literal is allowed (docs/SUBSET.md "Serial"); the other place is `cpp('…')`.
+/// Whether [literal] is the value argument of `Serial.print`/`println` or of a `@CppPrint` binding's (its first
+/// positional argument), where a string literal is allowed (docs/SUBSET.md "Serial"); the other place is `cpp('…')`.
 bool isPrintArgument(StringLiteral literal) {
   final list = literal.parent;
   if (list is! ArgumentList || list.arguments.first != literal) return false;
   final call = list.parent;
   if (call is! MethodInvocation) return false;
   final method = call.methodName.element;
-  if (method is! MethodElement || !isUnodarElement(method)) return false;
-  return method.enclosingElement?.name == 'HardwareSerial' && (method.name == 'print' || method.name == 'println');
+  return method is MethodElement && isPrintMethod(method);
+}
+
+/// Whether [method] is `print`/`println` of `HardwareSerial` or of a binding class annotated `@CppPrint`, whose
+/// value argument is any printable value (docs/SUBSET.md "Serial" and "Binding C++ classes").
+bool isPrintMethod(MethodElement method) {
+  if (method.name != 'print' && method.name != 'println') return false;
+  final cls = method.enclosingElement;
+  return cls is ClassElement &&
+      ((isUnodarElement(cls) && cls.name == 'HardwareSerial') ||
+          (hasInteropAnnotation(cls, 'CppClass') && hasInteropAnnotation(cls, 'CppPrint')));
 }
 
 /// The name of the unodar interop annotation [annotation] (`CppClass`, `CppHeader`, `CppName`, `CppType`,
-/// `CppRange`, `CppInclude`), or null if it is not one.
+/// `CppRange`, `CppPin`, `CppPrint`, `CppInclude`), or null if it is not one.
 String? interopAnnotationName(ElementAnnotation annotation) {
   final element = annotation.element;
   final cls = element is ConstructorElement ? element.enclosingElement : null;
   if (cls is! ClassElement || !isUnodarElement(cls)) return null;
-  return const {'CppClass', 'CppHeader', 'CppName', 'CppType', 'CppRange', 'CppPin', 'CppInclude'}.contains(cls.name)
+  return const {'CppClass', 'CppHeader', 'CppName', 'CppType', 'CppRange', 'CppPin', 'CppPrint', 'CppInclude'}
+          .contains(cls.name)
       ? cls.name
       : null;
 }

@@ -257,3 +257,50 @@ Future<({String serial, List<String> pinLog})> simulate(String hexPath,
     },
   );
 }
+
+/// The bytes a UART transmitter sent on [pin] (`D11`), decoded from a cycle-stamped pin log (`--pin-log-cycles`): 8N1
+/// at [baud], idle high, sampled in the middle of each bit as a receiver does. Also the largest distance, in bits, of
+/// any edge inside a frame from its ideal position (0 for perfect timing; a receiver tolerates roughly ±0.4 at the
+/// last bit). A frame without its stop bit fails the test.
+({List<int> bytes, double maxEdgeError}) decodeUart(List<String> pinLog, String pin, int baud,
+    {int clockHz = 16000000}) {
+  final edges = <(int, bool)>[];
+  for (final line in pinLog) {
+    final [cycle, name, state] = line.split(' ');
+    if (name == pin) edges.add((int.parse(cycle), state != 'low'));
+  }
+  final bit = clockHz / baud;
+  bool levelAt(double cycle) {
+    var level = true; // idle
+    for (final (at, high) in edges) {
+      if (at > cycle) break;
+      level = high;
+    }
+    return level;
+  }
+
+  final bytes = <int>[];
+  var maxError = 0.0;
+  var i = 0;
+  while (true) {
+    // The next falling edge is a start bit.
+    while (i < edges.length && edges[i].$2) {
+      i++;
+    }
+    if (i >= edges.length) break;
+    final start = edges[i].$1;
+    var value = 0;
+    for (var b = 0; b < 8; b++) {
+      if (levelAt(start + (1.5 + b) * bit)) value |= 1 << b;
+    }
+    if (!levelAt(start + 9.5 * bit)) fail('UART on $pin: no stop bit in the frame starting at cycle $start');
+    bytes.add(value);
+    final end = start + 9.5 * bit;
+    for (i++; i < edges.length && edges[i].$1 < end; i++) {
+      final position = (edges[i].$1 - start) / bit;
+      final error = (position - position.round()).abs();
+      if (error > maxError) maxError = error;
+    }
+  }
+  return (bytes: bytes, maxEdgeError: maxError);
+}
