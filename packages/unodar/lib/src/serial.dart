@@ -19,4 +19,6 @@ abstract final class HardwareSerial {
 }
 
 /// The serial port on pins 0 and 1, which is also the USB connection. Compiles to C++ `Serial`.
+///
+/// A program that uses it cannot put a widget or a `@CppPin` argument on pin 0 or 1 (E022).
 external final HardwareSerial Serial;

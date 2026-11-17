@@ -265,7 +265,10 @@ and emitted by name (`A0`, not `14`).
 
 ### Serial
 
-`Serial` is the Uno's hardware serial port (C++ `Serial`, a `HardwareSerial`).
+`Serial` is the Uno's hardware serial port (C++ `Serial`, a `HardwareSerial`). It uses pins 0 (RX) and 1 (TX), which
+are also the USB connection, so a program that names `Serial` anywhere cannot put a widget or a `@CppPin` argument
+on pin 0 or 1 (E022). A program that never names it keeps both pins free, also when it uses the DHT wrapper, which
+links `Serial`'s code but never opens the port.
 
 | Dart | C++ | Notes |
 |---|---|---|
@@ -343,7 +346,8 @@ Rules (E017 for any violation):
   `@CppRange` within 0 to 19 narrows it further (`@CppPin() @CppRange(2, 19)` where Serial's pins 0 and 1 cannot
   work); a constant outside is E004, which names Serial when the pin is 0 or 1. Pins of member objects (inside your own classes) are not compared, because one class
   may have several objects.
-- `@CppUsesPins({10: 'SS', 11: 'MOSI', 12: 'MISO', 13: 'SCK'})` on an external object lists the pins it takes,
+- `@CppUsesPins({10: 'SS', 11: 'MOSI', 12: 'MISO', 13: 'SCK'})` on an external object lists the pins it takes
+  (`Serial` takes 0 and 1 the same way),
   each with its role, whenever the program uses the object (names it anywhere). In such a program no widget and no
   `@CppPin` of a top-level bound object may use one of them (E022, "pin 13 is already used by SPI (SCK)"); a
   program that does not use the object keeps the pins free. The argument is a map literal from integer literals 0
