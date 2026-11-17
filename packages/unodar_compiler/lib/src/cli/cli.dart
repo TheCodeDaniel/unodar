@@ -4,6 +4,7 @@ import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
 import '../compiler.dart';
+import '../toolchain/arduino_build.dart';
 import '../toolchain/doctor.dart';
 import '../toolchain/setup.dart';
 import '../toolchain/toolchain.dart';
@@ -60,11 +61,13 @@ ArgParser _withHelp(ArgParser parser) => parser..addFlag('help', abbr: 'h', nega
 final _commands = [
   _Command(
     'build',
-    'Compile a Dart program to <outdir>/<name>/<name>.ino',
-    'unodar build <file.dart> [-o <outdir>]',
+    'Compile a Dart program to C++ (<outdir>/<name>/<name>.ino) and build it for the Uno',
+    'unodar build [<file.dart>] [-o <outdir>] [--cpp-only]',
     () => _withHelp(ArgParser()
       ..addOption('output',
-          abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')),
+          abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')
+      ..addFlag('cpp-only',
+          negatable: false, help: 'Only write the C++; do not build it with arduino-cli (needs no toolchain).')),
     _build,
   ),
   _Command(
@@ -199,32 +202,74 @@ int _commandUsageError(StringSink err, _Command command, ArgParser parser, Strin
   return ExitCodes.tooling;
 }
 
-Future<int> _build(ArgResults args, CliContext context) async {
-  if (args.rest.length != 1) throw const _UsageException('build', 'expected exactly one <file.dart>.');
-  final input = args.rest.single;
+Future<int> _build(ArgResults args, CliContext context) async =>
+    (await buildProgram(args, context, cppOnly: args.flag('cpp-only'))).exitCode;
+
+/// What [buildProgram] produced: the exit code, and on success the sketch folder and arduino-cli's build folder.
+typedef BuiltProgram = ({int exitCode, String? sketchFolder, String? buildPath, ArduinoCli? cli});
+
+/// `unodar build`, also the first half of `flash`: Dart to C++ (diagnostics are exit 1), the sketch written to
+/// `<outdir>/<name>/`, then, unless [cppOnly], `arduino-cli compile` with `-fwrapv` into `<outdir>/.build/<name>`
+/// and the size line. The input defaults to `main.dart` in the working directory.
+Future<BuiltProgram> buildProgram(ArgResults args, CliContext context,
+    {required bool cppOnly, String command = 'build'}) async {
+  if (args.rest.length > 1) throw _UsageException(command, 'expected at most one <file.dart>.');
+  final input = args.rest.isEmpty ? 'main.dart' : args.rest.single;
   final err = context.err;
+  final CompileSuccess result;
   switch (await Compiler().compile(context.resolve(input))) {
-    case final CompileSuccess result:
-      final String ino;
-      try {
-        ino = writeSketch(context.resolve(args.option('output')!), p.basenameWithoutExtension(input), result);
-      } on FileSystemException catch (e) {
-        err.writeln('error: could not write ${e.path ?? args.option('output')}: ${e.osError?.message ?? e.message}');
-        return ExitCodes.tooling;
-      }
-      // Printed as given: relative to the working directory when `-o` was relative.
-      context.out.writeln(p.isAbsolute(args.option('output')!) ? ino : p.relative(ino, from: context.workingDirectory));
-      return ExitCodes.success;
+    case final CompileSuccess success:
+      result = success;
     case CompileFailure(:final diagnostics):
       for (final diagnostic in diagnostics) {
         err.writeln(diagnostic.format());
       }
       err.writeln('${diagnostics.length} ${diagnostics.length == 1 ? 'error' : 'errors'}.');
-      return ExitCodes.diagnostics;
+      return (exitCode: ExitCodes.diagnostics, sketchFolder: null, buildPath: null, cli: null);
     case CompileInputError(:final message):
       err.writeln('error: $message');
-      return ExitCodes.tooling;
+      return (exitCode: ExitCodes.tooling, sketchFolder: null, buildPath: null, cli: null);
   }
+  final output = args.option('output')!;
+  final name = p.basenameWithoutExtension(input);
+  final String ino;
+  try {
+    ino = writeSketch(context.resolve(output), name, result);
+  } on FileSystemException catch (e) {
+    err.writeln('error: could not write ${e.path ?? output}: ${e.osError?.message ?? e.message}');
+    return (exitCode: ExitCodes.tooling, sketchFolder: null, buildPath: null, cli: null);
+  }
+  // Printed as given: relative to the working directory when `-o` was relative.
+  context.out.writeln(p.isAbsolute(output) ? ino : p.relative(ino, from: context.workingDirectory));
+  if (cppOnly) return (exitCode: ExitCodes.success, sketchFolder: p.dirname(ino), buildPath: null, cli: null);
+
+  final ArduinoCli cli;
+  switch (locateToolchain(home: context.home, environment: context.environment)) {
+    case ToolchainFound(cli: final found):
+      cli = found;
+    case final ToolchainNotFound missing:
+      err
+        ..writeln('error: ${missing.message}')
+        ..writeln('(`unodar build --cpp-only` writes only the C++, which needs no toolchain.)');
+      return (exitCode: ExitCodes.toolchain, sketchFolder: p.dirname(ino), buildPath: null, cli: null);
+  }
+  final buildPath = p.join(context.resolve(output), '.build', name);
+  final compiled = await compileSketchFolder(cli, sketchFolder: p.dirname(ino), buildPath: buildPath);
+  if (!compiled.success) {
+    err
+      ..writeln(compiled.errors)
+      ..writeln();
+    if (result.bringsOwnCpp) {
+      err.writeln('error: the C++ did not compile. This program contains C++ of its own (`cpp(…)`, `@CppInclude` or a '
+          'binding class), so check that first; the locations above point into your Dart file.');
+      return (exitCode: ExitCodes.diagnostics, sketchFolder: p.dirname(ino), buildPath: null, cli: cli);
+    }
+    err.writeln('error: the C++ that unodar generated does not compile. This is a bug in unodar. Please report it at '
+        '$issuesUrl with your Dart file and the sketch folder ${p.dirname(ino)}.');
+    return (exitCode: ExitCodes.tooling, sketchFolder: p.dirname(ino), buildPath: null, cli: cli);
+  }
+  context.out.writeln(compiled.sizeLine);
+  return (exitCode: ExitCodes.success, sketchFolder: p.dirname(ino), buildPath: buildPath, cli: cli);
 }
 
 Future<int> _doctor(ArgResults args, CliContext context) async {

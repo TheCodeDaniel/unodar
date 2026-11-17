@@ -25,7 +25,7 @@ void main() {
   final blink = fromPackage('test', 'golden', 'blink', 'input.dart');
 
   test('build writes <outdir>/<name>/<name>.ino, prints its path, exits 0', () async {
-    final r = await run(['build', blink, '-o', temp.path]);
+    final r = await run(['build', blink, '--cpp-only', '-o', temp.path]);
     final ino = File(p.join(temp.path, 'input', 'input.ino'));
     expect(r.exitCode, 0, reason: r.err);
     expect(r.out.trim(), ino.path);
@@ -46,14 +46,19 @@ void main() {
   });
 
   test('a sketch without widgets gets no extra files', () async {
-    final r = await run(['build', blink, '-o', temp.path]);
+    final r = await run(['build', blink, '--cpp-only', '-o', temp.path]);
     expect(r.exitCode, 0, reason: r.err);
     expect(Directory(p.join(temp.path, 'input')).listSync().map((e) => p.basename(e.path)), ['input.ino']);
   });
 
   test('diagnostics go to stderr, nothing is written, exit 1', () async {
-    final r = await run(
-        ['build', fromPackage('test', 'golden', 'e004_argument_out_of_range', 'input.dart'), '-o', temp.path]);
+    final r = await run([
+      'build',
+      fromPackage('test', 'golden', 'e004_argument_out_of_range', 'input.dart'),
+      '--cpp-only',
+      '-o',
+      temp.path
+    ]);
     expect(r.exitCode, 1);
     expect(r.out, isEmpty);
     expect(r.err, contains('error[E004]'));
@@ -107,7 +112,7 @@ void main() {
   }, timeout: const Timeout(Duration(minutes: 2)));
 
   test('output is UTF-8 with LF line endings', () async {
-    await run(['build', blink, '-o', temp.path]);
+    await run(['build', blink, '--cpp-only', '-o', temp.path]);
     final bytes = File(p.join(temp.path, 'input', 'input.ino')).readAsBytesSync();
     expect(utf8.decode(bytes), isNot(contains('\r')));
   });

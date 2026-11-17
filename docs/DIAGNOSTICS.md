@@ -17,8 +17,8 @@ Every `unodar` command uses the same codes:
 | Code | Meaning |
 |---|---|
 | 0 | Success: the sketch was written (`doctor`: everything is ready). |
-| 1 | Diagnostics: fix your Dart source. |
-| 2 | Tooling error: bad command-line usage, unreadable input, unwritable output, or an internal compiler error. |
+| 1 | Diagnostics: fix your Dart source (or, when `build` reports a C++ error in a program with C++ of its own, `cpp(…)`, `@CppInclude` or a binding class, that C++). |
+| 2 | Tooling error: bad command-line usage, unreadable input, unwritable output, or an internal compiler error (including generated C++ that does not compile: please report it). |
 | 3 | Toolchain not ready: arduino-cli, the `arduino:avr` core or a pinned library is missing, has another version, or cannot run (`doctor` found a problem). Run `unodar setup`. |
 | 4 | Board: none found, several found without `--port`, the port is busy or not permitted, or the upload failed. |
 

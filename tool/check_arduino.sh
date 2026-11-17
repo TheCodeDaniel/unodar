@@ -1,45 +1,14 @@
 #!/usr/bin/env bash
-# Builds examples/blink, examples/pulse, examples/dial, examples/button_led and examples/counter with unodar and
-# compiles the result with arduino-cli for the Uno (a widget program's folder also holds unodar_widgets.h).
-# Fails loudly (non-zero) if the toolchain is missing: it never skips.
+# Builds every example with `unodar build`, which compiles the generated sketch with arduino-cli for the Uno (with
+# -fwrapv) and prints its size. The toolchain is found as unodar finds it: the managed copy in ~/.unodar (install it
+# with `dart run unodar_compiler:unodar setup`), else arduino-cli on PATH with the pinned core and libraries.
+# Fails loudly (non-zero) if the toolchain is missing or any example does not build: it never skips.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-if ! command -v arduino-cli >/dev/null; then
-  echo "error: arduino-cli is not on PATH. Install: brew install arduino-cli" >&2
-  echo "       (other platforms: https://arduino.github.io/arduino-cli/latest/installation/)" >&2
-  exit 2
-fi
-if ! arduino-cli core list | grep -q 'arduino:avr'; then
-  echo "error: the arduino:avr core is missing. Install: arduino-cli core update-index && arduino-cli core install arduino:avr" >&2
-  exit 2
-fi
-
-# The libraries of tool/arduino_libraries.txt, each at its exact version (the size budgets depend on it).
-installed="$(arduino-cli lib list)"
-while IFS= read -r spec; do
-  [[ -z "${spec// }" || "$spec" == \#* ]] && continue
-  name="${spec%@*}"
-  version="${spec##*@}"
-  if ! grep -qE "^${name}[[:space:]]+${version}[[:space:]]" <<<"$installed"; then
-    echo "error: the library $name $version is not installed (or another version is). Install:" >&2
-    echo "       arduino-cli lib install --no-deps \"$spec\"" >&2
-    exit 2
-  fi
-done < tool/arduino_libraries.txt
-
-# Signed overflow must wrap (docs/SUBSET.md "Building"). Kept identical to UnoTarget.buildProperties by
-# test/unit/build_properties_test.dart.
-build_properties=(
-  --build-property compiler.c.extra_flags=-fwrapv
-  --build-property compiler.cpp.extra_flags=-fwrapv
-  --build-property compiler.c.elf.extra_flags=-fwrapv
-)
 
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
 for example in blink pulse dial button_led counter thermostat; do
-  ino="$(dart run packages/unodar_compiler/bin/unodar.dart build "examples/$example/main.dart" -o "$out/$example")"
-  echo "generated: $ino"
-  arduino-cli compile --fqbn arduino:avr:uno "${build_properties[@]}" "$(dirname "$ino")"
+  echo "== examples/$example"
+  dart run unodar_compiler:unodar build "examples/$example/main.dart" -o "$out/$example"
 done

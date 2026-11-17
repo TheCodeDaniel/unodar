@@ -20,6 +20,7 @@ final class FakeArduinoCli {
         'Adafruit Unified Sensor': '1.1.15',
       },
       List<Map<String, Object?>> ports = const [],
+      Map<String, Object?>? compileResult,
       Map<String, int> failing = const {}}) {
     Directory(dir).createSync(recursive: true);
     _write('version.json', {'Application': 'arduino-cli', 'VersionString': version});
@@ -28,6 +29,7 @@ final class FakeArduinoCli {
     File(p.join(dir, 'libs.txt'))
         .writeAsStringSync([for (final MapEntry(:key, :value) in libraries.entries) '$key\t$value\n'].join());
     _write('board.json', {'detected_ports': ports});
+    _write('compile.json', compileResult ?? successfulCompile);
     final fail = [
       for (final MapEntry(:key, :value) in failing.entries) '  "$key") echo "fake failure of $key" >&2; exit $value ;;',
     ].join('\n');
@@ -36,6 +38,19 @@ final class FakeArduinoCli {
   }
 
   final String dir;
+
+  /// What `compile` prints by default: blink's sizes.
+  static const successfulCompile = {
+    'success': true,
+    'compiler_out': '',
+    'compiler_err': '',
+    'builder_result': {
+      'executable_sections_size': [
+        {'name': 'text', 'size': 924, 'max_size': 32256},
+        {'name': 'data', 'size': 9, 'max_size': 2048},
+      ]
+    },
+  };
 
   String get executable => p.join(dir, 'arduino-cli');
 
@@ -70,6 +85,7 @@ case "$1 $2" in
   "core install") spec="$3"; replace "$here/cores.txt" "${spec%@*}" "${spec##*@}" ;;
   "lib install") spec="$4"; replace "$here/libs.txt" "${spec%@*}" "${spec##*@}" ;;
   "config get") echo "$here/data" ;;
+  "compile "*) cat "$here/compile.json"; grep -q '"success":true' "$here/compile.json" || exit 1 ;;
   *) echo "{}" ;;
 esac
 ''';

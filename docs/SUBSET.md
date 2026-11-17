@@ -1258,8 +1258,9 @@ object: `Thermostat thermostat(2);`.
 
 ## Building
 
-Unodar sketches must be built with `-fwrapv`, which makes signed `int32_t` overflow wrap instead of being
-undefined behaviour. The AVR core links with LTO, so the flag is needed when compiling and when linking:
+`unodar build` (and `unodar flash`) compile the generated sketch with arduino-cli and pass `-fwrapv`, which makes
+signed `int32_t` overflow wrap instead of being undefined behaviour. The AVR core links with LTO, so the flag is
+needed when compiling and when linking. `unodar build --cpp-only` writes only the C++; to build that yourself:
 
 ```sh
 arduino-cli compile --fqbn arduino:avr:uno \
@@ -1270,9 +1271,8 @@ arduino-cli compile --fqbn arduino:avr:uno \
 ```
 
 For a widget program, `out/main` holds `main.ino` and `unodar_widgets.h`; arduino-cli compiles the folder as is.
-`tool/check_arduino.sh` and the test suite pass these properties; the `unodar` CLI will pass them itself from
-Phase 7 (`unodar flash`/`run`). Building without them still compiles, but overflow (including `millis()` wrap
-handling) is then undefined behaviour.
+`unodar build`, `tool/check_arduino.sh` and the test suite pass these properties. Building without them still
+compiles, but overflow (including `millis()` wrap handling) is then undefined behaviour.
 
 ## Known deviations from Dart
 

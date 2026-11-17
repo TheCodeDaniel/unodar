@@ -1,4 +1,8 @@
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+
 import 'api/api_registry.dart';
+import 'api/api_resolution.dart';
 import 'api/binding_reader.dart';
 import 'diagnostics/diagnostics.dart';
 import 'emitter/emitter.dart';
@@ -14,7 +18,7 @@ sealed class CompileResult {
 
 /// The sketch compiled. [cpp] is the full `.ino` text.
 final class CompileSuccess extends CompileResult {
-  const CompileSuccess({required this.sourceName, required this.cpp, this.files = const {}});
+  const CompileSuccess({required this.sourceName, required this.cpp, this.files = const {}, this.bringsOwnCpp = false});
 
   final String sourceName;
   final String cpp;
@@ -22,6 +26,11 @@ final class CompileSuccess extends CompileResult {
   /// Files that belong next to the `.ino` in the sketch folder, by file name (`unodar_widgets.h` for a widget
   /// program). Empty for a plain `setup()`/`loop()` sketch.
   final Map<String, String> files;
+
+  /// Whether the program contains C++ that unodar did not write: a `cpp('…')` statement, an `@CppInclude`, or a
+  /// binding class of its own. When the C++ then fails to compile, the cause may be the user's C++ (exit 1), not a
+  /// unodar bug (exit 2).
+  final bool bringsOwnCpp;
 }
 
 /// The user's source has problems (exit code 1).
@@ -76,7 +85,10 @@ final class Compiler {
     if (analysisErrors.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
     final program = Lowering(programApi).lower(source);
     return CompileSuccess(
-        sourceName: source.displayName, cpp: CppEmitter(target).emit(program), files: runtimeFilesFor(program));
+        sourceName: source.displayName,
+        cpp: CppEmitter(target).emit(program),
+        files: runtimeFilesFor(program),
+        bringsOwnCpp: _bringsOwnCpp(source.unit));
   }
 
   /// The registry for one program: [api] plus the bindings `package:unodar` exports (Wire, Servo), and that plus the
@@ -98,5 +110,28 @@ final class Compiler {
         if (!unodar.reservedNames.contains(object.dartName)) object
     ];
     return (unodar.withBindings(ApiBindings(classes: own.classes, objects: objects)), unodar);
+  }
+
+  static bool _bringsOwnCpp(CompilationUnit unit) {
+    final visitor = _OwnCppVisitor();
+    unit.accept(visitor);
+    return visitor.found;
+  }
+}
+
+final class _OwnCppVisitor extends RecursiveAstVisitor<void> {
+  var found = false;
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (isCppCall(node)) found = true;
+    super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitAnnotation(Annotation node) {
+    final name = node.elementAnnotation == null ? null : interopAnnotationName(node.elementAnnotation!);
+    if (name == 'CppInclude' || name == 'CppClass') found = true;
+    super.visitAnnotation(node);
   }
 }
