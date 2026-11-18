@@ -78,3 +78,36 @@ jobs:
         run: |
           dart test --file-reporter "json:$RUNNER_TEMP/unodar_compiler.json"
           ../../tool/ci_no_skips.sh "$RUNNER_TEMP/unodar_compiler.json"
+
+  # The README quick start on a runner with nothing but a Dart SDK (tool/fresh_machine_test.sh: a fresh HOME and a
+  # PATH without anything else). Until the release tag exists it installs the commit under test. No board is plugged
+  # in, so `unodar flash` must end with exit 4 and "No Arduino Uno found".
+  fresh-machine:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ env.DART_SDK_VERSION }}
+      - run: tool/fresh_machine_test.sh
+
+  # The oldest Dart SDK unodar supports (D8): the minimum that the analyzer dependency allows (pubspec.lock's
+  # `sdks: dart`). The compiler is analyzed and its unit and golden tests run with it; the Arduino tests run above.
+  minimum-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.0
+      - run: dart pub get
+      - run: dart analyze
+      - name: Unit and golden tests
+        working-directory: packages/unodar_compiler
+        run: dart test test/unit test/golden_test.dart

@@ -63,4 +63,20 @@ void main() {
       'unodar flash',
     ]);
   });
+
+  test('the minimum Dart SDK is the same in pubspec.lock, the CI job and the README', () {
+    final lock = File(fromPackage('..', '..', 'pubspec.lock')).readAsStringSync();
+    final minimum = RegExp(r'dart: ">=(\d+\.\d+)\.(\d+) <').firstMatch(lock)!;
+    final ci = File(fromPackage('..', '..', '.github', 'workflows', 'ci.yml')).readAsStringSync();
+    expect(ci, contains('minimum-sdk:'));
+    expect(ci, contains('sdk: ${minimum.group(1)}.${minimum.group(2)}\n'));
+    final readme = File(fromPackage('..', '..', 'README.md')).readAsStringSync();
+    expect(readme, contains('Dart SDK](https://dart.dev/get-dart) ${minimum.group(1)} or later'));
+  });
+
+  test('the fresh-machine CI job runs tool/fresh_machine_test.sh on macOS and Linux', () {
+    final ci = File(fromPackage('..', '..', '.github', 'workflows', 'ci.yml')).readAsStringSync();
+    expect(ci, contains('os: [ubuntu-latest, macos-latest]'));
+    expect(ci, contains('run: tool/fresh_machine_test.sh'));
+  });
 }
