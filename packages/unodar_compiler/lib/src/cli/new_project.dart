@@ -44,7 +44,8 @@ environment:
   sdk: ^3.6.0
 
 dependencies:
-${unodarPath == null ? '''  # The unodar API, at exactly the version of the unodar compiler (unodar $unodarVersion). Upgrade both together.
+${unodarPath == null ? '''  # The unodar API, at exactly the version of the unodar compiler (unodar $unodarVersion).
+  # Upgrade both together.
   unodar:
     git:
       url: $unodarRepository

@@ -5,7 +5,7 @@
 #
 #   arduino-cli@<version>                 the command-line tool
 #   core <platform>@<version>             the board core
-#   sha256 <archive> <hex>                the release archives setup may download (macOS and Linux; Windows untested)
+#   sha256 <archive> <hex>                the archives setup may download (macOS and Linux; Windows untested)
 #
 # Checksums from https://github.com/arduino/arduino-cli/releases/download/v1.5.1/1.5.1-checksums.txt (2026-11-17).
 arduino-cli@1.5.1

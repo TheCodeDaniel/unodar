@@ -45,7 +45,8 @@ void main() {
     expect(r.exitCode, 0, reason: r.err);
     expect(
         uploadCall(fake),
-        'upload --fqbn arduino:avr:uno --port /dev/cu.usbmodem1101 --input-dir ${p.join(temp.path, 'out', '.build', 'input')} '
+        'upload --fqbn arduino:avr:uno --port /dev/cu.usbmodem1101 '
+        '--input-dir ${p.join(temp.path, 'out', '.build', 'input')} '
         '--config-file ${p.join(home, 'arduino-cli.yaml')}');
     expect(r.out, endsWith('Uploading to /dev/cu.usbmodem1101...\nDone: the program is running on the board.\n'));
     expect(fake.calls.indexWhere((c) => c.startsWith('compile')), lessThan(fake.calls.indexOf(uploadCall(fake))));

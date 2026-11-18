@@ -86,8 +86,10 @@ List<DoctorCheck> runDoctor({
     final core = inventory.cores[pins.core.name];
     checks.add(core == pins.core.version
         ? DoctorCheck(CheckStatus.ok, 'core ${pins.core.name} $core')
-        : DoctorCheck(CheckStatus.problem,
-            'core ${pins.core.name}: ${core == null ? 'not installed' : '$core, but unodar needs ${pins.core.version}'}',
+        : DoctorCheck(
+            CheckStatus.problem,
+            'core ${pins.core.name}: '
+            '${core == null ? 'not installed' : '$core, but unodar needs ${pins.core.version}'}',
             fix: 'unodar setup'));
     for (final library in pins.libraries) {
       final installed = inventory.libraries[library.name];
@@ -296,7 +298,8 @@ String renderDoctor(List<DoctorCheck> checks) {
       'Ready.'
     else
       '$problems ${problems == 1 ? 'problem' : 'problems'}. '
-          '${fixes.length == 1 ? 'Run `${fixes.single}` to fix ${problems == 1 ? 'it' : 'them'}.' : 'Run the fixes above.'}',
+          '${fixes.length == 1 ? 'Run `${fixes.single}` to fix ${problems == 1 ? 'it' : 'them'}.' //
+              : 'Run the fixes above.'}',
   ].join('\n');
 }
 

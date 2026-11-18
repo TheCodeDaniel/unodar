@@ -74,8 +74,8 @@ void main() {
 
     test('--plain is exactly the golden format', () async {
       final err = await stderrOf(['--plain']);
-      expect(err,
-          '${File(fromPackage('test', 'golden', 'e004_argument_out_of_range', 'expected_errors.txt')).readAsStringSync()}2 errors.\n');
+      final golden = File(fromPackage('test', 'golden', 'e004_argument_out_of_range', 'expected_errors.txt'));
+      expect(err, '${golden.readAsStringSync()}2 errors.\n');
     });
 
     test('colour on a terminal, never with NO_COLOR', () async {
