@@ -6,7 +6,7 @@ import 'package:analyzer/dart/ast/token.dart';
 ///
 /// Unknown kinds fall back to a generic phrase rather than failing: a vague message is acceptable, a crash is not.
 
-const genericHelp = 'See docs/SUBSET.md for the supported statements and expressions.';
+const genericHelp = 'See the subset guide (docs/SUBSET.md on GitHub) for the supported statements and expressions.';
 const removeLabel = 'Remove the label; only unlabeled `break` and `continue` are supported.';
 const compoundAssignmentHelp =
     'Write the assignment out in full, e.g. `x = x * y;`. Only `=`, `+=`, and `-=` are supported.';

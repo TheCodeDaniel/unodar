@@ -7,7 +7,7 @@ input.dart:7:6: error[E011]: unsupported signature for function 'c': it has an u
 input.dart:9:1: error[E011]: unsupported signature for function 'd': it has no return type.
   = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.
 input.dart:11:1: error[E009]: the type 'Future<void>' is not supported in this version. Only int, double, bool, Uint8, Uint16, and Int16 are supported.
-  = help: Use one of the supported types; see docs/SUBSET.md.
+  = help: Use one of the supported types; see the subset guide (docs/SUBSET.md on GitHub).
 input.dart:11:14: error[E011]: unsupported signature for function 'e': it has an async body.
   = help: Use only required positional parameters with a supported type, e.g. `int add(int a, int b) { ... }`.
 input.dart:13:1: error[E009]: the type 'Iterable<int>' is not supported: collections would need the heap, which unodar programs never use (fixed-size lists are a later decision).

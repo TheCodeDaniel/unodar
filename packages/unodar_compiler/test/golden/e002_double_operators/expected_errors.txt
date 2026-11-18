@@ -7,4 +7,4 @@ input.dart:14:7: error[E002]: the `~/` operator on a double is not supported in 
 input.dart:15:7: error[E002]: the `~/` operator on a double is not supported in this version.
   = help: C++ has no operator that matches it. Use ints, or compute it with `/` and `-`.
 input.dart:16:9: error[E003]: unknown function 'd.remainder': it is neither declared in this file nor part of the unodar API.
-  = help: Methods of numbers and other Dart values are not supported; use operators or a function declared in this file. See docs/SUBSET.md for the unodar API.
+  = help: Methods of numbers and other Dart values are not supported; use operators or a function declared in this file. See the subset guide (docs/SUBSET.md on GitHub) for the unodar API.

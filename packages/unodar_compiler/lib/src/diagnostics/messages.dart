@@ -33,9 +33,10 @@ abstract final class Diagnostics {
         message: "unknown function '$name': it is neither declared in this file nor part of the unodar API.",
         suggestion: isMethod
             ? 'Methods of numbers and other Dart values are not supported; use operators or a function declared in '
-                'this file. See docs/SUBSET.md for the unodar API.'
+                'this file. See the subset guide (docs/SUBSET.md on GitHub) for the unodar API.'
             : 'Declare the function in this file, or call the Arduino function through the escape hatch, e.g. '
-                "`cpp('${cppExample ?? '$name(…)'};');`. See docs/SUBSET.md for the unodar API.",
+                "`cpp('${cppExample ?? '$name(…)'};');`. See the subset guide (docs/SUBSET.md on GitHub) for the "
+                'unodar API.',
       );
 
   /// A function of Dart or Flutter that a newcomer reaches for first (`print`, `debugPrint`, `setState`), E003.
@@ -46,8 +47,8 @@ abstract final class Diagnostics {
             ? 'there is no setState() in unodar: widgets are never rebuilt, they are set up once and polled.'
             : "Dart's $name() has nowhere to print on the board.",
         suggestion: name == 'setState'
-            ? 'Keep the state in a Signal (`final count = Signal<int>(0);`, then `count.value++;`) and react to it with '
-                '`Watch(count, (v) { … })` or `Led(pin: 13, on: …)`, or keep it in a top-level variable.'
+            ? 'Keep the state in a Signal (`final count = Signal<int>(0);`, then `count.value++;`) and react to it '
+                'with `Watch(count, (v) { … })` or `Led(pin: 13, on: …)`, or keep it in a top-level variable.'
             : "Print over the USB serial port instead, e.g. `Serial.println('hello');`, and read it with a serial "
                 'monitor (`arduino-cli monitor` or the Arduino IDE).',
       );
@@ -57,7 +58,8 @@ abstract final class Diagnostics {
         code: DiagnosticCode.unknownFunction,
         location: at,
         message: "the $widget method '$method' is not supported in this version.",
-        suggestion: 'See "Widgets" in docs/SUBSET.md for the methods each widget supports.',
+        suggestion:
+            'See "Widgets" in the subset guide (docs/SUBSET.md on GitHub) for the methods each widget supports.',
       );
 
   static Diagnostic argumentOutOfRange(
@@ -105,8 +107,9 @@ abstract final class Diagnostics {
         location: at,
         message: '$what is not supported in this version. Only top-level functions, variables, classes, enums, and '
             'binding classes may be declared.',
-        suggestion:
-            suggestion ?? 'Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.',
+        suggestion: suggestion ??
+            'Remove this declaration; see the subset guide (docs/SUBSET.md on GitHub) for what may be declared at the '
+                'top level.',
       );
 
   /// An import other than `package:unodar/<library>.dart` (E005), worded by what the user was reaching for.
@@ -192,7 +195,7 @@ abstract final class Diagnostics {
         message: "the type '$type' is not supported in this version. Only $_supportedTypes are supported.",
         suggestion: isConditional
             ? 'Make both branches the same type, e.g. write `1.0` instead of `1`.'
-            : 'Use one of the supported types; see docs/SUBSET.md.',
+            : 'Use one of the supported types; see the subset guide (docs/SUBSET.md on GitHub).',
       );
 
   /// A `String` variable, parameter, field or return type (E009).
@@ -234,14 +237,16 @@ abstract final class Diagnostics {
         message: 'this constant expression computes $value, which is outside the 32-bit int range '
             '(-2147483648 to 2147483647).',
         suggestion: 'unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in '
-            'docs/SUBSET.md.',
+            'the subset guide (docs/SUBSET.md on GitHub).',
       );
 
   static Diagnostic doubleLiteralOutOfRange(String literal, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.constantOutOfRange,
         location: at,
         message: 'the double literal $literal is outside the float range (about -3.4e38 to 3.4e38).',
-        suggestion: 'unodar doubles are 32-bit floats; see "Known deviations from Dart" in docs/SUBSET.md.',
+        suggestion:
+            'unodar doubles are 32-bit floats; see "Known deviations from Dart" in the subset guide (docs/SUBSET.md '
+            'on GitHub).',
       );
 
   static Diagnostic constantDivisionByZero(SourceLocation at) => Diagnostic(
@@ -372,7 +377,7 @@ abstract final class Diagnostics {
         message: "unsupported binding class '$name': $problems.",
         suggestion: 'A binding describes one existing C++ class as it is: no extends, implements, with, or type '
             'parameters, and an external constructor unless the class is abstract. See "Binding C++ classes" in '
-            'docs/SUBSET.md.',
+            'the subset guide (docs/SUBSET.md on GitHub).',
       );
 
   static Diagnostic misplacedAnnotation(String annotation, String allowed, SourceLocation at) => Diagnostic(
@@ -395,21 +400,21 @@ abstract final class Diagnostics {
   static Diagnostic boundObjectNotFinal(String name, String example, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "the bound object '$name' must be declared `final`.",
+        message: "the C++ object '$name' must be declared `final`.",
         suggestion: 'Write `$example`. C++ objects are created once, as global variables.',
       );
 
   static Diagnostic boundObjectInitializer(String name, String cls, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "the bound object '$name' must be initialized by calling the $cls constructor.",
+        message: "the C++ object '$name' must be initialized by calling the $cls constructor.",
         suggestion: 'Write `final $name = $cls(…);` with constant arguments.',
       );
 
   static Diagnostic abstractBoundObject(String name, String cls, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "the bound object '$name' cannot be created: $cls is abstract and is only reached through existing "
+        message: "the C++ object '$name' cannot be created: $cls is abstract and is only reached through existing "
             'C++ objects.',
         suggestion: "Call the existing object's methods directly, or name it with `external final $cls $name;`.",
       );
@@ -418,7 +423,7 @@ abstract final class Diagnostics {
   static Diagnostic bindingTypePosition(String position, String type, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "$position of the binding type '$type' is not supported. Bound objects can only be top-level "
+        message: "$position of the type '$type' (a C++ class) is not supported. Its objects can only be top-level "
             '`final` variables.',
         suggestion: 'Use the top-level object directly instead of passing it around.',
       );
@@ -426,7 +431,7 @@ abstract final class Diagnostics {
   static Diagnostic boundObjectUse(String name, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "the bound object '$name' can only be used to call its methods.",
+        message: "the C++ object '$name' can only be used to call its methods.",
         suggestion: 'Call a method on it, e.g. `$name.begin();`; it cannot be stored, compared, or passed.',
       );
 
@@ -855,7 +860,7 @@ abstract final class Diagnostics {
         location: at,
         message:
             'this write closes a cycle: $path, so the Watch ${throughComputed ? 'could' : 'would'} run again after '
-            'every delivery.',
+            'every loop() pass.',
         suggestion: "Write '$signal' where the change starts, e.g. in a Button callback, or derive the value with a "
             'Computed.',
       );

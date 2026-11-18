@@ -129,7 +129,7 @@ void loop() {
 
 ```text
 input.dart:8:3: error[E003]: unknown function 'tone': it is neither declared in this file nor part of the unodar API.
-  = help: Declare the function in this file, or call the Arduino function through the escape hatch, e.g. `cpp('tone(8, 440);');`. See docs/SUBSET.md for the unodar API.
+  = help: Declare the function in this file, or call the Arduino function through the escape hatch, e.g. `cpp('tone(8, 440);');`. See the subset guide (docs/SUBSET.md on GitHub) for the unodar API.
 ```
 
 (Golden tests: `test/golden/e003_unknown_function`, `e003_method_call`, `newcomer_print`, `newcomer_set_state`.)
@@ -206,7 +206,7 @@ void loop() {}
 
 ```text
 input.dart:3:1: error[E005]: an extension is not supported in this version. Only top-level functions, variables, classes, enums, and binding classes may be declared.
-  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+  = help: Remove this declaration; see the subset guide (docs/SUBSET.md on GitHub) for what may be declared at the top level.
 input.dart:7:1: error[E005]: a late variable ('ledPin') is not supported in this version. Only top-level functions, variables, classes, enums, and binding classes may be declared.
   = help: Remove `late` and give the variable a constant initializer.
 ```
@@ -343,7 +343,7 @@ void loop() {
 
 ```text
 input.dart:6:9: error[E010]: this constant expression computes 3600000000, which is outside the 32-bit int range (-2147483648 to 2147483647).
-  = help: unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in docs/SUBSET.md.
+  = help: unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in the subset guide (docs/SUBSET.md on GitHub).
 input.dart:7:9: error[E010]: this constant expression divides by zero.
   = help: Use a divisor that is not zero.
 ```
@@ -623,9 +623,9 @@ void loop() {}
 ```
 
 ```text
-input.dart:3:5: error[E018]: the bound object 'servo' must be declared `final`.
+input.dart:3:5: error[E018]: the C++ object 'servo' must be declared `final`.
   = help: Write `final servo = Servo();`. C++ objects are created once, as global variables.
-input.dart:5:13: error[E018]: a parameter of the binding type 'Servo' is not supported. Bound objects can only be top-level `final` variables.
+input.dart:5:13: error[E018]: a parameter of the type 'Servo' (a C++ class) is not supported. Its objects can only be top-level `final` variables.
   = help: Use the top-level object directly instead of passing it around.
 ```
 
@@ -865,7 +865,7 @@ void main() => runDevice(
 ```
 
 ```text
-input.dart:6:3: error[E025]: this write closes a cycle: Watch(count) → bump() → count, so the Watch would run again after every delivery.
+input.dart:6:3: error[E025]: this write closes a cycle: Watch(count) → bump() → count, so the Watch would run again after every loop() pass.
   = help: Write 'count' where the change starts, e.g. in a Button callback, or derive the value with a Computed.
 ```
 

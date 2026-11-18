@@ -106,13 +106,14 @@ final class ClassRule implements ValidationRule {
         case MethodDeclaration():
           break; // A method or getter: compiled like a function (E011 and every body rule).
         default:
-          feature('this member', 'Remove it; see "Your own classes" in docs/SUBSET.md.', start);
+          feature('this member', 'Remove it; see "Your own classes" in the subset guide (docs/SUBSET.md on GitHub).',
+              start);
       }
     }
   }
 
   static const _externalHelp = 'Give it a body, or describe an existing C++ class with `@CppClass` (see '
-      '"Binding C++ classes" in docs/SUBSET.md).';
+      '"Binding C++ classes" in the subset guide (docs/SUBSET.md on GitHub)).';
 
   void _constructor(ClassDeclaration declaration, ConstructorDeclaration constructor, ValidationContext context) {
     final cls = declaration.namePart.typeName.lexeme;
