@@ -20,7 +20,6 @@ void main() {
   });
 
   final copies = {
-    'README.md': fromPackage('..', '..', 'README.md'),
     'docs/SUBSET.md': fromPackage('..', '..', 'docs', 'SUBSET.md'),
   };
   copies.forEach((name, path) {
