@@ -35,7 +35,7 @@ unodar flash
 1. The first line installs the `unodar` command. If your shell then says `unodar: command not found`, add pub's
    folder to your `PATH` as the line's own output says (usually `export PATH="$PATH":"$HOME/.pub-cache/bin"`).
 2. `unodar setup` downloads the Arduino toolchain unodar is tested with (arduino-cli, the AVR compiler and four
-   libraries, about 450 MB, 1–2 minutes) into `~/.unodar`. Nothing else on your system changes.
+   libraries, about 450 MB, 1–3 minutes) into `~/.unodar`. Nothing else on your system changes.
 3. `unodar new hello` creates a project whose `main.dart` blinks the LED on the board. Nothing to wire.
 4. `unodar flash` builds it and uploads it to the Uno plugged in. Success looks like:
 
