@@ -3,8 +3,8 @@
 
 /// The text of `tool/arduino_toolchain.txt`.
 const arduinoToolchainManifest =
-    r'''# The Arduino toolchain unodar is built and tested with. `unodar setup` installs exactly this into ~/.unodar, and
-# `unodar doctor` checks it; tool/embed_runtime.sh embeds this file in the compiler (a globally activated compiler has
+    r'''# The Arduino toolchain unodar is built and tested with. `unodar setup` installs exactly this into
+# ~/.unodar, and `unodar doctor` checks it; tool/embed_runtime.sh embeds this file in the compiler (a globally activated compiler has
 # no checkout to read it from), and test/unit/toolchain_pins_test.dart keeps the copy identical. A version change gets
 # a dedicated commit, like a size budget: budgets and the E014 deny-list depend on the exact core and its avr-gcc.
 #
