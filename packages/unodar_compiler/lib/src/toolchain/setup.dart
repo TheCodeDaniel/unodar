@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -51,7 +52,7 @@ Future<int> runSetup({
     if (!config.existsSync() || config.readAsStringSync() != home.configYaml) config.writeAsStringSync(home.configYaml);
 
     await _installCli(
-        home, pins, out, fetch ?? _download(environment), os ?? Platform.operatingSystem, arch ?? _arch());
+        home, pins, out, fetch ?? httpFetch(environment, out), os ?? Platform.operatingSystem, arch ?? _arch());
     final cli = ArduinoCli(home.cli, configFile: home.configFile, managed: true);
     var inventory = _inventory(cli);
 
@@ -120,8 +121,7 @@ Future<void> _installCli(
   try {
     bytes = await fetch(url);
   } on Object catch (e) {
-    throw SetupException('could not download $url: $e\nCheck your connection (or HTTPS_PROXY) and run `unodar setup` '
-        'again.');
+    throw SetupException(setupErrorFor(e, url));
   }
   final actual = '${sha256.convert(bytes)}';
   if (actual != pins.sha256[archive]) {
@@ -184,18 +184,44 @@ Future<void> _installRunner(String checkout, StringSink out) async {
   if (run.exitCode != 0) throw SetupException('npm ci failed in tool/avr_runner:\n${run.stderr}');
 }
 
-/// The real download: follows redirects (GitHub release assets redirect) and honours `HTTPS_PROXY`.
-Fetch _download(Map<String, String> environment) => (url) async {
+/// The message for a download of [url] that failed with [error].
+String setupErrorFor(Object error, Uri url) {
+  final reason = error is TimeoutException ? 'no data arrived for ${error.duration?.inSeconds ?? '?'} s' : '$error';
+  return 'could not download $url: $reason.\nCheck your connection (or HTTPS_PROXY) and run `unodar setup` again; '
+      'it continues where it stopped.';
+}
+
+/// The real download: follows redirects (GitHub release assets redirect), honours `HTTPS_PROXY`, prints progress
+/// to [out] every [progressEvery] bytes, and gives up with a [TimeoutException] when no data arrives for
+/// [idleTimeout] (a stalled connection would otherwise hang `setup` silently, as on a slow link in the
+/// fresh-machine test).
+Fetch httpFetch(Map<String, String> environment, StringSink out,
+        {Duration idleTimeout = const Duration(seconds: 60), int progressEvery = 2 * 1024 * 1024}) =>
+    (url) async {
       final client = HttpClient()
+        ..connectionTimeout = idleTimeout
         ..findProxy = (uri) => HttpClient.findProxyFromEnvironment(uri, environment: environment);
       try {
-        final response = await (await client.getUrl(url)).close();
+        final response = await (await client.getUrl(url)).close().timeout(idleTimeout);
         if (response.statusCode != 200) throw HttpException('HTTP ${response.statusCode}', uri: url);
+        final total = response.contentLength;
+        String mb(int bytes) => (bytes / 1e6).toStringAsFixed(1);
         final bytes = <int>[];
-        await response.forEach(bytes.addAll);
+        var reported = 0;
+        await for (final chunk in response.timeout(idleTimeout, onTimeout: (sink) {
+          sink.addError(TimeoutException('no data', idleTimeout));
+          sink.close();
+        })) {
+          bytes.addAll(chunk);
+          if (bytes.length - reported >= progressEvery || (total > 0 && bytes.length == total)) {
+            reported = bytes.length;
+            out.writeln('  ${mb(bytes.length)} MB${total > 0 ? ' of ${mb(total)} MB' : ''}');
+          }
+        }
+        if (total > 0 && bytes.length != total) throw HttpException('the connection closed early', uri: url);
         return bytes;
       } finally {
-        client.close();
+        client.close(force: true);
       }
     };
 
