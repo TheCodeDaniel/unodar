@@ -15,8 +15,9 @@ import 'rules.dart';
 
 /// Only unprefixed imports of `package:unodar/unodar.dart` and of unodar's library wrappers
 /// (`package:unodar/eeprom.dart`, docs/SUBSET.md "First-party libraries") are allowed; `package:unodar/src/…` is
-/// not, nor anything else. `library;` is harmless and allowed. Unresolvable imports never reach this rule: they are
-/// analyzer errors (E007).
+/// not, nor anything else. `library;` is harmless and allowed. A rejected import stops compilation before the
+/// analyzer's errors are looked at (`Compiler`, [importDiagnostics]): what it would have provided is undefined, so
+/// every use would only repeat the same problem (and a Flutter import does not even resolve).
 final class DirectiveRule implements ValidationRule {
   const DirectiveRule();
 
@@ -25,19 +26,31 @@ final class DirectiveRule implements ValidationRule {
   /// `package:unodar/<name>.dart`: unodar itself or one of its library wrappers.
   static bool isAllowedImport(String? uri) => uri != null && RegExp(r'^package:unodar/[a-z_]+\.dart$').hasMatch(uri);
 
+  /// One diagnostic per rejected import of [unit]; [at] gives a node's location.
+  static List<Diagnostic> importDiagnostics(CompilationUnit unit, SourceLocation Function(AstNode) at) => [
+        for (final directive in unit.directives)
+          if (directive is ImportDirective && !isAllowedImport(directive.uri.stringValue))
+            Diagnostics.unsupportedImport(directive.uri.stringValue ?? directive.uri.toSource(), at(directive)),
+      ];
+
   @override
   void check(CompilationUnit unit, ValidationContext context) {
     for (final directive in unit.directives) {
-      final problem = switch (directive) {
+      final (String, String)? problem = switch (directive) {
         LibraryDirective() => null,
-        ImportDirective(:final uri) when !isAllowedImport(uri.stringValue) => "an import of '${uri.stringValue}'",
-        ImportDirective(prefix: _?) => 'a prefixed import (`as …`)',
-        ImportDirective(deferredKeyword: _?) => 'a deferred import',
+        ImportDirective(:final uri) when !isAllowedImport(uri.stringValue) => null, // importDiagnostics, earlier.
+        ImportDirective(prefix: _?) => (
+            'a prefixed import (`as …`)',
+            "Import it without `as`, e.g. `import 'package:unodar/unodar.dart';`."
+          ),
+        ImportDirective(deferredKeyword: _?) => ('a deferred import', 'Remove `deferred`.'),
         ImportDirective() => null,
-        ExportDirective() => 'an export directive',
-        PartDirective() || PartOfDirective() => 'a part directive',
+        ExportDirective() => ('an export directive', 'Remove it: a unodar program is a single file.'),
+        PartDirective() || PartOfDirective() => ('a part directive', 'Remove it: a unodar program is a single file.'),
       };
-      if (problem != null) context.report(Diagnostics.unsupportedDeclaration(problem, context.at(directive)));
+      if (problem case (final what, final help)) {
+        context.report(Diagnostics.unsupportedDirective(what, help, context.at(directive)));
+      }
     }
   }
 }
@@ -226,7 +239,12 @@ final class DeclaredTypeRule implements ValidationRule {
     if (widgetClassOf(annotation?.type) != null) return; // E022 decides where a widget type may appear.
     if (isSignalType(annotation?.type)) return; // E024 decides where a signal type may appear (E009: its `T`).
     if (annotation != null) {
-      _annotation(annotation, context);
+      // `String name = 'Uno';` is one problem: the type. Its initializer is checked once the type is fixed.
+      if (!_annotation(annotation, context)) {
+        for (final variable in list.variables) {
+          if (variable.initializer case final initializer?) context.silence(initializer);
+        }
+      }
       return;
     }
     // `var x;`: no annotation and nothing to infer from, so the type is dynamic.
@@ -238,12 +256,14 @@ final class DeclaredTypeRule implements ValidationRule {
     }
   }
 
-  void _annotation(TypeAnnotation annotation, ValidationContext context, {bool allowVoid = false}) {
+  /// Reports [annotation]'s type if it is not supported; returns whether it is.
+  bool _annotation(TypeAnnotation annotation, ValidationContext context, {bool allowVoid = false}) {
     final type = annotation.type;
-    if (type == null || isObjectType(type) || widgetClassOf(type) != null || isSignalType(type)) return;
+    if (type == null || isObjectType(type) || widgetClassOf(type) != null || isSignalType(type)) return true;
     final irType = irTypeOf(type);
-    if (irType != null && (allowVoid || irType != IrType.void_)) return;
+    if (irType != null && (allowVoid || irType != IrType.void_)) return true;
     context.report(typeDiagnostic(type, context.at(annotation)));
+    return false;
   }
 }
 
@@ -251,5 +271,9 @@ final class DeclaredTypeRule implements ValidationRule {
 Diagnostic typeDiagnostic(DartType type, SourceLocation at, {bool isConditional = false}) {
   final display = displayType(type);
   if (isNullable(type)) return Diagnostics.nullableType(display, display.substring(0, display.length - 1), at);
+  if (type.isDartCoreString) return Diagnostics.stringType(at);
+  if (type.isDartCoreList || type.isDartCoreMap || type.isDartCoreSet || type.isDartCoreIterable) {
+    return Diagnostics.collectionType(display, at);
+  }
   return Diagnostics.unsupportedType(display, at, isConditional: isConditional);
 }

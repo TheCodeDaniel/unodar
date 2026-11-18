@@ -4,10 +4,19 @@ import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
 import '../compiler.dart';
+import '../toolchain/arduino_build.dart';
+import '../toolchain/doctor.dart';
+import '../toolchain/ports.dart';
+import '../toolchain/project.dart';
+import '../toolchain/setup.dart';
+import '../toolchain/toolchain.dart';
+import '../version.dart';
+import 'new_project.dart';
+import 'render.dart';
 
-/// Process exit codes (PRD §9.6).
+/// Process exit codes (PRD §9.6; 3 and 4 from Phase 7, see docs/DIAGNOSTICS.md "Exit codes").
 abstract final class ExitCodes {
-  /// The sketch compiled.
+  /// The command succeeded (`doctor`: everything is ready).
   static const success = 0;
 
   /// The user's Dart source has diagnostics.
@@ -15,28 +24,151 @@ abstract final class ExitCodes {
 
   /// Anything that is not a problem in the user's source: bad usage, unreadable input, I/O failure, compiler bug.
   static const tooling = 2;
+
+  /// The Arduino toolchain is missing, has the wrong version, or cannot run (`doctor` found a problem; a download
+  /// failed). The fix is `unodar setup`.
+  static const toolchain = 3;
+
+  /// The board: none found, several found without `--port`, the port busy or not permitted, or the upload failed.
+  static const board = 4;
 }
 
-const _usageHeader = '''
+/// What a command runs with: its output streams, the environment and the working directory (injectable so that
+/// tests run commands in-process against fake toolchains).
+final class CliContext {
+  const CliContext(
+      {required this.out,
+      required this.err,
+      required this.environment,
+      required this.workingDirectory,
+      this.color = false});
+
+  final StringSink out;
+  final StringSink err;
+  final Map<String, String> environment;
+  final String workingDirectory;
+
+  /// Whether diagnostics may use ANSI colours (stderr is a terminal and `NO_COLOR` is not set).
+  final bool color;
+
+  UnodarHome get home => UnodarHome.fromEnvironment(environment);
+
+  /// [path] relative to [workingDirectory].
+  String resolve(String path) => p.normalize(p.join(workingDirectory, path));
+}
+
+/// One subcommand.
+final class _Command {
+  const _Command(this.name, this.summary, this.usage, this.parser, this.run);
+
+  final String name;
+  final String summary;
+  final String usage;
+  final ArgParser Function() parser;
+  final Future<int> Function(ArgResults args, CliContext context) run;
+}
+
+const _plainHelp = 'Print diagnostics as `file:line:col: error[Exxx]: message` and `= help:` lines only (no source '
+    'line, link or colour), e.g. for scripts and editors.';
+
+ArgParser _withHelp(ArgParser parser) => parser..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
+
+final _commands = [
+  _Command(
+    'build',
+    'Compile a Dart program to C++ (<outdir>/<name>/<name>.ino) and build it for the Uno',
+    'unodar build [<file.dart>] [-o <outdir>] [--cpp-only]',
+    () => _withHelp(ArgParser()
+      ..addOption('output',
+          abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')
+      ..addFlag('cpp-only',
+          negatable: false, help: 'Only write the C++; do not build it with arduino-cli (needs no toolchain).')
+      ..addFlag('plain', negatable: false, help: _plainHelp)),
+    _build,
+  ),
+  _Command(
+    'doctor',
+    'Check the Arduino toolchain and say how to fix what is missing',
+    'unodar doctor [--dev]',
+    () => _withHelp(ArgParser()
+      ..addFlag('dev',
+          negatable: false, help: 'Also check what contributors need: Node.js and the avr8js runner of the tests.')),
+    _doctor,
+  ),
+  _Command(
+    'flash',
+    'Build a Dart program and upload it to the Uno plugged in',
+    'unodar flash [<file.dart>] [--port <port>] [-o <outdir>]',
+    () => _withHelp(ArgParser()
+      ..addOption('port',
+          abbr: 'p',
+          valueHelp: 'port',
+          help: 'The serial port of the board, e.g. /dev/cu.usbmodem1101 or /dev/ttyACM0. Without it, unodar uploads '
+              'to the one port identified as an Arduino Uno.')
+      ..addOption('output',
+          abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')
+      ..addFlag('plain', negatable: false, help: _plainHelp)),
+    _flash,
+  ),
+  _Command(
+    'new',
+    'Create a project folder with a main.dart that blinks the LED on the board',
+    'unodar new <name> [--no-pub]',
+    () => _withHelp(ArgParser()
+      ..addFlag('pub', defaultsTo: true, help: 'Run `dart pub get` in the new project.')
+      ..addOption('unodar-path',
+          valueHelp: 'dir',
+          hide: true,
+          help: 'Depend on package:unodar in this folder (a checkout\'s packages/unodar) instead of the release tag.')),
+    _new,
+  ),
+  _Command(
+    'setup',
+    'Install the tested Arduino toolchain into ~/.unodar (safe to re-run)',
+    'unodar setup [--dev]',
+    () => _withHelp(ArgParser()
+      ..addFlag('dev',
+          negatable: false,
+          help: 'Also install what the tests of a unodar checkout need (npm ci in tool/avr_runner; Node.js itself is '
+              'yours to install).')),
+    _setup,
+  ),
+];
+
+String get _usageHeader => '''
 unodar: compile Flutter-style Dart to Arduino C++ (experimental).
 
 Usage: unodar <command> [arguments]
 
 Commands:
-  build    Compile a Dart sketch to <outdir>/<name>/<name>.ino
+${_commands.map((c) => '  ${c.name.padRight(8)} ${c.summary}').join('\n')}
 
-Run "unodar build --help" for command options.''';
+Options:
+  -h, --help       Show this help.
+      --version    Print the version of unodar.
 
-ArgParser _globalParser() => ArgParser()..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
+Run "unodar <command> --help" for command options.''';
 
-ArgParser _buildParser() => ArgParser()
-  ..addOption('output',
-      abbr: 'o', valueHelp: 'outdir', defaultsTo: 'build', help: 'Directory to write the sketch into.')
-  ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
+ArgParser _globalParser() => ArgParser()
+  ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.')
+  ..addFlag('version', negatable: false, help: 'Print the version of unodar.');
 
 /// Entry point for the `unodar` CLI. Returns the process exit code; writes only to [out] and [err] so tests can run
-/// it in-process. `bin/unodar.dart` wires these to stdout/stderr.
-Future<int> runCli(List<String> arguments, {required StringSink out, required StringSink err}) async {
+/// it in-process. `bin/unodar.dart` wires these to stdout/stderr. [environment] and [workingDirectory] default to
+/// the process's own.
+Future<int> runCli(List<String> arguments,
+    {required StringSink out,
+    required StringSink err,
+    Map<String, String>? environment,
+    String? workingDirectory,
+    bool color = false}) async {
+  final env = environment ?? Platform.environment;
+  final context = CliContext(
+      out: out,
+      err: err,
+      environment: env,
+      workingDirectory: workingDirectory ?? Directory.current.path,
+      color: color && !env.containsKey('NO_COLOR'));
   try {
     final global = _globalParser();
     final ArgResults top;
@@ -48,13 +180,34 @@ Future<int> runCli(List<String> arguments, {required StringSink out, required St
         out.writeln(_usageHeader);
         return ExitCodes.success;
       }
+      if (top.flag('version')) {
+        out.writeln('unodar $unodarVersion');
+        return ExitCodes.success;
+      }
       if (commandIndex == -1) return _usageError(err, 'missing command.');
-      final command = arguments[commandIndex];
-      final rest = arguments.sublist(commandIndex + 1);
-      return switch (command) {
-        'build' => await _build(rest, out: out, err: err),
-        _ => _usageError(err, 'unknown command "$command".'),
-      };
+      final name = arguments[commandIndex];
+      final command = _commands.where((c) => c.name == name).firstOrNull;
+      if (command == null) return _usageError(err, 'unknown command "$name".');
+      final parser = command.parser();
+      final ArgResults args;
+      try {
+        args = parser.parse(arguments.sublist(commandIndex + 1));
+      } on FormatException catch (e) {
+        return _commandUsageError(err, command, parser, e.message);
+      }
+      if (args.flag('help')) {
+        out
+          ..writeln('${command.summary}.')
+          ..writeln()
+          ..writeln('Usage: ${command.usage}')
+          ..writeln()
+          ..writeln(parser.usage);
+        return ExitCodes.success;
+      }
+      return await command.run(args, context);
+    } on _UsageException catch (e) {
+      final command = _commands.firstWhere((c) => c.name == e.command);
+      return _commandUsageError(err, command, command.parser(), e.message);
     } on FormatException catch (e) {
       return _usageError(err, e.message);
     }
@@ -62,10 +215,20 @@ Future<int> runCli(List<String> arguments, {required StringSink out, required St
     // A crash here is a compiler bug, never the user's fault: say so and exit with the tooling code.
     err
       ..writeln('internal error: $e')
-      ..writeln('This is a bug in unodar. Please report it with the input file and this trace:')
+      ..writeln('This is a bug in unodar. Please report it at $issuesUrl with the input file and this trace:')
       ..writeln(stack);
     return ExitCodes.tooling;
   }
+}
+
+/// Where bugs are reported.
+const issuesUrl = 'https://github.com/TheCodeDaniel/unodar/issues';
+
+final class _UsageException implements Exception {
+  const _UsageException(this.command, this.message);
+
+  final String command;
+  final String message;
 }
 
 int _usageError(StringSink err, String message) {
@@ -76,47 +239,209 @@ int _usageError(StringSink err, String message) {
   return ExitCodes.tooling;
 }
 
-Future<int> _build(List<String> arguments, {required StringSink out, required StringSink err}) async {
-  final parser = _buildParser();
-  final ArgResults args;
-  try {
-    args = parser.parse(arguments);
-  } on FormatException catch (e) {
-    return _buildUsageError(err, parser, e.message);
-  }
-  if (args.flag('help')) {
-    out
-      ..writeln('Compile a Dart sketch to Arduino C++.')
-      ..writeln()
-      ..writeln('Usage: unodar build <file.dart> [-o <outdir>]')
-      ..writeln()
-      ..writeln(parser.usage);
-    return ExitCodes.success;
-  }
-  if (args.rest.length != 1) return _buildUsageError(err, parser, 'expected exactly one <file.dart>.');
+int _commandUsageError(StringSink err, _Command command, ArgParser parser, String message) {
+  err
+    ..writeln('error: $message')
+    ..writeln()
+    ..writeln('Usage: ${command.usage}')
+    ..writeln(parser.usage);
+  return ExitCodes.tooling;
+}
 
-  final input = args.rest.single;
-  switch (await Compiler().compile(input)) {
-    case final CompileSuccess result:
-      final String ino;
-      try {
-        ino = writeSketch(args.option('output')!, p.basenameWithoutExtension(input), result);
-      } on FileSystemException catch (e) {
-        err.writeln('error: could not write ${e.path ?? args.option('output')}: ${e.osError?.message ?? e.message}');
-        return ExitCodes.tooling;
-      }
-      out.writeln(ino);
-      return ExitCodes.success;
+Future<int> _build(ArgResults args, CliContext context) async =>
+    (await buildProgram(args, context, cppOnly: args.flag('cpp-only'))).exitCode;
+
+/// What [buildProgram] produced: the exit code, and on success the sketch folder and arduino-cli's build folder.
+typedef BuiltProgram = ({int exitCode, String? sketchFolder, String? buildPath, ArduinoCli? cli});
+
+/// `unodar build`, also the first half of `flash`: Dart to C++ (diagnostics are exit 1), the sketch written to
+/// `<outdir>/<name>/`, then, unless [cppOnly], `arduino-cli compile` with `-fwrapv` into `<outdir>/.build/<name>`
+/// and the size line. The input defaults to `main.dart` in the working directory.
+Future<BuiltProgram> buildProgram(ArgResults args, CliContext context,
+    {required bool cppOnly, String command = 'build'}) async {
+  if (args.rest.length > 1) throw _UsageException(command, 'expected at most one <file.dart>.');
+  final input = args.rest.isEmpty ? 'main.dart' : args.rest.single;
+  final err = context.err;
+  if (unodarVersionProblem(p.dirname(context.resolve(input))) case final problem?) {
+    err.writeln('error: $problem');
+    return (exitCode: ExitCodes.toolchain, sketchFolder: null, buildPath: null, cli: null);
+  }
+  final CompileSuccess result;
+  switch (await Compiler().compile(context.resolve(input))) {
+    case final CompileSuccess success:
+      result = success;
     case CompileFailure(:final diagnostics):
+      final plain = args.flag('plain');
+      String? source;
+      try {
+        source = File(context.resolve(input)).readAsStringSync();
+      } on FileSystemException {
+        source = null;
+      }
       for (final diagnostic in diagnostics) {
-        err.writeln(diagnostic.format());
+        err.writeln(plain ? diagnostic.format() : renderDiagnostic(diagnostic, source: source, color: context.color));
+        if (!plain) err.writeln();
       }
       err.writeln('${diagnostics.length} ${diagnostics.length == 1 ? 'error' : 'errors'}.');
-      return ExitCodes.diagnostics;
+      return (exitCode: ExitCodes.diagnostics, sketchFolder: null, buildPath: null, cli: null);
     case CompileInputError(:final message):
       err.writeln('error: $message');
-      return ExitCodes.tooling;
+      return (exitCode: ExitCodes.tooling, sketchFolder: null, buildPath: null, cli: null);
   }
+  final output = args.option('output')!;
+  final name = p.basenameWithoutExtension(input);
+  final String ino;
+  try {
+    ino = writeSketch(context.resolve(output), name, result);
+  } on FileSystemException catch (e) {
+    err.writeln('error: could not write ${e.path ?? output}: ${e.osError?.message ?? e.message}');
+    return (exitCode: ExitCodes.tooling, sketchFolder: null, buildPath: null, cli: null);
+  }
+  // Printed as given: relative to the working directory when `-o` was relative.
+  context.out.writeln(p.isAbsolute(output) ? ino : p.relative(ino, from: context.workingDirectory));
+  if (cppOnly) return (exitCode: ExitCodes.success, sketchFolder: p.dirname(ino), buildPath: null, cli: null);
+
+  final ArduinoCli cli;
+  switch (locateToolchain(home: context.home, environment: context.environment)) {
+    case ToolchainFound(cli: final found):
+      cli = found;
+    case final ToolchainNotFound missing:
+      err
+        ..writeln('error: ${missing.message}')
+        ..writeln('(`unodar build --cpp-only` writes only the C++, which needs no toolchain.)');
+      return (exitCode: ExitCodes.toolchain, sketchFolder: p.dirname(ino), buildPath: null, cli: null);
+  }
+  final buildPath = p.join(context.resolve(output), '.build', name);
+  final compiled = await compileSketchFolder(cli, sketchFolder: p.dirname(ino), buildPath: buildPath);
+  if (!compiled.success) {
+    err
+      ..writeln(compiled.errors)
+      ..writeln();
+    if (result.bringsOwnCpp) {
+      err.writeln('error: the C++ did not compile. This program contains C++ of its own (`cpp(…)`, `@CppInclude` or a '
+          'binding class), so check that first; the locations above point into your Dart file.');
+      return (exitCode: ExitCodes.diagnostics, sketchFolder: p.dirname(ino), buildPath: null, cli: cli);
+    }
+    err.writeln('error: the C++ that unodar generated does not compile. This is a bug in unodar. Please report it at '
+        '$issuesUrl with your Dart file and the sketch folder ${p.dirname(ino)}.');
+    return (exitCode: ExitCodes.tooling, sketchFolder: p.dirname(ino), buildPath: null, cli: cli);
+  }
+  context.out.writeln(compiled.sizeLine);
+  return (exitCode: ExitCodes.success, sketchFolder: p.dirname(ino), buildPath: buildPath, cli: cli);
+}
+
+Future<int> _flash(ArgResults args, CliContext context) async {
+  final built = await buildProgram(args, context, cppOnly: false, command: 'flash');
+  if (built.exitCode != ExitCodes.success) return built.exitCode;
+  final cli = built.cli!;
+  final err = context.err;
+  var port = args.option('port');
+  if (port == null) {
+    final listed = await cli.run(['board', 'list', '--format', 'json']);
+    if (listed.exitCode != 0) {
+      err.writeln('error: `arduino-cli board list` failed: ${'${listed.stderr}'.trim()}');
+      return ExitCodes.board;
+    }
+    switch (choosePort(parseBoardList('${listed.stdout}'))) {
+      case PortChosen(:final address):
+        port = address;
+      case final problem:
+        err.writeln('error: ${portProblem(problem, command: 'unodar flash', os: Platform.operatingSystem)}');
+        return ExitCodes.board;
+    }
+  }
+  context.out.writeln('Uploading to $port...');
+  final upload =
+      await cli.run(['upload', '--fqbn', 'arduino:avr:uno', '--port', port, '--input-dir', built.buildPath!]);
+  if (upload.exitCode != 0) {
+    final output = '${upload.stderr}\n${upload.stdout}'.trim();
+    err
+      ..writeln(output)
+      ..writeln()
+      ..writeln('error: ${uploadProblem(output, port)}');
+    return ExitCodes.board;
+  }
+  context.out.writeln('Done: the program is running on the board.');
+  return ExitCodes.success;
+}
+
+/// What to tell the user about a failed upload, from avrdude's and arduino-cli's output.
+String uploadProblem(String output, String port) {
+  final text = output.toLowerCase();
+  if (text.contains('resource busy') || text.contains('access is denied') || text.contains('port busy')) {
+    return 'the port $port is busy: close any serial monitor (or the Arduino IDE) that has it open, and try again.';
+  }
+  if (text.contains('permission denied')) {
+    return 'you may not open $port. On Linux, add yourself to the dialout group (`sudo usermod -aG dialout \$USER`, '
+        'then log out and in), or see `unodar doctor`.';
+  }
+  if (text.contains('no such file') || text.contains('not found') || text.contains('cannot find')) {
+    return 'there is no port $port (any more). Plug the board in and check the port with `unodar doctor`.';
+  }
+  if (text.contains('not in sync') || text.contains('programmer is not responding') || text.contains('timeout')) {
+    return 'the board on $port did not answer. Check that it is an Arduino Uno (or a clone with the Uno '
+        'bootloader), that nothing is wired to pins 0 and 1 during the upload, and try again.';
+  }
+  return 'the upload to $port failed (output above).';
+}
+
+Future<int> _new(ArgResults args, CliContext context) async {
+  if (args.rest.length != 1) throw const _UsageException('new', 'expected the name of the new project.');
+  final directory = context.resolve(args.rest.single);
+  final name = p.basename(directory);
+  final err = context.err;
+  if (!isPackageName(name)) {
+    err.writeln("error: '$name' cannot be a project name: use lower-case letters, digits and underscores, starting "
+        'with a letter (a Dart package name), e.g. `unodar new blink_test`.');
+    return ExitCodes.tooling;
+  }
+  final existing = Directory(directory);
+  if (existing.existsSync() && existing.listSync().isNotEmpty) {
+    err.writeln('error: ${args.rest.single} already exists and is not empty; choose another name.');
+    return ExitCodes.tooling;
+  }
+  final unodarPath = args.option('unodar-path');
+  final files = writeNewProject(directory, unodarPath: unodarPath == null ? null : context.resolve(unodarPath));
+  context.out.writeln('Created ${args.rest.single}/ with ${files.join(', ')}.');
+  if (args.flag('pub')) {
+    context.out.writeln('Running `dart pub get`...');
+    final pub = await Process.run(Platform.resolvedExecutable, ['pub', 'get'], workingDirectory: directory);
+    if (pub.exitCode != 0) {
+      err
+        ..writeln('${pub.stderr}${pub.stdout}'.trim())
+        ..writeln('error: `dart pub get` failed in ${args.rest.single}; fix the problem above and run it there again.');
+      return ExitCodes.tooling;
+    }
+  }
+  context.out
+    ..writeln()
+    ..writeln('Next:')
+    ..writeln('  cd ${args.rest.single}')
+    ..writeln('  unodar flash      # with the Uno plugged in; `unodar build` only builds');
+  return ExitCodes.success;
+}
+
+Future<int> _doctor(ArgResults args, CliContext context) async {
+  final dev = args.flag('dev');
+  final checks = runDoctor(
+      home: context.home,
+      environment: context.environment,
+      dev: dev,
+      checkout: dev ? findCheckout(context.workingDirectory) : null,
+      project: context.workingDirectory);
+  context.out.writeln(renderDoctor(checks));
+  return checks.any((c) => c.status == CheckStatus.problem) ? ExitCodes.toolchain : ExitCodes.success;
+}
+
+Future<int> _setup(ArgResults args, CliContext context) {
+  final dev = args.flag('dev');
+  return runSetup(
+      home: context.home,
+      environment: context.environment,
+      out: context.out,
+      err: context.err,
+      dev: dev,
+      checkout: dev ? findCheckout(context.workingDirectory) : null);
 }
 
 /// Writes [result] as `<outDir>/<name>/<name>.ino` (arduino-cli requires the sketch folder and the `.ino` to share a
@@ -130,13 +455,4 @@ String writeSketch(String outDir, String name, CompileSuccess result) {
     File(p.join(folder.path, fileName)).writeAsStringSync(contents, flush: true);
   }
   return ino.path;
-}
-
-int _buildUsageError(StringSink err, ArgParser parser, String message) {
-  err
-    ..writeln('error: $message')
-    ..writeln()
-    ..writeln('Usage: unodar build <file.dart> [-o <outdir>]')
-    ..writeln(parser.usage);
-  return ExitCodes.tooling;
 }

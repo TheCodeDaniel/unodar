@@ -44,7 +44,10 @@ void main() {
 
   test('every global name of the installed Arduino AVR core is reserved', () async {
     gate.check();
-    final run = await Process.run(fromPackage('..', '..', 'tool', 'extract_arduino_names.sh'), const []);
+    final run = await Process.run(fromPackage('..', '..', 'tool', 'extract_arduino_names.sh'), const [], environment: {
+      'ARDUINO_CLI': testCli!.executable,
+      if (testCli!.configFile != null) 'ARDUINO_CLI_CONFIG': testCli!.configFile!,
+    });
     expect(run.exitCode, 0, reason: '${run.stderr}');
     final names = (run.stdout as String).split('\n').where((n) => n.isNotEmpty).toList();
     expect(names.length, greaterThan(500), reason: 'the extraction found suspiciously few names');

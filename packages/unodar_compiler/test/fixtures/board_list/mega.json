@@ -1,0 +1,6 @@
+{
+  "detected_ports": [
+    {"matching_boards": [{"name": "Arduino Mega or Mega 2560", "fqbn": "arduino:avr:mega"}], "port": {"address": "/dev/ttyACM0", "label": "/dev/ttyACM0", "protocol": "serial", "protocol_label": "Serial Port (USB)", "properties": {"pid": "0x0042", "vid": "0x2341"}}},
+    {"port": {"address": "192.168.1.20", "label": "esp32 at 192.168.1.20", "protocol": "network", "protocol_label": "Network Port", "properties": {}}}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "detected_ports": [
+    {"matching_boards": [{"name": "Arduino Uno", "fqbn": "arduino:avr:uno"}], "port": {"address": "/dev/ttyACM0", "label": "/dev/ttyACM0", "protocol": "serial", "protocol_label": "Serial Port (USB)", "properties": {"pid": "0x0043", "vid": "0x2341"}}},
+    {"matching_boards": [{"name": "Arduino Uno", "fqbn": "arduino:avr:uno"}], "port": {"address": "/dev/ttyACM1", "label": "/dev/ttyACM1", "protocol": "serial", "protocol_label": "Serial Port (USB)", "properties": {"pid": "0x0001", "vid": "0x2341"}}}
+  ]
+}

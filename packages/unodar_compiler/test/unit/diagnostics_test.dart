@@ -13,7 +13,7 @@ void main() {
         "blink.dart:5:3: error[E003]: unknown function 'tone': it is neither declared in this file nor part of the "
         'unodar API.\n'
         '  = help: Declare the function in this file, or call the Arduino function through the escape hatch, e.g. '
-        "`cpp('tone(8, 440);');`. See docs/SUBSET.md for the unodar API.",
+        "`cpp('tone(8, 440);');`. See the subset guide (docs/SUBSET.md on GitHub) for the unodar API.",
       );
     });
   });

@@ -11,4 +11,4 @@ input.dart:29:5: error[E002]: a labeled case is not supported in this version.
 input.dart:33:3: error[E002]: a switch on a 'double' value is not supported in this version.
   = help: Switch on an int or an enum value, or use `if` / `else if`.
 input.dart:37:16: error[E002]: a switch expression is not supported in this version.
-  = help: See docs/SUBSET.md for the supported statements and expressions.
+  = help: See the subset guide (docs/SUBSET.md on GitHub) for the supported statements and expressions.

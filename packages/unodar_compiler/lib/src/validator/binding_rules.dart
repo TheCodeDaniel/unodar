@@ -144,7 +144,7 @@ bool _isPrintSignature(MethodDeclaration method) {
     ExecutableElement executable, List<FormalParameter> parameters, Target target, bool hasTypeParameters) {
   final problems = <String>[];
   var help = 'Use the supported types (int, double, bool, Uint8, Uint16, Int16) and an accepted @CppType; see '
-      '"Binding C++ classes" in docs/SUBSET.md.';
+      '"Binding C++ classes" in the subset guide (docs/SUBSET.md on GitHub).';
   if (hasTypeParameters) problems.add('type parameters');
   final optional = parameters.where((p) => p.isOptionalPositional).toList();
   if (optional.isNotEmpty) {
@@ -334,7 +334,10 @@ final class _AnnotationPlacement extends RecursiveAstVisitor<void> {
     // An unaccepted @CppType on a valid binding member is listed with that member's other problems instead.
     if (name == 'CppType') return;
     context.report(Diagnostics.annotationArgument(
-        name, problem, "Use a value like `@$name('${_example[name]}')`; see docs/SUBSET.md.", context.at(node)));
+        name,
+        problem,
+        "Use a value like `@$name('${_example[name]}')`; see the subset guide (docs/SUBSET.md on GitHub).",
+        context.at(node)));
   }
 
   static bool _isBindingMethod(AstNode? node) =>

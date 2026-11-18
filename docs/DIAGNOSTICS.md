@@ -10,13 +10,36 @@ the text shown. Every diagnostic has a stable code, a severity, a `file:line:col
 
 The file is the source's base name. Diagnostics are printed in source order, followed by a count line (`2 errors.`).
 
+In a terminal, `unodar build` and `unodar flash` also show the source line with a caret under the column, and a link
+to the code's section of this file at the compiler's release tag, with colour unless `NO_COLOR` is set:
+
+```text
+main.dart:5:17: error[E022]: pin A4 (18) is already used by Wire (SDA), which this program uses.
+  |
+5 | final sda = Led(pin: A4);
+  |                 ^
+  = help: Use another pin: Wire takes pins A4 (SDA) and A5 (SCL).
+  = see: https://github.com/TheCodeDaniel/unodar/blob/v0.7.0/docs/DIAGNOSTICS.md#e022-widget-rules
+```
+
+`--plain` prints only the two lines above per diagnostic, which is what the examples below show and what scripts and
+editors should parse.
+
+Golden tests named `newcomer_*` hold first attempts by a Flutter developer who has not read these docs (Dart's
+`print`, a Flutter import, `async`, a `String` variable, …). Each must give exactly one diagnostic whose help says
+what to write instead.
+
 ## Exit codes
+
+Every `unodar` command uses the same codes:
 
 | Code | Meaning |
 |---|---|
-| 0 | Success: the sketch was written. |
-| 1 | Diagnostics: fix your Dart source. |
-| 2 | Tooling error: bad command-line usage, unreadable input, unwritable output, or an internal compiler error. |
+| 0 | Success: the sketch was written (`doctor`: everything is ready). |
+| 1 | Diagnostics: fix your Dart source (or, when `build` reports a C++ error in a program with C++ of its own, `cpp(…)`, `@CppInclude` or a binding class, that C++). |
+| 2 | Tooling error: bad command-line usage, unreadable input, unwritable output, or an internal compiler error (including generated C++ that does not compile: please report it). |
+| 3 | Toolchain not ready: arduino-cli, the `arduino:avr` core or a pinned library is missing, has another version, or cannot run (`doctor` found a problem). Run `unodar setup`. |
+| 4 | Board: none found, several found without `--port`, the port is busy or not permitted, or the upload failed. |
 
 ## E001: Missing required `setup()` or `loop()`
 
@@ -88,7 +111,9 @@ unodar reports E003 instead when the call is a statement of its own) and method 
 method that the binding does not declare is a Dart error (E007). A widget method that `package:unodar` declares
 but this compiler version does not support yet is E003 too ("the Led method '…' is not supported in this
 version"). The suggestion points to the escape hatch,
-`cpp('…')`, for Arduino functions unodar does not wrap yet.
+`cpp('…')`, for Arduino functions unodar does not wrap yet. Dart's `print` and `debugPrint` and Flutter's `setState`
+get their own message and help (`Serial.println`; a `Signal`). The arguments of an unknown call are not checked:
+the call is wrong as a whole (`print('hi')` is one diagnostic, not also one for the string literal).
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -104,10 +129,10 @@ void loop() {
 
 ```text
 input.dart:8:3: error[E003]: unknown function 'tone': it is neither declared in this file nor part of the unodar API.
-  = help: Declare the function in this file, or call the Arduino function through the escape hatch, e.g. `cpp('tone(8, 440);');`. See docs/SUBSET.md for the unodar API.
+  = help: Declare the function in this file, or call the Arduino function through the escape hatch, e.g. `cpp('tone(8, 440);');`. See the subset guide (docs/SUBSET.md on GitHub) for the unodar API.
 ```
 
-(Golden tests: `test/golden/e003_unknown_function`, `e003_method_call`.)
+(Golden tests: `test/golden/e003_unknown_function`, `e003_method_call`, `newcomer_print`, `newcomer_set_state`.)
 
 ## E004: Unsupported argument
 
@@ -160,7 +185,10 @@ Top-level functions and variables are supported, and so are your own classes and
 E028), binding classes (annotated `@CppClass`, checked by E017) and `external` objects of a binding type.
 Extensions, extension types, typedefs, and top-level getters/setters are not, nor are `late` variables or `external` variables of any
 other type. Also used for directives: any import other than an unprefixed `package:unodar/unodar.dart` or one of unodar's
-library wrappers (`package:unodar/eeprom.dart`), including `package:unodar/src/…`, and `export`/`part`.
+library wrappers (`package:unodar/eeprom.dart`), including `package:unodar/src/…`, Flutter, `dart:` libraries and
+packages that do not resolve, and `export`/`part`. A rejected import is reported **alone**, before anything else is
+checked: what it would have provided does not exist, so every use of it would only repeat the problem (an import of
+`package:flutter/material.dart` gives one diagnostic, not one per widget).
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -178,12 +206,13 @@ void loop() {}
 
 ```text
 input.dart:3:1: error[E005]: an extension is not supported in this version. Only top-level functions, variables, classes, enums, and binding classes may be declared.
-  = help: Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.
+  = help: Remove this declaration; see the subset guide (docs/SUBSET.md on GitHub) for what may be declared at the top level.
 input.dart:7:1: error[E005]: a late variable ('ledPin') is not supported in this version. Only top-level functions, variables, classes, enums, and binding classes may be declared.
   = help: Remove `late` and give the variable a constant initializer.
 ```
 
-(Golden tests: `test/golden/e005_extension`, `e005_import`, `e005_other_declarations`, `e005_unodar_src_import`.)
+(Golden tests: `test/golden/e005_extension`, `e005_import`, `e005_other_declarations`, `e005_unodar_src_import`,
+`e005_unresolved_import`, `newcomer_flutter_import`, `newcomer_dart_async`.)
 
 ## E006: Invalid `setup`/`loop` signature
 
@@ -210,7 +239,8 @@ input.dart:7:1: error[E006]: invalid signature for 'loop': it has no return type
 
 ## E007: Dart analysis error in the source file
 
-Any analyzer *error* (warnings and hints are ignored): type errors, syntax errors, unresolved imports. When any E007 is present, compilation stops before the subset checks, because a broken AST produces misleading follow-on diagnostics.
+Any analyzer *error* (warnings and hints are ignored): type errors, syntax errors, an unresolved `package:unodar/…`
+import (any other unsupported import is E005). When any E007 is present, compilation stops before the subset checks, because a broken AST produces misleading follow-on diagnostics.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -235,7 +265,8 @@ input.dart:4:15: error[E007]: Dart analysis error: The argument type 'String' ca
 `void main() { runDevice(Device(…)); }`. The compiler reads that call statically and never compiles `main()`
 itself, so anything else is rejected: other statements or calls, parameters, a return type other than `void`,
 `async`, or a `runDevice` argument that is not a `Device(…)` constructor call. To write code that runs once and
-then in a loop, use `setup()` and `loop()` instead.
+then in a loop, use `setup()` and `loop()` instead. An `async` `main()`, or one returning a `Future`, gets its own
+message: the board has no event loop, so there is no `async`, `await` or `Future`.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -253,7 +284,7 @@ input.dart:3:6: error[E008]: unsupported main(): it may only contain a single `r
 A file whose `main()` is rejected is neither a widget program nor a plain sketch, so its `setup()`/`loop()` and its
 widgets are not checked further until `main()` is fixed.
 
-(Golden tests: `test/golden/e008_main`, `e008_main_shapes`.)
+(Golden tests: `test/golden/e008_main`, `e008_main_shapes`, `newcomer_async_main`.)
 
 
 ## E009: Unsupported type
@@ -264,7 +295,9 @@ declared types (variables, parameters, return types) and for the inferred static
 `Serial.print`/`println`; any other type passed there is rejected too. Binding types outside a top-level `final`
 are E018 instead. Signal type arguments follow the same list: `Signal<String>`, `Signal<num>`, `Signal<int?>` are
 E009. Printing an enum value is E009 too (print its `.index`), and so is `Signal<C>` of a class `C`. Nullable
-types get their own wording. Also used for `==`/`!=` between a
+types get their own wording, and so do `String` (it would need the heap) and collections (`List`, `Map`, `Set`,
+`Iterable`). A variable whose declared type is rejected is reported once, at the type: its initializer is checked
+once the type is fixed (`String name = 'Uno';` is one diagnostic). Also used for `==`/`!=` between a
 `bool` and a number: Dart says they are never equal, C++ says `true == 1`.
 
 ```dart
@@ -287,7 +320,7 @@ input.dart:8:17: error[E009]: the type 'num' is not supported in this version. O
 ```
 
 (Golden tests: `test/golden/e009_nullable_type`, `e009_unsupported_type`, `e009_types`,
-`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`, `e009_watch_parameter`, `e009_field_types`.)
+`e009_bool_number_comparison`, `e009_string_variable`, `e009_signal_type`, `e009_watch_parameter`, `e009_field_types`, `newcomer_string_variable`, `newcomer_list`.)
 
 ## E010: Constant out of range
 
@@ -310,7 +343,7 @@ void loop() {
 
 ```text
 input.dart:6:9: error[E010]: this constant expression computes 3600000000, which is outside the 32-bit int range (-2147483648 to 2147483647).
-  = help: unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in docs/SUBSET.md.
+  = help: unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in the subset guide (docs/SUBSET.md on GitHub).
 input.dart:7:9: error[E010]: this constant expression divides by zero.
   = help: Use a divisor that is not zero.
 ```
@@ -590,9 +623,9 @@ void loop() {}
 ```
 
 ```text
-input.dart:3:5: error[E018]: the bound object 'servo' must be declared `final`.
+input.dart:3:5: error[E018]: the C++ object 'servo' must be declared `final`.
   = help: Write `final servo = Servo();`. C++ objects are created once, as global variables.
-input.dart:5:13: error[E018]: a parameter of the binding type 'Servo' is not supported. Bound objects can only be top-level `final` variables.
+input.dart:5:13: error[E018]: a parameter of the type 'Servo' (a C++ class) is not supported. Its objects can only be top-level `final` variables.
   = help: Use the top-level object directly instead of passing it around.
 ```
 
@@ -686,7 +719,10 @@ anywhere else (a local variable, inside a callback, a non-`final` variable) it i
 compile-time constants: the pin like any constant, the interval a `Duration(…)` with constant arguments adding up
 to a whole number of milliseconds from 1 to 2147483647. Each pin belongs to one widget, or to one top-level bound
 object whose constructor marks it `@CppPin`, or to an external object the program uses that declares it with
-`@CppUsesPins` (`SPI` takes pins 10 to 13: "pin 13 is already used by SPI (SCK), which this program uses"). Every top-level widget is
+`@CppUsesPins` (`SPI` takes pins 10 to 13: "pin 13 is already used by SPI (SCK), which this program uses"), `Wire`
+takes A4 and A5, and `Serial` takes pins 0 and 1 in a program that names it (the DHT wrapper links `Serial` but never opens it, so it does
+not count). Two such objects that one program uses may not take the same pin either ("pins 12 and 13 are taken by
+both SPI and display"), reported once per pair at the first use of the object used later. Every top-level widget is
 listed in `children` exactly once, or it would never be set up and polled (a `Watch`, which has nothing to set up
 or poll, would never run when its signal changes, and its message says so). A top-level widget's callback may only
 use widgets declared above it. A widget handle can only be listed in `children` or used to call its methods
@@ -718,7 +754,7 @@ input.dart:6:23: error[E022]: pin 2 is already used by 'alarm' (line 5).
 
 (Golden tests: `test/golden/e022_constant_arguments`, `e022_pins`, `e022_children`, `e022_placement`,
 `e022_declaration_order`, `e022_handle_uses`, `e022_durations`, `e022_watch`, `e022_bound_led`, `e022_on_start`,
-`e022_binding_pins`, `e022_spi_pins`.)
+`e022_binding_pins`, `e022_spi_pins`, `e022_serial_pins`, `e022_wire_pins`, `e022_object_pins`.)
 
 ## E023: `delay()` in a widget callback
 
@@ -829,7 +865,7 @@ void main() => runDevice(
 ```
 
 ```text
-input.dart:6:3: error[E025]: this write closes a cycle: Watch(count) → bump() → count, so the Watch would run again after every delivery.
+input.dart:6:3: error[E025]: this write closes a cycle: Watch(count) → bump() → count, so the Watch would run again after every loop() pass.
   = help: Write 'count' where the change starts, e.g. in a Button callback, or derive the value with a Computed.
 ```
 
@@ -890,7 +926,10 @@ Objects are statically allocated and created before `setup()`, so a constructor 
 constructor body would run before Arduino's `init()`, where Dart would run it when the object is first used.
 Inheritance is rejected because faithful virtual dispatch needs vtables, which AVR copies into RAM; composition
 (a field holding another object) gives the reuse. A class with a problem is reported once per problem; the
-problems of a class that extends another are reported only once, at `extends`.
+problems of a class that extends another are reported only once, at `extends`. A class that extends Flutter's
+`StatelessWidget`, `StatefulWidget`, `State`, `InheritedWidget` or `ChangeNotifier` gets its own message (unodar
+widgets are not Flutter widgets), and the Dart errors inside it (`BuildContext` is undefined without Flutter) are not
+reported.
 
 ```dart
 import 'package:unodar/unodar.dart';
@@ -918,7 +957,8 @@ input.dart:10:19: error[E027]: a class cannot extend another class in this versi
   = help: Give 'FastBlinker' a field of type 'Blinker' instead (composition), or merge the two classes.
 ```
 
-(Golden tests: `test/golden/e027_class_header`, `e027_constructors`, `e027_members`, `e027_composition`.)
+(Golden tests: `test/golden/e027_class_header`, `e027_constructors`, `e027_members`, `e027_composition`,
+`newcomer_stateless_widget`.)
 
 ## E028: Enum rules
 

@@ -26,15 +26,31 @@ abstract final class Diagnostics {
 
   /// [cppExample] is the call as C++ text for the escape-hatch hint (`tone(8, 440)`), or null for a method call on
   /// a Dart value, which has no C++ equivalent.
-  static Diagnostic unknownFunction(String name, String? cppExample, SourceLocation at) => Diagnostic(
+  static Diagnostic unknownFunction(String name, String? cppExample, SourceLocation at, {bool isMethod = false}) =>
+      Diagnostic(
         code: DiagnosticCode.unknownFunction,
         location: at,
         message: "unknown function '$name': it is neither declared in this file nor part of the unodar API.",
-        suggestion: cppExample == null
+        suggestion: isMethod
             ? 'Methods of numbers and other Dart values are not supported; use operators or a function declared in '
-                'this file. See docs/SUBSET.md for the unodar API.'
+                'this file. See the subset guide (docs/SUBSET.md on GitHub) for the unodar API.'
             : 'Declare the function in this file, or call the Arduino function through the escape hatch, e.g. '
-                "`cpp('$cppExample;');`. See docs/SUBSET.md for the unodar API.",
+                "`cpp('${cppExample ?? '$name(…)'};');`. See the subset guide (docs/SUBSET.md on GitHub) for the "
+                'unodar API.',
+      );
+
+  /// A function of Dart or Flutter that a newcomer reaches for first (`print`, `debugPrint`, `setState`), E003.
+  static Diagnostic dartOnlyFunction(String name, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unknownFunction,
+        location: at,
+        message: name == 'setState'
+            ? 'there is no setState() in unodar: widgets are never rebuilt, they are set up once and polled.'
+            : "Dart's $name() has nowhere to print on the board.",
+        suggestion: name == 'setState'
+            ? 'Keep the state in a Signal (`final count = Signal<int>(0);`, then `count.value++;`) and react to it '
+                'with `Watch(count, (v) { … })` or `Led(pin: 13, on: …)`, or keep it in a top-level variable.'
+            : "Print over the USB serial port instead, e.g. `Serial.println('hello');`, and read it with a serial "
+                'monitor (`arduino-cli monitor` or the Arduino IDE).',
       );
 
   /// A method of a widget that `package:unodar` declares but this compiler version does not support yet (E003).
@@ -42,7 +58,8 @@ abstract final class Diagnostics {
         code: DiagnosticCode.unknownFunction,
         location: at,
         message: "the $widget method '$method' is not supported in this version.",
-        suggestion: 'See "Widgets" in docs/SUBSET.md for the methods each widget supports.',
+        suggestion:
+            'See "Widgets" in the subset guide (docs/SUBSET.md on GitHub) for the methods each widget supports.',
       );
 
   static Diagnostic argumentOutOfRange(
@@ -90,8 +107,48 @@ abstract final class Diagnostics {
         location: at,
         message: '$what is not supported in this version. Only top-level functions, variables, classes, enums, and '
             'binding classes may be declared.',
-        suggestion:
-            suggestion ?? 'Remove this declaration; see docs/SUBSET.md for what may be declared at the top level.',
+        suggestion: suggestion ??
+            'Remove this declaration; see the subset guide (docs/SUBSET.md on GitHub) for what may be declared at the '
+                'top level.',
+      );
+
+  /// An import other than `package:unodar/<library>.dart` (E005), worded by what the user was reaching for.
+  static Diagnostic unsupportedImport(String uri, SourceLocation at) {
+    final (reason, help) = switch (uri) {
+      _ when uri.startsWith('package:flutter/') || uri.startsWith('package:flutter_') => (
+          'unodar programs run on the board without Flutter',
+          "Remove it. unodar's widgets (Led, Button, Every, …) and runDevice() come from "
+              "`import 'package:unodar/unodar.dart';`."
+        ),
+      'dart:async' => (
+          'the board has no event loop, so there is no Timer, Future or Stream',
+          'Remove it. Run code repeatedly with a widget, e.g. `Every(Duration(seconds: 1), () { … })`, or with '
+              'millis() in loop().'
+        ),
+      _ when uri.startsWith('dart:') => (
+          'the Dart core libraries do not exist on the board',
+          'Remove it. What a program can use is the unodar API (`package:unodar/unodar.dart`) and the operators of '
+              'the subset.'
+        ),
+      _ => (
+          "only `package:unodar/unodar.dart` and unodar's library wrappers (`package:unodar/eeprom.dart`, …) can be "
+              'imported',
+          "Remove it. For an Arduino library unodar does not wrap, write a binding (`@CppClass`) or use `cpp('…')`."
+        ),
+    };
+    return Diagnostic(
+        code: DiagnosticCode.unsupportedDeclaration,
+        location: at,
+        message: "an import of '$uri' is not supported: $reason.",
+        suggestion: help);
+  }
+
+  /// A directive other than an import of unodar (a prefix, `deferred`, `export`, `part`), E005.
+  static Diagnostic unsupportedDirective(String what, String help, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedDeclaration,
+        location: at,
+        message: '$what is not supported in this version.',
+        suggestion: help,
       );
 
   static Diagnostic invalidEntrySignature(String name, String problem, SourceLocation at) => Diagnostic(
@@ -117,6 +174,14 @@ abstract final class Diagnostics {
             '`loop()` instead.',
       );
 
+  static Diagnostic asyncMain(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedMain,
+        location: at,
+        message: 'main() cannot be async: the board has no event loop, so there is no async, await or Future.',
+        suggestion: 'Write `void main() => runDevice(Device(board: Uno(), children: [ … ]));` and do things over time '
+            'with widgets, e.g. `Every(Duration(seconds: 1), () { … })`.',
+      );
+
   static Diagnostic nullableType(String type, String nonNullable, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.unsupportedType,
         location: at,
@@ -130,7 +195,25 @@ abstract final class Diagnostics {
         message: "the type '$type' is not supported in this version. Only $_supportedTypes are supported.",
         suggestion: isConditional
             ? 'Make both branches the same type, e.g. write `1.0` instead of `1`.'
-            : 'Use one of the supported types; see docs/SUBSET.md.',
+            : 'Use one of the supported types; see the subset guide (docs/SUBSET.md on GitHub).',
+      );
+
+  /// A `String` variable, parameter, field or return type (E009).
+  static Diagnostic stringType(SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedType,
+        location: at,
+        message: "the type 'String' is not supported: a String would need the heap, which unodar programs never use.",
+        suggestion: "Text exists only as a literal that is printed, e.g. `Serial.println('Uno');`, which stays in "
+            'flash.',
+      );
+
+  /// A `List`, `Map`, `Set` or `Iterable` type (E009).
+  static Diagnostic collectionType(String type, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.unsupportedType,
+        location: at,
+        message: "the type '$type' is not supported: collections would need the heap, which unodar programs never "
+            'use (fixed-size lists are a later decision).',
+        suggestion: 'Use one variable per value, or a function that returns the value for an index with a `switch`.',
       );
 
   static Diagnostic boolNumberComparison(SourceLocation at) => Diagnostic(
@@ -154,14 +237,16 @@ abstract final class Diagnostics {
         message: 'this constant expression computes $value, which is outside the 32-bit int range '
             '(-2147483648 to 2147483647).',
         suggestion: 'unodar ints are 32-bit (int32_t). Use smaller values; see "Known deviations from Dart" in '
-            'docs/SUBSET.md.',
+            'the subset guide (docs/SUBSET.md on GitHub).',
       );
 
   static Diagnostic doubleLiteralOutOfRange(String literal, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.constantOutOfRange,
         location: at,
         message: 'the double literal $literal is outside the float range (about -3.4e38 to 3.4e38).',
-        suggestion: 'unodar doubles are 32-bit floats; see "Known deviations from Dart" in docs/SUBSET.md.',
+        suggestion:
+            'unodar doubles are 32-bit floats; see "Known deviations from Dart" in the subset guide (docs/SUBSET.md '
+            'on GitHub).',
       );
 
   static Diagnostic constantDivisionByZero(SourceLocation at) => Diagnostic(
@@ -292,7 +377,7 @@ abstract final class Diagnostics {
         message: "unsupported binding class '$name': $problems.",
         suggestion: 'A binding describes one existing C++ class as it is: no extends, implements, with, or type '
             'parameters, and an external constructor unless the class is abstract. See "Binding C++ classes" in '
-            'docs/SUBSET.md.',
+            'the subset guide (docs/SUBSET.md on GitHub).',
       );
 
   static Diagnostic misplacedAnnotation(String annotation, String allowed, SourceLocation at) => Diagnostic(
@@ -315,21 +400,21 @@ abstract final class Diagnostics {
   static Diagnostic boundObjectNotFinal(String name, String example, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "the bound object '$name' must be declared `final`.",
+        message: "the C++ object '$name' must be declared `final`.",
         suggestion: 'Write `$example`. C++ objects are created once, as global variables.',
       );
 
   static Diagnostic boundObjectInitializer(String name, String cls, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "the bound object '$name' must be initialized by calling the $cls constructor.",
+        message: "the C++ object '$name' must be initialized by calling the $cls constructor.",
         suggestion: 'Write `final $name = $cls(…);` with constant arguments.',
       );
 
   static Diagnostic abstractBoundObject(String name, String cls, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "the bound object '$name' cannot be created: $cls is abstract and is only reached through existing "
+        message: "the C++ object '$name' cannot be created: $cls is abstract and is only reached through existing "
             'C++ objects.',
         suggestion: "Call the existing object's methods directly, or name it with `external final $cls $name;`.",
       );
@@ -338,7 +423,7 @@ abstract final class Diagnostics {
   static Diagnostic bindingTypePosition(String position, String type, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "$position of the binding type '$type' is not supported. Bound objects can only be top-level "
+        message: "$position of the type '$type' (a C++ class) is not supported. Its objects can only be top-level "
             '`final` variables.',
         suggestion: 'Use the top-level object directly instead of passing it around.',
       );
@@ -346,7 +431,7 @@ abstract final class Diagnostics {
   static Diagnostic boundObjectUse(String name, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.boundObjectMisuse,
         location: at,
-        message: "the bound object '$name' can only be used to call its methods.",
+        message: "the C++ object '$name' can only be used to call its methods.",
         suggestion: 'Call a method on it, e.g. `$name.begin();`; it cannot be stored, compared, or passed.',
       );
 
@@ -498,6 +583,16 @@ abstract final class Diagnostics {
         location: at,
         message: "a class cannot extend another class in this version ('$cls' extends '$base').",
         suggestion: "Give '$cls' a field of type '$base' instead (composition), or merge the two classes.",
+      );
+
+  /// A user class that extends Flutter's `StatelessWidget` & co. (E027).
+  static Diagnostic flutterWidgetClass(String cls, String base, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.classRule,
+        location: at,
+        message: "'$cls' cannot extend $base: unodar widgets are not Flutter widgets, and nothing calls a build().",
+        suggestion: 'Describe the device in main() instead, e.g. '
+            '`void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`. Classes of your own with a '
+            'build() that returns widgets are planned for a later version.',
       );
 
   static Diagnostic constructorBody(SourceLocation at) => Diagnostic(
@@ -655,9 +750,18 @@ abstract final class Diagnostics {
   static Diagnostic pinUsedByObject(int pin, String object, String role, String pins, SourceLocation at) => Diagnostic(
         code: DiagnosticCode.widgetRule,
         location: at,
-        message: 'pin $pin is already used by $object ($role), which this program uses.',
+        message: 'pin ${pinLabel(pin)} is already used by $object ($role), which this program uses.',
         suggestion: 'Use another pin: $object takes ${pins.contains(',') || pins.contains(' and ') ? 'pins' : 'pin'} '
             '$pins.',
+      );
+
+  /// [later] (first used after [earlier]) takes [pins] that [earlier] takes too; both are used by the program.
+  static Diagnostic pinSharedByObjects(List<int> pins, String earlier, String later, SourceLocation at) => Diagnostic(
+        code: DiagnosticCode.widgetRule,
+        location: at,
+        message: '${pins.length == 1 ? 'pin' : 'pins'} ${englishList([for (final pin in pins) pinLabel(pin)])} '
+            '${pins.length == 1 ? 'is' : 'are'} taken by both $earlier and $later, and this program uses both.',
+        suggestion: 'Use only one of them in this program, or correct the `@CppUsesPins` of the one you declared.',
       );
 
   static Diagnostic widgetNotInChildren(String name, SourceLocation at) => Diagnostic(
@@ -756,7 +860,7 @@ abstract final class Diagnostics {
         location: at,
         message:
             'this write closes a cycle: $path, so the Watch ${throughComputed ? 'could' : 'would'} run again after '
-            'every delivery.',
+            'every loop() pass.',
         suggestion: "Write '$signal' where the change starts, e.g. in a Button callback, or derive the value with a "
             'Computed.',
       );
@@ -844,6 +948,12 @@ abstract final class Diagnostics {
 }
 
 /// `[a]` → `a`; `[a, b]` → `a and b`; `[a, b, c]` → `a, b, and c`.
+/// An Uno pin by its name on the board: `13`, or `A4` for the analog pins 14 to 19.
+String pinName(int pin) => pin >= 14 && pin <= 19 ? 'A${pin - 14}' : '$pin';
+
+/// An Uno pin for a message: `13`, or `A4 (18)`, so that both spellings a program may use appear.
+String pinLabel(int pin) => pin >= 14 && pin <= 19 ? '${pinName(pin)} ($pin)' : '$pin';
+
 String englishList(List<String> items) => switch (items) {
       [] => 'none',
       [final only] => only,

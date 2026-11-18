@@ -1,4 +1,8 @@
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+
 import 'api/api_registry.dart';
+import 'api/api_resolution.dart';
 import 'api/binding_reader.dart';
 import 'diagnostics/diagnostics.dart';
 import 'emitter/emitter.dart';
@@ -14,7 +18,7 @@ sealed class CompileResult {
 
 /// The sketch compiled. [cpp] is the full `.ino` text.
 final class CompileSuccess extends CompileResult {
-  const CompileSuccess({required this.sourceName, required this.cpp, this.files = const {}});
+  const CompileSuccess({required this.sourceName, required this.cpp, this.files = const {}, this.bringsOwnCpp = false});
 
   final String sourceName;
   final String cpp;
@@ -22,6 +26,11 @@ final class CompileSuccess extends CompileResult {
   /// Files that belong next to the `.ino` in the sketch folder, by file name (`unodar_widgets.h` for a widget
   /// program). Empty for a plain `setup()`/`loop()` sketch.
   final Map<String, String> files;
+
+  /// Whether the program contains C++ that unodar did not write: a `cpp('…')` statement, an `@CppInclude`, or a
+  /// binding class of its own. When the C++ then fails to compile, the cause may be the user's C++ (exit 1), not a
+  /// unodar bug (exit 2).
+  final bool bringsOwnCpp;
 }
 
 /// The user's source has problems (exit code 1).
@@ -60,12 +69,22 @@ final class Compiler {
         return CompileInputError(message);
     }
 
+    // A rejected import stops compilation first, alone: what it would provide is undefined (a Flutter import does
+    // not even resolve), so every analyzer error and rule after it would only repeat the same problem.
+    final imports = DirectiveRule.importDiagnostics(source.unit, (node) => source.locationOf(node.offset));
+    if (imports.isNotEmpty) return CompileFailure(sortDiagnostics(imports));
+
     // Analyzer errors normally stop compilation (E007): validating a broken AST yields misleading diagnostics.
     // The one exception is a call to an undefined function written as a plain statement, e.g.
     // `tone(8, 440);`. The analyzer calls that an undefined name, but the user's real problem is "not part of the
     // unodar API", which the validator reports as E003 with a better suggestion.
     final unresolvedCalls = unresolvedCallStatementOffsets(source.unit);
-    final fatal = analysisErrors.where((e) => !unresolvedCalls.contains(e.offset));
+    // `class MyApp extends StatelessWidget { Widget build(BuildContext context) … }` is one problem (E027), not one
+    // analyzer error per Flutter name inside it.
+    final flutterClasses = offsetsInFlutterWidgetClasses(source.unit);
+    bool explained(AnalysisError e) =>
+        unresolvedCalls.contains(e.offset) || flutterClasses.any((r) => e.offset >= r.$1 && e.offset < r.$2);
+    final fatal = analysisErrors.where((e) => !explained(e));
     if (fatal.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
 
     final (programApi, unodarApi) = _registryFor(source);
@@ -76,7 +95,10 @@ final class Compiler {
     if (analysisErrors.isNotEmpty) return CompileFailure(sortDiagnostics(analysisErrors.map((e) => e.diagnostic)));
     final program = Lowering(programApi).lower(source);
     return CompileSuccess(
-        sourceName: source.displayName, cpp: CppEmitter(target).emit(program), files: runtimeFilesFor(program));
+        sourceName: source.displayName,
+        cpp: CppEmitter(target).emit(program),
+        files: runtimeFilesFor(program),
+        bringsOwnCpp: _bringsOwnCpp(source.unit));
   }
 
   /// The registry for one program: [api] plus the bindings `package:unodar` exports (Wire, Servo), and that plus the
@@ -98,5 +120,28 @@ final class Compiler {
         if (!unodar.reservedNames.contains(object.dartName)) object
     ];
     return (unodar.withBindings(ApiBindings(classes: own.classes, objects: objects)), unodar);
+  }
+
+  static bool _bringsOwnCpp(CompilationUnit unit) {
+    final visitor = _OwnCppVisitor();
+    unit.accept(visitor);
+    return visitor.found;
+  }
+}
+
+final class _OwnCppVisitor extends RecursiveAstVisitor<void> {
+  var found = false;
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (isCppCall(node)) found = true;
+    super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitAnnotation(Annotation node) {
+    final name = node.elementAnnotation == null ? null : interopAnnotationName(node.elementAnnotation!);
+    if (name == 'CppInclude' || name == 'CppClass') found = true;
+    super.visitAnnotation(node);
   }
 }

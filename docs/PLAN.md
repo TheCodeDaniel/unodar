@@ -1,3 +1,307 @@
+# Phase 7 plan — CLI and developer experience
+
+**Status: built through the cut line (steps 1–15) on the `phase-7` branch (2026-11-18), awaiting review; not tagged,
+nothing pushed.** D1–D10 were answered as recommended (§10), with D2's "untested" stated in the README and D8's links
+pointing at the GitHub tag. Steps 16 (`unodar run`), 17 and 18 (measurements are in DECISIONS; the release commit to
+0.7.0, the tag and the maintainer's real-board checks) are not done. As built, step 2 is three commits, step 13 six
+plus a corpus commit (13a imports, 13b `print`/`setState`, 13c `async main`, 13d `String`/`List`, 13e
+`StatelessWidget`, 13f wording), and there are four small fix commits (an analyzer info, a stale unit test, line
+lengths) because checks piped through `tail` hid exit codes; they now run with `pipefail` and `--fatal-infos`.
+
+Goal: a stranger can install unodar, get a program running on an Uno with no help from the maintainer, and v0.7 can
+be announced publicly. PRD §8 row 7 (`flash`, `run`, `doctor`, `setup`, friendly errors, a 10-minute quickstart),
+§8.1 (toolchain bootstrap), G1 (zero to a blinking Uno in under 10 minutes) and the announce bar. The rules are
+unchanged: golden first, one construct per commit, reject loudly, no heap, the fidelity rule.
+
+Exit gate:
+- **Automated, on fresh CI runners (macOS and Linux) that have only the Dart SDK:** the install command from the
+  README, `unodar setup`, `unodar doctor` (exit 0), `unodar new hello`, `unodar build` in it (C++ compiled, sizes
+  printed), and `unodar flash` with no board (exit 4, the documented message). A second `unodar setup` changes
+  nothing. Every shell line of the README quick start is run there, verbatim.
+- The three pin gaps are diagnostics, each with a negative golden.
+- Every diagnostic message has been read as a newcomer would read it (§5); a corpus of first attempts by a Flutter
+  developer gives one clear diagnostic each.
+- The suite is green with nothing skipped (CI); no generated C++ changes except where a step says so.
+- **Only the maintainer can close these** (§7): G1 measured on a fresh machine (stopwatch, under 10 minutes to a
+  blinking Uno); `unodar flash` on a genuine Uno and on a CH340 clone; a button toggles an LED on a real Uno; one
+  person who has never seen unodar follows the README alone; the 60-second demo.
+
+## 0. The flow a stranger follows (with the recommended answers)
+
+```sh
+dart pub global activate --source git https://github.com/TheCodeDaniel/unodar \
+  --git-path packages/unodar_compiler --git-ref v0.7.0       # D1; the only prerequisite is a Dart SDK (or Flutter)
+unodar setup                    # arduino-cli, arduino:avr and the pinned libraries, into ~/.unodar
+unodar new hello && cd hello    # pubspec.yaml (depends on unodar), main.dart, README; runs `dart pub get`
+unodar flash                    # build + compile + upload to the one Uno plugged in
+```
+
+`main.dart` from `unodar new` needs no wiring (the built-in LED blinks from an `Every`); the first-program guide
+then adds a button that toggles it, which is the announce bar's program. Everything a command needs that is missing
+is reported with the exact command that fixes it, and `unodar doctor` lists all of it at once.
+
+## 1. The silent pin gaps (step 2, three commits)
+
+The Phase 6 report listed three ways two things can share a pin without a diagnostic. All three reuse the
+`@CppUsesPins` machinery (decision 2026-11-17): pins of an external object that the program **names anywhere**.
+
+| Gap | Fix | Golden |
+|---|---|---|
+| A widget or a `@CppPin` argument on pin 0 or 1 in a program that uses `Serial` | `@CppUsesPins({0: 'RX', 1: 'TX'})` on `external final HardwareSerial Serial` in `package:unodar`. A widget program that names `Serial` is also the one whose generated `setup()` calls `Serial.begin`, so "uses" means the same thing in both places. | `e022_serial_pins` (a `Led` on 1 and a callback printing; an LCD with `rs` on 0 in a sketch with `Serial.begin`) |
+| A widget or `@CppPin` on A4/A5 in a program that uses `Wire` | `@CppUsesPins({18: 'SDA', 19: 'SCL'})` on `Wire` | `e022_wire_pins` |
+| Two used objects declaring the same pin (today the second one is silently ignored: `objectPins.putIfAbsent`) | E022 at the first use of the object used later, naming the other: "pin 13 is used by both SPI (SCK) and 'display' (CLK)". A user's own external object is reported at its declaration. | `e022_object_pins` (SPI plus a user `@CppUsesPins` object on 13) |
+
+Compile-time only, like `@CppPin` and `@CppUsesPins` before: no generated code changes, so no positive golden, no
+budget change and no avr8js test. E022's section and SUBSET's Serial, Wire and pin rules change in the same commits.
+
+**The DHT case: I recommend not rejecting it (D9).** The brief asks to count "the implicit Serial that DHT brings
+in". Checked in the installed sources: neither DHT sensor library 1.4.7 nor Adafruit Unified Sensor 1.1.15 calls
+`Serial.begin` (Serial is only printed from `printSensorDetails()` and the commented-out `DHT_DEBUG`), so the UART is
+never enabled and pins 0/1 stay ordinary GPIO. Only the object's RAM and code are linked. A rule there would reject
+programs that work (a `Button` on pin 0 next to a DHT), which is the opposite of the fidelity rule's direction. The
+175 B of RAM stays documented, as now.
+
+Gaps that remain after step 2, documented and not planned: literal pins passed to `pinMode`/`digitalWrite` are not
+compared with widgets or objects (they need not be constants), and pins of member objects are not compared (one
+class may have several objects).
+
+## 2. The toolchain: `setup` and `doctor` (PRD §8.1)
+
+**Managed toolchain.** `unodar setup` installs into `~/.unodar` (`UNODAR_HOME` overrides it, which the tests use):
+
+```
+~/.unodar/
+  bin/arduino-cli                 # 1.5.1, downloaded from downloads.arduino.cc, SHA-256 checked against the compiler
+  arduino-cli.yaml                # directories.data/user/downloads below; always passed as --config-file
+  data/                           # the core index, arduino:avr@1.8.8 and its avr-gcc (instead of ~/.arduino15)
+  user/libraries/                 # Servo, LiquidCrystal, DHT, Adafruit Unified Sensor (instead of ~/Arduino)
+  downloads/
+```
+
+- Versions are pinned in the compiler: arduino-cli's version and per-platform SHA-256, the core, and the libraries.
+  `tool/arduino_libraries.txt` stays the source for CI and the scripts; `tool/embed_runtime.sh` (renamed
+  `tool/embed.sh`) also generates `lib/src/toolchain/pins.dart` from it, and a test keeps the two equal, as for the
+  runtime headers. A globally activated compiler has no repo checkout, so it cannot read the text file.
+- Libraries are installed one by one with `--no-deps`, as CI does, so nothing floats.
+- Safe to re-run: `setup` runs the doctor's checks and does only the steps that fail. It never writes to
+  `~/.arduino15`, `~/Arduino` or anything else outside `~/.unodar`, and never needs `sudo`. Uninstalling is
+  `rm -rf ~/.unodar`.
+- Every command that needs the toolchain (`build`, `flash`, `run`, `doctor`, and the `arduino` test gate) finds it
+  through one resolver: the managed copy first, then `arduino-cli` on `PATH` (accepted only with the pinned core and
+  libraries; its version is reported, not required). Neither usable: exit 3 and "run `unodar setup`".
+- **Contributors (D5):** `unodar setup --dev`, only inside a checkout, also checks Node (≥ 20.19, not installed by
+  unodar) and runs `npm ci` in `tool/avr_runner`. CLAUDE.md's command list collapses to `dart pub get` and
+  `dart run unodar_compiler:unodar setup --dev`.
+
+**`unodar doctor`** prints one line per check, and under each failure the exact command that fixes it:
+
+```text
+unodar 0.7.0 (Dart 3.13.2, macos_arm64)
+  ✓ arduino-cli 1.5.1 (~/.unodar/bin/arduino-cli)
+  ✓ core arduino:avr 1.8.8
+  ✗ library LiquidCrystal: not installed
+      fix: unodar setup
+  ✓ project ./pubspec.yaml uses unodar 0.7.0 (matches this compiler)
+  · arduino-cli on PATH: 1.4.0 (/opt/homebrew/bin), not used
+  · boards: /dev/cu.usbmodem14101 Arduino Uno
+1 problem. Run `unodar setup` to fix it.
+```
+
+Checks: the Dart SDK version; the managed arduino-cli (present, version, runs); the core; each library at its exact
+version; the project's `package:unodar` version against the compiler's (only inside a project, D7); on Apple Silicon
+whether the core's avr-gcc runs (to verify: the `arduino:avr` 1.8.8 toolchain may be x86_64-only on macOS, which
+needs Rosetta 2); on Linux whether the user can open serial ports (`dialout`/`uucp` group); informational: an
+`arduino-cli` on `PATH` and the boards plugged in. `--dev` adds Node and `tool/avr_runner/node_modules`.
+
+**Exit codes (all commands).** 0 and 1 keep their meaning, 2 stays "tooling, usage or internal error", and two are
+added so that scripts and the troubleshooting guide can tell the cases apart:
+
+| Code | Meaning | Who |
+|---|---|---|
+| 0 | Success (doctor: ready) | all |
+| 1 | Diagnostics: fix your Dart source (or your `cpp('…')` C++, see §4) | build, flash, run |
+| 2 | Tooling: bad usage, unreadable input, unwritable output, a compiler bug | all |
+| 3 | Toolchain not ready (missing, wrong version, cannot run); `doctor` found a problem; download failed | all |
+| 4 | Board: none found, several found without `--port`, port busy or not permitted, upload failed | flash, run |
+
+## 3. Install, projects and versions (D1, D7)
+
+- **Install (D1).** Recommended for v0.7: from git, at the release tag, as in §0. The compiler embeds its runtime
+  headers already and gets its pins embedded in step 3, so an activated compiler needs nothing from the checkout.
+  To verify first (step 3, in a temporary `PUB_CACHE`, never the maintainer's): that `pub global activate --source
+  git` accepts a workspace member (`resolution: workspace`) with a relative `path:` dependency on `../unodar`, and that
+  a project can depend on `package:unodar` by git path and ref. If pub refuses either, the fallback is publishing
+  both packages to pub.dev (D1's alternative), which needs the maintainer's account and cannot be undone.
+- **The analyzer needs a Dart SDK**, so there is no standalone binary (`dart compile exe` loses the SDK path); the
+  Dart SDK, or the one inside Flutter, is the one prerequisite. The minimum SDK is what the analyzer dependency
+  allows, checked by a CI job on that SDK (D8).
+- **`unodar new <name>`** writes `pubspec.yaml` (depending on `unodar` at the compiler's own version, by git ref),
+  `main.dart`, `analysis_options.yaml`, `.gitignore` (`build/`), and a README with the next three commands, then runs
+  `dart pub get` (`--no-pub` skips it). It refuses a non-empty folder. The template is golden-tested; tests point the
+  dependency at the checkout with `--unodar-path`.
+- **Version match (D7).** The compiler recognises the API by element in `package:unodar`, so a project resolved
+  against another version could be misread. `build` reads the resolved `package:unodar` version from the project's
+  `package_config.json` and requires the compiler's exact version: otherwise exit 3, "this project uses unodar 0.6.0,
+  this compiler is 0.7.0: run `dart pub upgrade unodar`" (or the reverse). `unodar --version` is added; both packages
+  move from `0.1.0-dev` to `0.7.0-dev`, and to `0.7.0` in the release commit.
+
+## 4. `build`, `flash`, `run`
+
+- **`unodar build [file]` compiles (D4).** Dart → C++ as today, then `arduino-cli compile --fqbn arduino:avr:uno`
+  with the `-fwrapv` properties (`UnoTarget.buildProperties`), the build cache in `<out>/.build/<name>`, and one size
+  line: `flash 1186 B of 32256 (3 %), RAM 211 B of 2048 (10 %)`. `--cpp-only` keeps today's behaviour, also when no
+  toolchain is installed. `file` defaults to `main.dart` in the current folder.
+- **When the C++ does not compile:** if the program contains `cpp('…')`, `@CppInclude` or a binding of its own, the
+  C++ may be the user's: show arduino-cli's errors (their `#line` points at the Dart file) and exit 1. Otherwise it is
+  a unodar bug: exit 2, "please report", with the issue URL and the sketch folder kept.
+- **`unodar flash [file] [--port P]` (D3)** builds, then `arduino-cli upload --fqbn arduino:avr:uno -p P
+  --input-dir …`. Port choice (D6), from `arduino-cli board list --format json`: exactly one port identified as
+  `arduino:avr:uno` → use it; none → exit 4 with what was found and the usual causes (cable that only charges, CH340
+  driver on macOS, `dialout` on Linux); several, or only unidentified USB serial ports → exit 4 listing them with
+  `--port` lines. Known USB-serial chips (CH340 `1a86:7523`, FTDI `0403:6001`) are labelled "probably an Uno clone"
+  but never chosen automatically: writing to the wrong device is worse than one more flag. A busy port (a serial
+  monitor open) gets its own message.
+- **`unodar run` (after the cut line, D10):** `flash`, then `arduino-cli monitor` at the program's baud rate
+  (`Device.serialBaud`, or a constant `Serial.begin` argument in a sketch; 9600 otherwise) until Ctrl-C.
+- Testable without a board: the port choice is a pure function over recorded `board list` JSON (fixtures for none,
+  one Uno, two, a clone, a Mega); `flash`'s arduino-cli arguments are checked against a fake `arduino-cli` script put
+  first on the resolver's path. The upload itself only on a real board.
+
+## 5. Error output for someone who has never seen the docs
+
+Probed on the current compiler (2026-11-17) with first attempts a Flutter developer would write:
+
+| Input | Today | Problem |
+|---|---|---|
+| `print('hi');` | E003 "unknown function 'print'", help "Methods of numbers … are not supported", **plus** E002 for the string | Wrong help, two errors for one mistake; should say "use `Serial.println('hi')`" |
+| `import 'package:flutter/material.dart';` | E007 "Target of URI doesn't exist" | Should say that unodar does not use Flutter (NG2), with the import to use |
+| `Future<void> main() async { await Future.delayed(…); }` | E008 "may only contain a single runDevice call" | Never says `async`/`Future` are not available on a board (NG4) or what replaces a delay (`Every`) |
+| `String name = 'Uno';` | E009 for the type **and** E002 for the literal | Two errors for one declaration; the help points to `docs/SUBSET.md`, a path a pub-installed user does not have |
+| any error | `file:line:col: error[E…]: …` and `= help:` | No source line, no caret, no link; nine messages cite `docs/…` paths |
+
+Plan (steps 12–13):
+- **Rendering (CLI only, D8).** Under each header: the source line and a caret under the column, and a link to the
+  code's section of DIAGNOSTICS.md at the compiler's release tag
+  (`…/blob/v0.7.0/docs/DIAGNOSTICS.md#e004-unsupported-argument`); colour only on a terminal, never with `NO_COLOR`;
+  `--plain` gives today's format. `Diagnostic.format()` stays the golden and docs format, so the ~150 negative goldens
+  do not churn. A test derives each code's anchor from the DIAGNOSTICS headings, so no link can point nowhere.
+- **Audit.** Every message in `messages.dart` (102 constructors) is read once as a newcomer, against three rules
+  logged in DECISIONS: say what to write instead, in Dart; one problem, one diagnostic; no unodar jargon without a
+  word of explanation ("bound object", "binding", "delivery"). `docs/…` paths become "see the subset guide" (the
+  rendered link carries the URL).
+- **Newcomer corpus.** Goldens `newcomer_*`, one per first attempt above plus `class MyApp extends StatelessWidget`,
+  `setState`, `List<int>`, `for (final p in [2, 3])`, a missing `setup()`, `Serial.begin` in a widget program,
+  `delay()` in `onPressed`, a Button on pin 13 next to the built-in LED. Each must give exactly one diagnostic whose
+  help names the fix. Each fix is its own commit (it changes specific messages and their goldens and docs).
+
+## 6. Docs for a newcomer
+
+- **README:** what it is, the experimental label, the four-command quick start of §0 and what success looks like,
+  then links. The status history and the long known-limits list move to `docs/` (they are for returning readers).
+- **`docs/INSTALL.md`:** prerequisites (Dart or Flutter), the install line, what `setup` downloads and where (size and
+  time measured in step 17), proxies (arduino-cli honours `HTTPS_PROXY`), using an existing arduino-cli, updating,
+  uninstalling.
+- **`docs/FIRST_PROGRAM.md`:** blink with no wiring, then a button toggling the LED (breadboard wiring in words and a
+  Wokwi link for those without a board), reading the generated C++, reading a diagnostic.
+- **`docs/TROUBLESHOOTING.md`:** one section per doctor check and per exit code, port problems by OS, Rosetta, a
+  board that uploads but does nothing, "it works in Wokwi but not on my board".
+- `docs_test` runs every fenced `sh` block marked as quick start in the fresh-machine job (step 15), so the README
+  cannot drift from what works.
+
+## 7. Testing honesty: what can be proven where
+
+| Claim | Unit / golden (every run) | CI, fresh runner with only Dart | Only a real machine | Only a real board |
+|---|---|---|---|---|
+| Pin gaps rejected | goldens | | | |
+| `setup` installs the pinned toolchain, is idempotent, touches nothing outside `~/.unodar` | planner against a fake arduino-cli and downloader; checksum mismatch refused | the real downloads on macOS and Linux; a second run is a no-op; `~/.arduino15` absent afterwards | download time and size on a home connection; proxies; Apple Silicon without Rosetta | |
+| `doctor` reports each problem with its fix and exit code | outputs against fake toolchains with one fault each | exit 3 before `setup`, 0 after | the `dialout` check on a real Linux desktop | the boards line |
+| `new` + `build` work from an activated compiler | template golden; build of the template | yes, from `pub global activate` | | |
+| `flash` picks the right port and passes the right arguments | port choice over JSON fixtures; argument check with a fake arduino-cli | exit 4 "no board" | | upload on a genuine Uno and a CH340 clone; port busy; macOS CH340 driver; auto-reset timing |
+| `run` shows the program's output | baud choice | | | the monitor |
+| Diagnostics read well | rendering tests; newcomer goldens | | a person who has never seen unodar | |
+| G1: under 10 minutes from zero | | the time of the CI job, as a lower bound | **the stopwatch measurement** | **the blinking LED** |
+| Windows (if D2 includes it) | path handling | a `windows-latest` job | serial port names (COM3) | an upload |
+
+## 8. Steps (one construct per commit, test first)
+
+| # | Step | Test written first |
+|---|---|---|
+| 1 | (this) The plan | — |
+| 2 | Pin gaps, three commits: (a) Serial's 0/1, (b) Wire's A4/A5, (c) two used objects on one pin; E022 and SUBSET text | Goldens `e022_serial_pins`, `e022_wire_pins`, `e022_object_pins` |
+| 3 | Versions and install spike: `unodar --version`, both packages `0.7.0-dev`; activation from git and a git dependency verified in a temporary `PUB_CACHE`; outcome logged (D1) | `cli_test` for `--version` |
+| 4 | Pins embedded: `tool/embed.sh` generates `toolchain/pins.dart` (arduino-cli version and SHA-256 per platform, core, libraries) | equality test with `tool/arduino_libraries.txt` |
+| 5 | Toolchain resolver (managed, then `PATH`), used by the `arduino` test gate too | resolver tests against fake `arduino-cli` scripts |
+| 6 | `unodar doctor` and the exit codes 3 and 4 | expected outputs, one fake fault each |
+| 7 | `unodar setup` (download, checksum, config, core, libraries; idempotent); `--dev` | planner tests; checksum control; fake downloader |
+| 8 | CI uses `unodar setup --dev` instead of the hand-written install steps (cache `~/.unodar`) | the CI job itself |
+| 9 | `unodar build` compiles; sizes; `--cpp-only`; C++ errors (exit 1 or 2); `tool/check_arduino.sh` uses it | `arduino` cli tests; a `cpp('…')` that fails to compile |
+| 10 | `unodar flash`: port choice, upload | JSON fixtures; fake arduino-cli |
+| 11 | `unodar new`, and the version match in `build` and `doctor` (D7) | template golden; mismatched-version fixture |
+| 12 | Diagnostic rendering: snippet, caret, link, colour, `--plain` | rendering tests; anchor test |
+| 13 | Newcomer corpus and message audit, one fix per commit | `newcomer_*` goldens |
+| 14 | Docs: README quick start, INSTALL, FIRST_PROGRAM, TROUBLESHOOTING | `docs_test` |
+| 15 | Fresh-machine CI jobs (macOS, Linux; Windows if D2): only Dart, then the README quick start verbatim | the jobs |
+| — | **Cut line.** Above is the announce bar. Below is optional. | |
+| 16 | `unodar run` (build, flash, monitor at the program's baud) | baud tests; real board |
+| 17 | Measurements for the docs (download size and time, setup time, CI quick-start time) | — |
+| 18 | Maintainer checklist (§7's two right-hand columns) run and recorded in DECISIONS; final docs pass, CHANGELOG, `0.7.0`; end report. The tag is the maintainer's. | — |
+
+No step changes generated C++, so no size budget changes; step 9 only reads the sizes.
+
+## 9. What I would cut or defer
+
+- **Moved, not cut:** `npm ci` in `tool/avr_runner` goes under `unodar setup --dev`. A user programming an Uno never
+  needs Node, and Node is the second-largest install of the whole flow (D5).
+- **Named per the PRD:** `unodar flash`, not `upload` (D3). It runs `arduino-cli upload`.
+- **Not counted as using Serial:** the DHT wrapper (§1, D9).
+- **After the cut line:** `unodar run` (the announce bar needs only build and flash).
+- **Deferred to later phases:** standalone binaries and Homebrew/winget packages (the analyzer needs a Dart SDK
+  anyway); a VS Code extension; `unodar new --wokwi` and simulator integration; a watch/rebuild mode; other boards,
+  including the Nano with the same chip (board abstraction is Phase 9, PRD §13.5); a docs site (Phase 10); publishing
+  to pub.dev unless D1 needs it; checking literal pins of `pinMode`/`digitalWrite`.
+- **Never:** telemetry or accounts (NG7); installing Dart or Node for the user.
+
+## 10. Decisions
+
+### Need your answer
+
+| # | Decision | Recommendation | Cost of the alternative |
+|---|---|---|---|
+| D1 | How a stranger installs | `dart pub global activate --source git … --git-ref v0.7.0`; projects depend on `unodar` by git path and ref (`unodar new` writes it); verified in step 3 | pub.dev: shortest commands and pub's version solving, but publishing cannot be undone, needs your account and the package names, and freezes names before 1.0 |
+| D2 | Operating systems for v0.7 | macOS and Linux supported and tested on fresh CI runners; Windows "untested", documented as such | Windows supported: a `windows-latest` job, zip handling, `COM` ports, path and line-ending fixes; and nobody can test an upload on it before the announce unless you have a Windows machine |
+| D3 | Command name | `flash` (PRD §7, §8.1) | `upload` (arduino-cli's word): the PRD and §8.1 change; or both, which is two names for one thing |
+| D4 | Does `build` compile? | Yes, with the sizes; `--cpp-only` for the C++ alone (PRD §8.1 says `build` uses the toolchain) | `build` stays C++ only and only `flash` compiles: a user learns about a C++ or size problem only when uploading |
+| D5 | What `setup` installs | The user toolchain only; `setup --dev` adds Node's check and `npm ci` for contributors | Always `npm ci`: every user needs Node and a repo checkout, neither of which exists after a `pub global activate` |
+| D6 | Port choice | Automatic only for exactly one port identified as an Uno; clones listed with a `--port` hint, never chosen | Choosing a lone unidentified USB serial port: fewer flags for clone owners, but it can write to a GPS or a 3D printer |
+| D7 | Compiler and `package:unodar` versions | Exact match required, exit 3 with the command that fixes it | Compatible ranges: needs an API compatibility policy, which belongs with the semver'd API of Phase 10 |
+| D8 | Diagnostic rendering and the minimum Dart SDK | Snippet, caret and tag link in the CLI only (goldens keep today's format); minimum SDK = the analyzer's, with a CI job on it | Snippets in the golden format: all ~150 negative goldens and DIAGNOSTICS change in one commit, for no information a test needs. No minimum SDK job: a Flutter user's older Dart fails with pub's message instead of ours |
+| D9 | DHT's implicit Serial and pins 0/1 | Not rejected: the library never calls `Serial.begin` (§1) | Rejected as briefed: programs that work on the board fail to compile |
+| D10 | `unodar run` | After the cut line | Before it: more to test on a real board before the announce |
+
+### Logged in DECISIONS.md as made, unless you object
+
+- Step 2 is three commits, one per gap ("one construct per commit" wins over "a first commit").
+- Exit codes 3 (toolchain) and 4 (board), as in §2.
+- The managed layout of §2, `UNODAR_HOME`, `--config-file` on every call, SHA-256 of arduino-cli pinned per
+  platform in the compiler.
+- The pins are embedded from `tool/arduino_libraries.txt` (generated, equality-tested), not moved.
+- `doctor` before `setup` in the step order: `setup` runs the doctor's checks and fixes what fails.
+- An arduino-cli on `PATH` is used only when the managed one is absent, and only with the pinned core and libraries.
+- `build` defaults to `main.dart`; its build cache is `<out>/.build/<name>`.
+- A C++ compile failure is exit 1 when the program brings its own C++ (`cpp()`, `@CppInclude`, a user binding), else
+  exit 2 with the issue URL.
+- The three message rules of §5, and links pinned to the compiler's release tag.
+- Every outcome of the maintainer's real-board and fresh-machine checks, with dates and machines.
+
+## Extension hooks kept
+
+- One toolchain resolver and one pins file, so ESP32 (Phase 9) adds a core and a board to data, not a second path.
+- Port choice is a pure function of `board list` output and an FQBN, so another board is another FQBN.
+- Diagnostic rendering is separate from diagnostics, so an editor integration (LSP, Phase 10) can reuse the
+  structured form.
+
+---
+
 # Phase 6 plan — Classes and library wrappers
 
 **Status: done on the `phase-6` branch (2026-11-17), awaiting review; not tagged.** Every step was built in order,

@@ -2,17 +2,9 @@ import 'package:test/test.dart';
 
 import '../arduino_toolchain.dart';
 
-/// The `arduino` test gate names what is missing: the core, or any library of `tool/arduino_libraries.txt` (or a
-/// different version of one), with the exact install commands.
+/// The `arduino` test gate's install help and dependency check. What is missing is found by `locateToolchain`,
+/// tested in `toolchain_test.dart`.
 void main() {
-  const core = 'ID          Installed Latest Name\narduino:avr 1.8.8     1.8.8  Arduino AVR Boards\n';
-  // Every library of the manifest, as `arduino-cli lib list` prints them.
-  const installed = 'Name                    Installed Available Location Description\n'
-      'Adafruit Unified Sensor 1.1.15    -         user     -\n'
-      'DHT sensor library      1.4.7     -         user     -\n'
-      'LiquidCrystal           1.0.7     -         user     -\n'
-      'Servo                   1.3.0     -         user     -\n';
-
   test('the manifest lists Servo 1.3.0, LiquidCrystal 1.0.7, DHT sensor library 1.4.7 and its dependency', () {
     expect(arduinoLibraries, [
       (name: 'Servo', version: '1.3.0'),
@@ -22,21 +14,7 @@ void main() {
     ]);
   });
 
-  test('ready when the core and every manifest library are installed', () {
-    expect(missingFrom(coreList: core, libraryList: installed), isNull);
-  });
-
-  test('reports a missing core first', () {
-    expect(missingFrom(coreList: 'No platforms installed.\n', libraryList: installed), contains('arduino:avr'));
-  });
-
-  test('reports a missing library or another version, and the install help names the exact version', () {
-    expect(missingFrom(coreList: core, libraryList: 'No libraries installed.\n'), 'the Servo library is not installed');
-    expect(missingFrom(coreList: core, libraryList: 'Servo 1.3.0 - user -\n'),
-        'the LiquidCrystal library is not installed');
-    expect(missingFrom(coreList: core, libraryList: 'ServoEasing 3.0.0 - user -\n'), isNotNull);
-    expect(missingFrom(coreList: core, libraryList: 'Servo 1.2.2 - user -\n'),
-        'the Servo library is 1.2.2, but unodar is tested with 1.3.0');
+  test('the install help names the exact version', () {
     expect(installHelp, contains('arduino-cli lib install --no-deps Servo@1.3.0'));
   });
 

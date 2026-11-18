@@ -29,7 +29,12 @@ final class MainRule implements ValidationRule {
     final main = mainFunction(unit);
     if (main == null) return;
     if (deviceOfMain(main) == null) {
-      context.report(Diagnostics.unsupportedMain(context.at(main.name)));
+      // An async main (or one returning a Future) is what a Dart developer writes first; say why it cannot work.
+      final body = main.functionExpression.body;
+      final returnsFuture = main.returnType?.type?.isDartAsyncFuture ?? false;
+      context.report(body.isAsynchronous || returnsFuture
+          ? Diagnostics.asyncMain(context.at(main.name))
+          : Diagnostics.unsupportedMain(context.at(main.name)));
       return;
     }
     for (final function in compiledFunctions(unit).where(isEntryPoint)) {
@@ -242,11 +247,22 @@ final class WidgetPinRule implements ValidationRule {
     }
     pins.sort((a, b) => a.$1.compareTo(b.$1));
     // Pins taken by an external object the program uses (`@CppUsesPins`, SPI's 10 to 13) belong to it first.
+    // Two used objects may not share a pin: the one used later is reported once per earlier object, at its first
+    // use, with every pin they share; the earlier object keeps the pin.
     final objectPins = <int, (String object, String role, String all)>{};
-    for (final object in _usedObjects(unit, context)) {
-      final all = englishList([for (final MapEntry(:key, :value) in object.usesPins.entries) '$key ($value)']);
+    for (final (object, firstUse) in _usedObjects(unit, context)) {
+      final all =
+          englishList([for (final MapEntry(:key, :value) in object.usesPins.entries) '${pinName(key)} ($value)']);
+      final shared = <String, List<int>>{};
       for (final MapEntry(:key, :value) in object.usesPins.entries) {
-        objectPins.putIfAbsent(key, () => (object.dartName, value, all));
+        if (objectPins[key] case (final other, _, _)) {
+          (shared[other] ??= []).add(key);
+        } else {
+          objectPins[key] = (object.dartName, value, all);
+        }
+      }
+      for (final MapEntry(key: other, value: pins) in shared.entries) {
+        context.report(Diagnostics.pinSharedByObjects(pins..sort(), other, object.dartName, context.at(firstUse)));
       }
     }
     final owners = <int, String>{};
@@ -262,18 +278,18 @@ final class WidgetPinRule implements ValidationRule {
     }
   }
 
-  /// The external objects with `@CppUsesPins` that [unit] names anywhere, in the order of their first use.
-  static List<ApiObject> _usedObjects(CompilationUnit unit, ValidationContext context) {
-    final used = <ApiObject>{};
+  /// The external objects with `@CppUsesPins` that [unit] names anywhere, with their first use, in that order.
+  static List<(ApiObject, AstNode)> _usedObjects(CompilationUnit unit, ValidationContext context) {
+    final used = <ApiObject, AstNode>{};
     unit.accept(_IdentifierVisitor((identifier) {
       final element = identifier.element;
       if (element is! GetterElement || element.variable is! TopLevelVariableElement) return;
       final variable = element.variable as TopLevelVariableElement;
       if (!variable.isExternal) return;
       final object = context.api.object(variable.name!);
-      if (object != null && object.usesPins.isNotEmpty) used.add(object);
+      if (object != null && object.usesPins.isNotEmpty) used.putIfAbsent(object, () => identifier);
     }));
-    return used.toList();
+    return [for (final MapEntry(:key, :value) in used.entries) (key, value)];
   }
 }
 

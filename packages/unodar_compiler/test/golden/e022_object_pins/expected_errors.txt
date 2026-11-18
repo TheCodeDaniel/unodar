@@ -1,0 +1,4 @@
+input.dart:32:3: error[E022]: pins 12 and 13 are taken by both SPI and display, and this program uses both.
+  = help: Use only one of them in this program, or correct the `@CppUsesPins` of the one you declared.
+input.dart:33:3: error[E022]: pin 2 is taken by both radio and beeper, and this program uses both.
+  = help: Use only one of them in this program, or correct the `@CppUsesPins` of the one you declared.

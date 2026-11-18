@@ -5,7 +5,9 @@
 # As a second guard, the test step fails if the run reports any skipped test at all.
 #
 # Versions are pinned: size budgets and the generated E014 deny-list depend on the exact arduino:avr core (and its
-# avr-gcc), and formatting depends on the Dart SDK. Bump them deliberately, together with any budget change.
+# avr-gcc), and formatting depends on the Dart SDK. The Arduino toolchain is installed by `unodar setup --dev` itself
+# (the pins are tool/arduino_toolchain.txt and tool/arduino_libraries.txt), so CI exercises the same install a user
+# runs. Bump versions deliberately, together with any budget change.
 name: CI
 
 on:
@@ -21,8 +23,6 @@ concurrency:
 
 env:
   DART_SDK_VERSION: 3.13.2
-  ARDUINO_CLI_VERSION: 1.5.1
-  ARDUINO_AVR_CORE: arduino:avr@1.8.8
   NODE_VERSION: 22.12.0
   UNODAR_REQUIRE_ARDUINO: '1'
 
@@ -44,57 +44,24 @@ jobs:
           key: pub-${{ runner.os }}-${{ env.DART_SDK_VERSION }}-${{ hashFiles('pubspec.lock') }}
           restore-keys: pub-${{ runner.os }}-${{ env.DART_SDK_VERSION }}-
 
-      - uses: arduino/setup-arduino-cli@v2
-        with:
-          version: ${{ env.ARDUINO_CLI_VERSION }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # ~/.arduino15 holds the package index, the arduino:avr core and its avr-gcc toolchain.
-      - name: Cache Arduino cores
-        id: arduino-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.arduino15
-          key: arduino15-${{ runner.os }}-cli${{ env.ARDUINO_CLI_VERSION }}-${{ env.ARDUINO_AVR_CORE }}
-
-      - name: Install the arduino:avr core
-        if: steps.arduino-cache.outputs.cache-hit != 'true'
-        run: |
-          arduino-cli core update-index
-          arduino-cli core install "$ARDUINO_AVR_CORE"
-
-      # Libraries live outside ~/.arduino15 (in ~/Arduino/libraries), so this runs every time; it is small.
-      # tool/arduino_libraries.txt pins every library and every dependency, so each is installed exactly and without
-      # its dependencies (arduino_libraries_test.dart checks that nothing is missing from the file).
-      - name: Install the Arduino libraries
-        run: |
-          arduino-cli lib update-index
-          grep -vE '^[[:space:]]*(#|$)' tool/arduino_libraries.txt | while IFS= read -r spec; do
-            arduino-cli lib install --no-deps "$spec"
-          done
-
-      - name: Check the toolchain
-        run: |
-          arduino-cli version
-          arduino-cli core list
-          arduino-cli core list | grep -E "^arduino:avr +${ARDUINO_AVR_CORE#arduino:avr@} " \
-            || { echo "::error::$ARDUINO_AVR_CORE is not installed"; exit 1; }
-          arduino-cli lib list
-          grep -vE '^[[:space:]]*(#|$)' tool/arduino_libraries.txt | while IFS= read -r spec; do
-            arduino-cli lib list | grep -E "^${spec%@*} +${spec##*@} " \
-              || { echo "::error::$spec is not installed"; exit 1; }
-          done
-
-      # The runtime fidelity harness runs programs in avr8js (tool/avr_runner, pinned by package-lock.json).
+      # The runtime fidelity harness runs programs in avr8js (tool/avr_runner, pinned by package-lock.json); `unodar
+      # setup --dev` runs its npm ci, but Node itself is the machine's.
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install the avr8js runner
-        working-directory: tool/avr_runner
-        run: npm ci --no-audit --no-fund
-
       - run: dart pub get
+
+      # ~/.unodar holds the managed arduino-cli, the arduino:avr core with its avr-gcc, and the pinned libraries.
+      - name: Cache the managed Arduino toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.unodar
+          key: unodar-${{ runner.os }}-${{ hashFiles('tool/arduino_toolchain.txt', 'tool/arduino_libraries.txt') }}
+
+      # Installs only what is missing (nothing on a cache hit) and exits non-zero unless `unodar doctor --dev` is clean.
+      - name: unodar setup --dev
+        run: dart run unodar_compiler:unodar setup --dev
 
       - run: dart analyze
 
@@ -111,3 +78,36 @@ jobs:
         run: |
           dart test --file-reporter "json:$RUNNER_TEMP/unodar_compiler.json"
           ../../tool/ci_no_skips.sh "$RUNNER_TEMP/unodar_compiler.json"
+
+  # The README quick start on a runner with nothing but a Dart SDK (tool/fresh_machine_test.sh: a fresh HOME and a
+  # PATH without anything else). Until the release tag exists it installs the commit under test. No board is plugged
+  # in, so `unodar flash` must end with exit 4 and "No Arduino Uno found".
+  fresh-machine:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ env.DART_SDK_VERSION }}
+      - run: tool/fresh_machine_test.sh
+
+  # The oldest Dart SDK unodar supports (D8): the minimum that the analyzer dependency allows (pubspec.lock's
+  # `sdks: dart`). The compiler is analyzed and its unit and golden tests run with it; the Arduino tests run above.
+  minimum-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.0
+      - run: dart pub get
+      - run: dart analyze
+      - name: Unit and golden tests
+        working-directory: packages/unodar_compiler
+        run: dart test test/unit test/golden_test.dart

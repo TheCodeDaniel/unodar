@@ -1,0 +1,2 @@
+input.dart:2:1: error[E005]: an import of 'package:does_not_exist/thing.dart' is not supported: only `package:unodar/unodar.dart` and unodar's library wrappers (`package:unodar/eeprom.dart`, …) can be imported.
+  = help: Remove it. For an Arduino library unodar does not wrap, write a binding (`@CppClass`) or use `cpp('…')`.

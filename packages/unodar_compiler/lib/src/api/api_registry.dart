@@ -314,7 +314,11 @@ final class ApiRegistry {
             ApiFunction('println', cppName: 'println', parameters: printParameters),
           ]),
         ],
-        objects: const [ApiObject('Serial', cppName: 'Serial', className: 'HardwareSerial')],
+        // Serial takes pins 0 and 1 in a program that names it (the program then opens the port); the DHT wrapper links
+        // Serial but never opens it, so it does not count (DECISIONS 2026-11-17, Phase 7 D9).
+        objects: const [
+          ApiObject('Serial', cppName: 'Serial', className: 'HardwareSerial', usesPins: {0: 'RX', 1: 'TX'})
+        ],
         // `widgets.dart`; the C++ classes are in runtime/unodar_widgets.h. Rows enter with their golden.
         widgetClasses: const [
           ApiClass('Led', cppName: 'unodar::Led', constructor: [

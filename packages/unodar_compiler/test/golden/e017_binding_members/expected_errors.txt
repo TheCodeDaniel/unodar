@@ -13,6 +13,6 @@ input.dart:11:3: error[E017]: a binding class cannot have an operator ('+'). Onl
 input.dart:12:3: error[E017]: a binding class cannot have a method with a body ('calibrate'). Only an external constructor and external methods are allowed.
   = help: Declare it `external`; the C++ class implements it.
 input.dart:17:22: error[E017]: unsupported binding class 'Derived': it extends another class and it implements interfaces.
-  = help: A binding describes one existing C++ class as it is: no extends, implements, with, or type parameters, and an external constructor unless the class is abstract. See "Binding C++ classes" in docs/SUBSET.md.
+  = help: A binding describes one existing C++ class as it is: no extends, implements, with, or type parameters, and an external constructor unless the class is abstract. See "Binding C++ classes" in the subset guide (docs/SUBSET.md on GitHub).
 input.dart:20:13: error[E017]: unsupported binding class 'Thing': it is not abstract but declares no external constructor.
-  = help: A binding describes one existing C++ class as it is: no extends, implements, with, or type parameters, and an external constructor unless the class is abstract. See "Binding C++ classes" in docs/SUBSET.md.
+  = help: A binding describes one existing C++ class as it is: no extends, implements, with, or type parameters, and an external constructor unless the class is abstract. See "Binding C++ classes" in the subset guide (docs/SUBSET.md on GitHub).

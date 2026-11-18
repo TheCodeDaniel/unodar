@@ -21,18 +21,19 @@ Read `docs/PRD.md` (scope, source of truth) and `docs/PLAN.md` (current phase pl
 ## Commands (run from repo root)
 ```sh
 dart pub get
+dart run unodar_compiler:unodar setup --dev   # arduino-cli, the core, the pinned libraries (~/.unodar) and npm ci
 dart analyze && dart format --set-exit-if-changed . && dart test packages/unodar packages/unodar_compiler
 UPDATE_GOLDENS=1 dart test packages/unodar_compiler/test/golden_test.dart   # deliberately rewrite goldens
 dart run packages/unodar_compiler/bin/unodar.dart build examples/blink/main.dart -o out
 tool/check_arduino.sh                                                     # arduino-cli compile of the examples
 tool/extract_arduino_names.sh                                             # regenerate input for the E014 deny-list
-tool/embed_runtime.sh                                                     # re-embed runtime/unodar_*.h after editing one
-(cd tool/avr_runner && npm ci)                                            # avr8js for the runtime fidelity harness
+tool/embed_runtime.sh                     # re-embed runtime/unodar_*.h and the tool/arduino_*.txt manifests after editing one
 ```
 Tests tagged `arduino` (compile checks, size budgets, fidelity harnesses, reserved names) skip with install
 instructions when arduino-cli, the arduino:avr core, or a library of `tool/arduino_libraries.txt` (exact version,
-every dependency listed) is missing; the runtime fidelity harness
-also needs Node.js and `npm ci` in `tool/avr_runner`. **CI must set `UNODAR_REQUIRE_ARDUINO=1`** so they fail instead;
+every dependency listed) is missing; they find the toolchain as the CLI does (the managed copy in `~/.unodar` or
+`$UNODAR_HOME` first, then `arduino-cli` on PATH). The runtime fidelity harness also needs Node.js and `npm ci` in
+`tool/avr_runner` (both checked by `unodar doctor --dev`). **CI must set `UNODAR_REQUIRE_ARDUINO=1`** so they fail instead;
 `.github/workflows/ci.yml` does, and also fails on any skipped test (`tool/ci_no_skips.sh`).
 
 ## Pipeline map (`packages/unodar_compiler/lib/src/`)

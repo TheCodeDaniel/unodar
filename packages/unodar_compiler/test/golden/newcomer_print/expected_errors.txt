@@ -1,0 +1,2 @@
+input.dart:8:3: error[E003]: Dart's print() has nowhere to print on the board.
+  = help: Print over the USB serial port instead, e.g. `Serial.println('hello');`, and read it with a serial monitor (`arduino-cli monitor` or the Arduino IDE).

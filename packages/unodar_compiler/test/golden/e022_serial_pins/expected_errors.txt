@@ -1,0 +1,4 @@
+input.dart:7:20: error[E022]: pin 1 is already used by Serial (TX), which this program uses.
+  = help: Use another pin: Serial takes pins 0 (RX) and 1 (TX).
+input.dart:8:27: error[E022]: pin 0 is already used by Serial (RX), which this program uses.
+  = help: Use another pin: Serial takes pins 0 (RX) and 1 (TX).

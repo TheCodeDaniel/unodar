@@ -1,0 +1,2 @@
+input.dart:5:15: error[E027]: 'Blinker' cannot extend StatelessWidget: unodar widgets are not Flutter widgets, and nothing calls a build().
+  = help: Describe the device in main() instead, e.g. `void main() => runDevice(Device(board: Uno(), children: [Led(pin: 13)]));`. Classes of your own with a build() that returns widgets are planned for a later version.

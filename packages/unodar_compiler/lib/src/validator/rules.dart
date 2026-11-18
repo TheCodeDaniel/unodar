@@ -34,6 +34,14 @@ final class ValidationContext {
   final ConstantEvaluator constants = const ConstantEvaluator();
   final List<Diagnostic> diagnostics = [];
 
+  /// Source ranges, from start to end, inside which nothing is reported (`Validator.validate`), because the code
+  /// around them is already wrong as a whole and they are checked once it is rewritten: the argument lists of calls
+  /// reported as unknown (E003), and the initializers of variables whose declared type is rejected (E009).
+  final List<(SourceLocation, SourceLocation)> silenced = [];
+
+  /// Silences [node] (see [silenced]).
+  void silence(AstNode node) => silenced.add((at(node), source.locationOf(node.end)));
+
   void report(Diagnostic diagnostic) => diagnostics.add(diagnostic);
 
   SourceLocation at(SyntacticEntity node) => source.locationOf(node.offset);
@@ -58,3 +66,18 @@ Set<int> unresolvedCallStatementOffsets(CompilationUnit unit) => {
         if (expression case MethodInvocation(target: null, :final methodName) when methodName.element == null)
           methodName.offset,
     };
+
+/// Flutter's widget base classes. A class of the user's that extends one is E027 with its own message
+/// ([ClassRule]); nothing else in it is checked, and the analyzer's errors inside it (`BuildContext`, `Text`, …, all
+/// undefined without Flutter) are explained by that diagnostic ([offsetsInFlutterWidgetClasses]).
+const flutterWidgetClasses = {'StatelessWidget', 'StatefulWidget', 'State', 'InheritedWidget', 'ChangeNotifier'};
+
+/// Whether [declaration] extends one of [flutterWidgetClasses].
+bool extendsFlutterWidget(ClassDeclaration declaration) =>
+    flutterWidgetClasses.contains(declaration.extendsClause?.superclass.name.lexeme);
+
+/// The source ranges of the user's classes that extend a Flutter widget class.
+List<(int, int)> offsetsInFlutterWidgetClasses(CompilationUnit unit) => [
+      for (final declaration in unit.declarations.whereType<ClassDeclaration>())
+        if (extendsFlutterWidget(declaration)) (declaration.offset, declaration.end),
+    ];

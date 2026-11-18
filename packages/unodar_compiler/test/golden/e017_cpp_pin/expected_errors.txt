@@ -1,5 +1,5 @@
 input.dart:5:12: error[E017]: unsupported binding constructor 'Motor': it has a @CppPin on a parameter that is not an int ('speed') and a @CppRange on the pin 'pin' outside 0 to 19 (2 to 25).
-  = help: Use the supported types (int, double, bool, Uint8, Uint16, Int16) and an accepted @CppType; see "Binding C++ classes" in docs/SUBSET.md.
+  = help: Use the supported types (int, double, bool, Uint8, Uint16, Int16) and an accepted @CppType; see "Binding C++ classes" in the subset guide (docs/SUBSET.md on GitHub).
 input.dart:6:24: error[E017]: @CppPin is not allowed here: it applies only to integer parameters of a binding constructor.
   = help: Remove it, or move it to integer parameters of a binding constructor.
 input.dart:9:1: error[E017]: @CppPin is not allowed here: it applies only to integer parameters of a binding constructor.
