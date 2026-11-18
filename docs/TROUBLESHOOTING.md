@@ -17,6 +17,10 @@ each problem (`✗` problem, `!` warning, `·` information). Every `unodar` comm
 not on your `PATH`. Add it (`export PATH="$PATH":"$HOME/.pub-cache/bin"` in `~/.zshrc` or `~/.bashrc`) and open a
 new terminal.
 
+**`dart pub global activate` hangs.** Pub downloads the compiler's dependencies and has no timeout of its own, so
+on a stalled connection it waits without end and without output. Press Ctrl-C, check your connection (or set
+`HTTPS_PROXY`), and run the same command again: pub keeps what it already downloaded.
+
 **`dart pub global activate` fails to resolve versions.** Your Dart is older than 3.13. `dart --version` shows it;
 upgrade Dart (or Flutter, if your `dart` comes from it).
 
