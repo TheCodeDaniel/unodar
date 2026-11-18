@@ -1,7 +1,12 @@
 # Phase 7 plan — CLI and developer experience
 
-**Status: approved (2026-11-17); D1–D10 answered as recommended (§10), with D2's "untested" stated in the README
-and D8's links pointing at the GitHub tag.** Branch `phase-7`, from `main` at v0.6.0.
+**Status: built through the cut line (steps 1–15) on the `phase-7` branch (2026-11-18), awaiting review; not tagged,
+nothing pushed.** D1–D10 were answered as recommended (§10), with D2's "untested" stated in the README and D8's links
+pointing at the GitHub tag. Steps 16 (`unodar run`), 17 and 18 (measurements are in DECISIONS; the release commit to
+0.7.0, the tag and the maintainer's real-board checks) are not done. As built, step 2 is three commits, step 13 six
+plus a corpus commit (13a imports, 13b `print`/`setState`, 13c `async main`, 13d `String`/`List`, 13e
+`StatelessWidget`, 13f wording), and there are four small fix commits (an analyzer info, a stale unit test, line
+lengths) because checks piped through `tail` hid exit codes; they now run with `pipefail` and `--fatal-infos`.
 
 Goal: a stranger can install unodar, get a program running on an Uno with no help from the maintainer, and v0.7 can
 be announced publicly. PRD §8 row 7 (`flash`, `run`, `doctor`, `setup`, friendly errors, a 10-minute quickstart),
