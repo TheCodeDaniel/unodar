@@ -9,6 +9,7 @@ Uno's serial port to Wokwi's serial monitor. The generated `setup()` opens the p
 `Device(serialBaud: …)`.
 
 ## Option A: wokwi.com (browser, nothing to install)
+
 1. From the repo root: `dart run packages/unodar_compiler/bin/unodar.dart build examples/button_led/main.dart -o out`
    This writes two files: `out/main/main.ino` and `out/main/unodar_widgets.h` (the widget runtime).
 2. Open <https://wokwi.com/projects/new/arduino-uno>.
@@ -24,6 +25,7 @@ Note: wokwi.com builds the sketch with its own default flags. unodar's 32-bit `i
 on its own), so it behaves the same, but Option B builds it exactly as unodar specifies.
 
 ## Option B: Wokwi for VS Code
+
 1. Build as above, then compile to firmware next to this file, with unodar's build properties:
    ```sh
    arduino-cli compile --fqbn arduino:avr:uno \
